@@ -1,0 +1,12 @@
+.mypy_cache/*
+
+benchmarks/*
+wip/*
+pca_files/*
+tests/*
+venv/*
+
+pyS7/__pycache__/*
+
+ideas.md
+TODO.md
