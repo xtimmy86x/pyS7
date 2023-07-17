@@ -1,7 +1,7 @@
 import re
 
-from pyS7.item import Item
-from pyS7.constants import MemoryArea, DataType
+from .constants import MemoryArea, DataType
+from .item import Item
 
 """
 ### Variable addressing
@@ -43,6 +43,9 @@ The variables and their addresses configured on the **S7 Endpoint** follow a sli
 | `IR34` or `ER34`              | `IR34` or `ER34`      | Number        | Floating point 32-bit number at byte 34 of input area |
 | `QR36` or `AR36`              | `QR36` or `AR36`      | Number        | Floating point 32-bit number at byte 36 of output area |
 | `MR38`                        | `MR38`                | Number        | Floating point 32-bit number at byte 38 of memory area |
+
+
+TODO: Not yet immplemented
 | `DB1,DT0`                     | -                     | Date**        | A timestamp in the DATE_AND_TIME format |
 | `DB1,DTZ10`                   | -                     | Date**        | A timestamp in the DATE_AND_TIME format, in UTC |
 | `DB2,DTL2`                    | -                     | Date**        | A timestamp in the DTL format |
@@ -58,7 +61,7 @@ class AddressError(Exception):
     """
     ...
 
-map_data_type = {
+DataTypeMap: dict[str, DataType] = {
     "X": DataType.BIT,
     "B": DataType.BYTE,
     "BYTE": DataType.BYTE,
@@ -75,12 +78,14 @@ map_data_type = {
     "REAL": DataType.REAL,
 }
 
-# TODO: add caching
+
 def map_address_to_item(address: str) -> Item:
     address = address.upper()
 
+    match: re.Match[str] | None
+
     if address.startswith("DB"):
-     
+
         match = re.match(r"DB(\d+),([a-zA-Z]+)(\d+)(?:\.(\d+))?", address)
 
         if match is None:
@@ -206,24 +211,25 @@ def map_address_to_item(address: str) -> Item:
             bit_offset=bit_offset,
             length=length
         )
-    
+
     elif address.startswith("I") or address.startswith("E"):
-        match: re.Match[str] | None = re.match(r"([I,E])(\d+)(?:\.(\d+))", address)
+        match = re.match(
+            r"[I,E]([B,C,I,W,DI,D,R])?(\d+)(?:\.(\d+))?", address)
 
         if match is None:
             raise AddressError("")
-        
+
         str_data_type, start, bit_offset = match.groups()
 
         memory_area = MemoryArea.INPUT
         db_number = 0
-        data_type = DataType.BIT
+        data_type = DataTypeMap[str_data_type] if str_data_type is not None else DataType.BIT
         start = int(start)
-        bit_offset = int(bit_offset)
+        bit_offset = int(bit_offset) if bit_offset is not None else 0
 
         if not 0 <= bit_offset <= 7:
             raise AddressError(
-                f"The bit offset must be a value between 0 and 7 included") 
+                f"The bit offset must be a value between 0 and 7 included")
 
         length = 1
 
@@ -236,25 +242,24 @@ def map_address_to_item(address: str) -> Item:
             length=length
         )
 
-    
     elif address.startswith("Q") or address.startswith("A"):
-        
-        match = re.match(r"[Q,A](\d+)(?:\.(\d+))", address)
+        match = re.match(
+            r"[Q,A]([B,C,I,W,DI,D,R])?(\d+)(?:\.(\d+))?", address)
 
         if match is None:
             raise AddressError("")
-        
-        start, bit_offset = match.groups()
+
+        str_data_type, start, bit_offset = match.groups()
 
         memory_area = MemoryArea.OUTPUT
         db_number = 0
-        data_type = DataType.BIT
+        data_type = DataTypeMap[str_data_type] if str_data_type is not None else DataType.BIT
         start = int(start)
-        bit_offset = int(bit_offset)
+        bit_offset = int(bit_offset) if bit_offset is not None else 0
 
         if not 0 <= bit_offset <= 7:
             raise AddressError(
-                f"The bit offset must be a value between 0 and 7 included") 
+                f"The bit offset must be a value between 0 and 7 included")
 
         length = 1
 
@@ -266,25 +271,25 @@ def map_address_to_item(address: str) -> Item:
             bit_offset=bit_offset,
             length=length
         )
-    
-    elif address.startswith("M"):
 
-        match = re.match(r"M(\d+)(?:\.(\d+))", address)
+    elif address.startswith("M"):
+        match = re.match(
+            r"M([B,C,I,W,DI,D,R])?(\d+)(?:\.(\d+))?", address)
 
         if match is None:
             raise AddressError("")
-        
-        start, bit_offset = match.groups()
+
+        str_data_type, start, bit_offset = match.groups()
 
         memory_area = MemoryArea.MERKER
         db_number = 0
-        data_type = DataType.BIT
+        data_type = DataTypeMap[str_data_type] if str_data_type is not None else DataType.BIT
         start = int(start)
-        bit_offset = int(bit_offset)
+        bit_offset = int(bit_offset) if bit_offset is not None else 0
 
         if not 0 <= bit_offset <= 7:
             raise AddressError(
-                f"The bit offset must be a value between 0 and 7 included") 
+                f"The bit offset must be a value between 0 and 7 included")
 
         length = 1
 
@@ -298,26 +303,4 @@ def map_address_to_item(address: str) -> Item:
         )
 
     else:
-        raise NotImplementedError()
-
-
-if __name__ == "__main__":
-
-    import timeit
-
-    N = 2000
-
-    print(timeit.timeit(lambda: map_address_to_item("DB50,X0.7"), number=N) * 1000)
-    print(timeit.timeit(lambda: map_address_to_item("DB23,B1"), number=N) * 1000)
-    print(timeit.timeit(lambda: map_address_to_item("DB100,C2"), number=N) * 1000)
-    print(timeit.timeit(lambda: map_address_to_item("DB42,I3"), number=N) * 1000)
-    print(timeit.timeit(lambda: map_address_to_item("DB57,WORD4"), number=N) * 1000)
-    print(timeit.timeit(lambda: map_address_to_item("DB13,DI5"), number=N) * 1000)
-    print(timeit.timeit(lambda: map_address_to_item("DB19,DW6"), number=N) * 1000)
-    print(timeit.timeit(lambda: map_address_to_item("DB21,R7"), number=N) * 1000)
-    print(timeit.timeit(lambda: map_address_to_item("DB2,S7.10"), number=N) * 1000)
-    print(timeit.timeit(lambda: map_address_to_item("M10.7"), number=N) * 1000)
-    print(timeit.timeit(lambda: map_address_to_item("I0.2"), number=N) * 1000)
-    print(timeit.timeit(lambda: map_address_to_item("Q300.1"), number=N) * 1000)
-
-    print(map_address_to_item.cache_info())
+        raise NotImplementedError("")
