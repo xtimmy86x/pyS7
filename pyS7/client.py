@@ -5,7 +5,7 @@ from .item import Item
 from .requests import (ConnectionRequest, PDUNegotiationRequest, ReadRequest,
                        Request, group_items)
 from .responses import (ConnectionResponse, PDUNegotiationResponse,
-                        ReadOptimizedResponse, ReadResponse)
+                        ReadOptimizedResponse, ReadResponse, Response)
 
 
 class Client:
@@ -48,7 +48,7 @@ class Client:
 
         if optimize:
             items_map = group_items(items=items, pdu_size=self.pdu_size)
-            items = items_map.keys()
+            items = list(items_map.keys())
 
         requests: list[list[Item]] = [[]]
         read_size_counter: int = READ_REQ_HEADER_SIZE + \
@@ -65,14 +65,14 @@ class Client:
 
             else:
                 requests.append([item])
-                read_size_counter: int = READ_REQ_HEADER_SIZE + READ_REQ_PARAM_SIZE_NO_ITEMS
+                read_size_counter = READ_REQ_HEADER_SIZE + READ_REQ_PARAM_SIZE_NO_ITEMS
 
         data = []
         for request in requests:
             bytes_reponse = self.__send(ReadRequest(items=request))
 
             if optimize:
-                response = ReadOptimizedResponse(
+                response: Response = ReadOptimizedResponse(
                     response=bytes_reponse, items_map=items_map)
             else:
                 response = ReadResponse(response=bytes_reponse, items=request)

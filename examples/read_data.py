@@ -1,4 +1,4 @@
-from ..pyS7 import Client, Item, MemoryArea, DataType
+from pyS7 import Client, Item, MemoryArea, DataType
 
 if __name__ == "__main__":
 
@@ -26,7 +26,7 @@ if __name__ == "__main__":
         item7,
     ]
 
-    data = client.read(items=items, optimize=False)
-    print(data)
+    data = client.read(items=items, optimize=True)
+    print(data) # [0, -32768, -1234, 32767, 1234, -3402823106560.0, (-1.1754943806535634e-12, 0.0, 1.1754943508222875e-38, 1.1754943806535634e-12), -1.7549434765121066e-30]
 
 
