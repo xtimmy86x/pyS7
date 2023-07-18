@@ -1,5 +1,7 @@
 import socket
+from typing import Sequence
 
+from .address_parser import map_address_to_item
 from .constants import *
 from .item import Item
 from .requests import (ConnectionRequest, PDUNegotiationRequest, ReadRequest,
@@ -30,7 +32,7 @@ class Client:
         # Establish TCP connection
         self.socket.connect((self.address, self.port))
 
-        # Connect
+        # Do I need this?
         connection_bytes_response: bytes = self.__send(
             ConnectionRequest(rack=self.rack, slot=self.slot))
         connection_response: ConnectionResponse = ConnectionResponse(
@@ -44,7 +46,9 @@ class Client:
 
         self.max_jobs_calling, self.max_jobs_called, self.pdu_size = pdu_negotiation_response.parse()
 
-    def read(self, items: list[Item], optimize: bool = True) -> list:
+    def read(self, items: Sequence[str | Item], optimize: bool = True) -> list:
+
+        items: list[Item] = [map_address_to_item(address=item) if isinstance(item, str) else item for item in items] 
 
         if optimize:
             items_map = group_items(items=items, pdu_size=self.pdu_size)
