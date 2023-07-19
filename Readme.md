@@ -33,7 +33,7 @@ if __name__ == "__main__":
         "DB1,I30",      # Read INT at address 30 of DB1
         "M54.4",        # Read BIT 4 (fifth bit) in the merker (memento) area
         "IW22",         # Read WORD at address 22 in input area
-        "QR,24",        # Read REAL at address 24 in output area
+        "QR24",        # Read REAL at address 24 in output area
         "DB1,S10.5"     # Read sequence of CHAR of length 5 starting at address 10 of DB1
     ]
 
