@@ -2,10 +2,10 @@ import socket
 from typing import Sequence
 
 from .address_parser import map_address_to_item
-from .constants import *
+from .constants import MAX_JOB_CALLED, MAX_JOB_CALLING, MAX_PDU
 from .item import Item
 from .requests import (ConnectionRequest, PDUNegotiationRequest, ReadRequest,
-                       Request, group_items)
+                       Request, group_items, prepare_requests)
 from .responses import (ConnectionResponse, PDUNegotiationResponse,
                         ReadOptimizedResponse, ReadResponse, Response)
 
@@ -46,30 +46,22 @@ class Client:
 
         self.max_jobs_calling, self.max_jobs_called, self.pdu_size = pdu_negotiation_response.parse()
 
-    def read(self, items: Sequence[str | Item], optimize: bool = True) -> list:
+    def disconnect(self) -> None:
 
-        items: list[Item] = [map_address_to_item(address=item) if isinstance(item, str) else item for item in items] 
+        self.socket.shutdown(socket.SHUT_RDWR)
+        self.socket.close()
+
+    def read(self, items: Sequence[str | Item], optimize: bool = True) -> list[bool | int | float | str | tuple[bool | int | float, ...]]:
+
+        items: list[Item] = [map_address_to_item(address=item) if isinstance(
+            item, str) else item for item in items]
 
         if optimize:
             items_map = group_items(items=items, pdu_size=self.pdu_size)
             items = list(items_map.keys())
 
-        requests: list[list[Item]] = [[]]
-        read_size_counter: int = READ_REQ_HEADER_SIZE + \
-            READ_REQ_PARAM_SIZE_NO_ITEMS  # 10 + 2
-
-        for item in items:
-            if item.size() + READ_REQ_HEADER_SIZE + READ_REQ_PARAM_SIZE_NO_ITEMS + READ_REQ_PARAM_SIZE_ITEM >= self.pdu_size:
-                raise Exception(
-                    f"{item} too big -> it cannot fit the size of the negotiated PDU ({self.pdu_size})")
-
-            elif item.size() + read_size_counter + READ_REQ_PARAM_SIZE_ITEM < self.pdu_size and len(requests[-1]) < MAX_READ_ITEMS:
-                requests[-1].append(item)
-                read_size_counter += item.size() + READ_REQ_PARAM_SIZE_ITEM
-
-            else:
-                requests.append([item])
-                read_size_counter = READ_REQ_HEADER_SIZE + READ_REQ_PARAM_SIZE_NO_ITEMS
+        requests: list[list[Item]] = prepare_requests(
+            items=items, max_pdu=self.pdu_size)
 
         data = []
         for request in requests:
@@ -99,4 +91,4 @@ class Client:
 
     def __del__(self) -> None:
 
-        self.socket.close()
+        self.disconnect()
