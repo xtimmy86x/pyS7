@@ -96,7 +96,7 @@ ItemsMap = dict[Item, list[tuple[int, Item]]]
 def group_items(items: list[Item], pdu_size: int) -> ItemsMap:
 
     sorted_items = sorted(enumerate(items), key=lambda elem: (
-        elem[1].memory_area, elem[1].db_number, elem[1].start))
+        elem[1].memory_area.value, elem[1].db_number, elem[1].start))
 
     groups = {}
 
