@@ -1,7 +1,10 @@
 import struct
 from typing import Any, Protocol, runtime_checkable
 
-from .constants import *
+from typing_extensions import Self
+
+from .constants import DataType, ReturnCode
+from .errors import ReadResponseError
 from .item import Item
 from .requests import ItemsMap
 
@@ -39,7 +42,7 @@ def parse_read_response_optimized(bytes_response: bytes, item_map: ItemsMap) -> 
 
         return_code = struct.unpack_from(">B", bytes_response, offset)[0]
 
-        if return_code == 255:
+        if ReturnCode(return_code) == ReturnCode.SUCCESS:
 
             offset += 4
 
@@ -53,10 +56,11 @@ def parse_read_response_optimized(bytes_response: bytes, item_map: ItemsMap) -> 
                 elif item.data_type == DataType.BYTE:
                     data = struct.unpack_from(
                         f">{(item.start - packed_item.start) * 'x'}{item.length * 'B'}", bytes_response, offset)
-                
+
                 elif item.data_type == DataType.CHAR:
                     str_start = offset + (item.start - packed_item.start)
-                    str_end = offset + (item.start - packed_item.start) + item.length
+                    str_end = offset + \
+                        (item.start - packed_item.start) + item.length
                     data = bytes_response[str_start:str_end].decode()
 
                 elif item.data_type == DataType.INT:
@@ -78,9 +82,10 @@ def parse_read_response_optimized(bytes_response: bytes, item_map: ItemsMap) -> 
                 elif item.data_type == DataType.REAL:
                     data = struct.unpack_from(
                         f">{(item.start - packed_item.start) * 'x'}{item.length * 'f'}", bytes_response, offset)
-                
+
                 else:
-                    raise ValueError(f"DataType: {item.data_type} not supported")
+                    raise ValueError(
+                        f"DataType: {item.data_type} not supported")
 
                 parsed_data.append((idx, data))
 
@@ -88,8 +93,8 @@ def parse_read_response_optimized(bytes_response: bytes, item_map: ItemsMap) -> 
             offset += 1 if packed_item.length == 1 else 0
 
         else:
-            raise Exception(
-                f"Impossible to parse data for the compressed item: {item}")
+            raise ReadResponseError(
+                f"{packed_item}: {ReturnCode(return_code).name}")
 
     parsed_data.sort(key=lambda elem: elem[0])
 
@@ -107,7 +112,7 @@ def parse_read_response(bytes_response: bytes, items: list[Item]) -> list[bool |
 
         return_code = struct.unpack_from(">B", bytes_response, offset)[0]
 
-        if return_code == 255:
+        if ReturnCode(return_code) == ReturnCode.SUCCESS:
             offset += 4
 
             if item.data_type == DataType.BIT:
@@ -120,10 +125,10 @@ def parse_read_response(bytes_response: bytes, items: list[Item]) -> list[bool |
                 data = struct.unpack_from(
                     f">{item.length * 'B'}", bytes_response, offset)
                 offset += item.size()
-            
+
             elif item.data_type == DataType.CHAR:
                 data = bytes_response[offset:offset + item.length].decode()
-                offset += item.size()  
+                offset += item.size()
 
             elif item.data_type == DataType.INT:
                 data = struct.unpack_from(
@@ -156,8 +161,8 @@ def parse_read_response(bytes_response: bytes, items: list[Item]) -> list[bool |
             parsed_data.append(data)
 
         else:
-            raise Exception(
-                f"Impossible to parse response data from item {item}")
+            raise ReadResponseError(
+                f"{item}: {ReturnCode(return_code).name}")
 
     processed_data: list[bool | int | float | str | tuple[bool | int | float, ...]] = [data[0] if isinstance(data, tuple) and len(
         data) == 1 else data for data in parsed_data]
@@ -193,13 +198,13 @@ class NewReadResponse:
 
         self.n_messages = 1
 
-    def __iadd__(self, other):
-        self.response.extend(other.reponse)
+    def __iadd__(self, other) -> Self:
+        self.response.extend(other.response)
         self.n_messages += 1
 
         return self
 
-    def parse(self):
+    def parse(self) -> list[bool | int | float | str | tuple[bool | int | float, ...]]:
         parsed_data = []
         for response in self.response:
             parsed_data.extend(parse_read_response_optimized(
