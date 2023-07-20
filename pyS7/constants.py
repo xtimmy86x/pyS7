@@ -54,3 +54,98 @@ DataTypeSize: dict[DataType, int] = {
     DataType.DINT: 4,
     DataType.REAL: 4,
 }
+
+
+class ReturnCode(Enum):
+    RESERVED = 0x00
+    HW_FAULT = 0x01
+    NO_ACCESS = 0x03
+    OUT_OF_RANGE = 0x05
+    UNSUPPORTED_DATA_TYPE = 0x06
+    INCONSISTENT_DATA_TYPE = 0x07
+    OBJECT_DOES_NOT_EXIST = 0x0a
+    SUCCESS = 0xff
+
+
+class ErrorClass(Enum):
+    NO_ERROR = 0x00
+    APP_RELATIONSHIP_ERROR = 0x81
+    OBJECT_DEFINITION_ERROR = 0x82
+    NO_RESSOURCES_AVAILABLE = 0x83
+    SERVICE_PROCESSING_ERROR = 0x84
+    SUPPLIES_ERROR = 0x85
+    ACCESS_ERROR = 0x87
+
+
+class ErrorCodes(Enum):
+    NO_ERROR = 0x0000
+    INVALID_BLOCK_TYPE = 0x0110
+    INVALID_PARAMETER = 0x0112
+    PG_RESSOURCE_ERROR = 0x011A
+    PLC_RESSOURCE_ERROR = 0x011B
+    PROTOCOL_ERROR = 0x011C
+    USER_BUFFER_SHORT = 0x011F
+    REQUEST_ERROR = 0x0141
+    VERSION_MISMATCH = 0x01C0
+    NOT_IMPLEMENTED = 0x01F0
+    L7_INVALID_CPU_STATE = 0x8001
+    L7_PDU_SIZE_ERROR = 0x8500
+    L7_INVALID_SZL_ID = 0xD401
+    L7_INVALID_INDEX = 0xD402
+    L7_DGS_ALREADY_ANNOUNCED = 0xD403
+    L7_MAX_USER_NB = 0xD404
+    L7_DGS_SYNTAX_ERROR = 0xD405
+    L7_NO_INFO = 0xD406
+    L7_PRT_SYNTAX_ERROR = 0xD601
+    L7_INVALID_VAR_ADDRESS = 0xD801
+    L7_UNKNOWN_REQUEST = 0xD802
+    L7_INVALID_REQUEST_STATUS = 0xD803
+
+
+# Probably useless
+ReturnCodeDict: dict[int, str] = {
+    0x00: "Reserved",
+    0x01: "Hardware fault",
+    0x03: "Accessing the object not allowed",
+    0x05: "Address out of range",
+    0x06: "Data type not supported",
+    0x07: "Data type inconsistent",
+    0x0a: "Object does not exist",
+    0xff: "Success",
+}
+
+ErrorClassDict: dict[int, str] = {
+    0x00: "No error",
+    0x81: "Application relationship error",
+    0x82: "Object definition error",
+    0x83: "No ressources available error",
+    0x84: "Error on service processing",
+    0x85: "Error on supplies",
+    0x87: "Access error",
+}
+
+
+ErrorCodesDict: dict[int, str] = {
+    0x0000: "No error",
+    0x0110: "Invalid block type number",
+    0x0112: "Invalid parameter",
+    0x011A: "PG ressource error",
+    0x011B: "PLC ressource error",
+    0x011C: "Protocol error",
+    0x011F: "User buffer too short",
+    0x0141: "Request error",
+    0x01C0: "Version mismatch",
+    0x01F0: "Not implemented",
+    0x8001: "L7 invalid CPU state",
+    0x8500: "L7 PDU size error",
+    0xD401: "L7 invalid SZL ID",
+    0xD402: "L7 invalid index",
+    0xD403: "L7 DGS Connection already announced",
+    0xD404: "L7 Max user NB",
+    0xD405: "L7 DGS function parameter syntax error",
+    0xD406: "L7 no info",
+    0xD601: "L7 PRT function parameter syntax error",
+    0xD801: "L7 invalid variable address",
+    0xD802: "L7 unknown request",
+    0xD803: "L7 invalid request status",
+}
