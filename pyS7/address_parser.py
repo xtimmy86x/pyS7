@@ -1,6 +1,7 @@
 import re
 
 from .constants import MemoryArea, DataType
+from .errors import AddressError
 from .item import Item
 
 """
@@ -54,12 +55,6 @@ TODO: Not yet immplemented
 | `DB13,RDI5` or `DB13,RDINT5`  | `DB13.DBD5`           | Number        | Signed 32-bit number at byte 5 of DB 13, interpreted as Little-Endian |
 | `MRW20`                       | `MW20`                | Number        | Unsigned 16-bit number at byte 20 of memory area, interpreted as Little-Endian |
 """
-
-
-class AddressError(Exception):
-    """
-    """
-    ...
 
 DataTypeMap: dict[str, DataType] = {
     "X": DataType.BIT,
@@ -195,7 +190,7 @@ def map_address_to_item(address: str) -> Item:
 
             # For String addresses the bit offset corresponds to the length
             if bit_offset is None:
-                raise AddressError(f"")
+                raise AddressError(f"{address}")
 
             length = int(bit_offset)
             bit_offset = 0
@@ -217,7 +212,7 @@ def map_address_to_item(address: str) -> Item:
             r"[I,E]([B,C,I,W,DI,D,R])?(\d+)(?:\.(\d+))?", address)
 
         if match is None:
-            raise AddressError("")
+            raise AddressError(f"{address}")
 
         str_data_type, start, bit_offset = match.groups()
 
@@ -247,7 +242,7 @@ def map_address_to_item(address: str) -> Item:
             r"[Q,A]([B,C,I,W,DI,D,R])?(\d+)(?:\.(\d+))?", address)
 
         if match is None:
-            raise AddressError("")
+            raise AddressError(f"{address}")
 
         str_data_type, start, bit_offset = match.groups()
 

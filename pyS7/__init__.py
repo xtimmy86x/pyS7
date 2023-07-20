@@ -4,3 +4,4 @@ from .constants import *
 from .item import Item
 from .requests import *
 from .responses import *
+from .errors import *
