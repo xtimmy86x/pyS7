@@ -4,7 +4,7 @@ from typing import Any, Protocol, runtime_checkable
 from typing_extensions import Self
 
 from .constants import DataType, ReturnCode
-from .errors import ReadResponseError
+from .errors import ReadResponseError, WriteError
 from .item import Item
 from .requests import ItemsMap
 
@@ -169,6 +169,18 @@ def parse_read_response(bytes_response: bytes, items: list[Item]) -> list[bool |
 
     return processed_data
 
+def parse_write_response(bytes_response: bytes, items: list[Item]) -> None:
+    offset = 21  # Response offset where data starts
+
+    for item in items:
+        return_code = struct.unpack_from(">B", bytes_response, offset)[0]
+
+        if ReturnCode(return_code) == ReturnCode.SUCCESS:
+            offset += 1
+        
+        else:
+            raise WriteError(f"Impossible to write item {item} - {ReturnCode(return_code).name} ")
+
 
 class ReadResponse:
 
@@ -211,3 +223,15 @@ class NewReadResponse:
                 bytes_response=response, item_map=self.items_map))
 
         return parsed_data
+
+
+class WriteResponse:
+
+    def __init__(self, response: bytes, items: list[Item]) -> None:
+        self.response: bytes = response
+        self.items: list[Item] = items
+
+        print(self.response[21:])
+
+    def parse(self) -> None:
+        parse_write_response(bytes_response=self.response, items=self.items)
