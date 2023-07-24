@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=61.0.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pyS7"
+version = "0.0.1"
+description = ""
+readme = "Readme.md"
+requires-python = ">=3.9"
+keywords = ["plc", "s7", "siemens"]
+license = {file = "LICENCE"}
+authors = [
+    { name = "Filippo Cara", email = "fili.cara@gmail.com" },
+]
+classifiers = [
+    "Topic :: System :: Hardware",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Communications :: SCADA",
+    "Topic :: System :: Networking",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Manufacturing",
+    "License :: OSI Approved :: MIT License"
+]
+
+[tool.setuptools]
+packages = ["pyS7"]
+
+[tool.mypy]
+strict = true
