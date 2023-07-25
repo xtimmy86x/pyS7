@@ -1,16 +1,20 @@
 # pyS7
 
-Welcome to pyS7, a lightweight, pure Python library designed for efficient data retrieval from Siemens PLCs. Using the Siemens S7 Communication protocol over ISO-on-TCP (RFC1006), it enables effortless and streamlined interaction with S7 PLCs.
+pyS7 is a lightweight python library for data communication with Siemens PLCs. It partially implements the Siemens S7 Communication protocol over ISO-on-TCP (RFC1006), allowing for both data reading and data writing.
 
 Key Features:
 
-* *Pure Python*: No external dependencies for easy setup and platform compatibility.
+* **Pure Python**: No external dependencies for easy setup and platform compatibility.
 
-* *User-friendly*, High-Level API: Intuitive and straightforward, offering simplicity and efficiency in reading multiple variables.
+* **User-friendly API**, Intuitive and straightforward, offering simplicity and efficiency.
 
-* *Multi-Variable Reading*: Enhanced support for simultaneous multi-variable reading, making your data retrieval tasks more efficient.
+* **Multi-variable reading optimization**: Enhanced support for simultaneous multi-variable reading, by packing together items occupying adjacent areas of memory.
 
 ## Install
+
+```console
+pip install git+https://github.com/FiloCara/pyS7
+```
 
 ## Example
 
@@ -44,3 +48,7 @@ if __name__ == "__main__":
 ```
 
 Look at the examples folder for more self-explanatory examples. 
+
+## Licence
+
+This project is licensed under the terms of the MIT license.
