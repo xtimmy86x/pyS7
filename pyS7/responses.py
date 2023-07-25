@@ -231,7 +231,5 @@ class WriteResponse:
         self.response: bytes = response
         self.items: list[Item] = items
 
-        print(self.response[21:])
-
     def parse(self) -> None:
         parse_write_response(bytes_response=self.response, items=self.items)

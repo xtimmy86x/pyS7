@@ -241,7 +241,6 @@ class WriteRequest(Request):
         self.values = values
         
         self.request = self.__prepare_packet(items=items, values=values)
-        print(self.request[17:])
 
     def __prepare_packet(self, items: list[Item], values: list[bool | int | float | str | tuple[bool | int | float, ...]]) -> bytearray:
 
@@ -265,6 +264,8 @@ class WriteRequest(Request):
         packet.extend(b'\x00\x0e')  # Parameter length
         packet.extend(b'\x00\x00')  # Data length
 
+        tpkt_cotp_header_length = len(packet) # 17
+        
         # S7: PARAMETER
         packet.extend(Function.WRITE_VAR.value.to_bytes(1, byteorder="big")) # Function Write Var
         packet.extend(b'\x01')  # Item count
@@ -288,57 +289,77 @@ class WriteRequest(Request):
             else:
                 packet.extend(
                     (item.start * 8 + item.bit_offset).to_bytes(3, byteorder="big"))
-
+            
+        
+        parameter_length = len(packet) - tpkt_cotp_header_length
+        
         # S7 : DATA
         for i, item in enumerate(items):
             packet.extend(b'\x00') # Reserved (0x00)
 
             data = values[i]
             
-            if item.data_type == DataType.BIT:
-                transport_size = DataTypeData.BIT
-                packed_data: bytes = struct.pack(f"?", data)
+            # if item.data_type == DataType.BIT:
+            #     transport_size = DataTypeData.BIT
+            #     new_length = item.length
+            #     packed_data: bytes = struct.pack(f"?", data)
 
-            elif item.data_type == DataType.BYTE:
+            if item.data_type == DataType.BYTE:
                 transport_size = DataTypeData.BYTE_WORD_DWORD
-                packed_data = struct.pack(f"{item.length * 'B'}", data)
-            
-            elif item.data_type == DataType.CHAR:
-                transport_size = DataTypeData.OCTET_STRING
-                packed_data = data.encode()
+                new_length = item.length * 8
+                if isinstance(data, tuple):
+                    packed_data = struct.pack(f">{item.length * 'B'}", *data)
+                    print(packed_data)
+                else:
+                    packed_data = struct.pack(f">B", data)
+
+            # elif item.data_type == DataType.CHAR:
+            #     transport_size = DataTypeData.OCTET_STRING
+            #     packed_data = data.encode()
             
             elif item.data_type == DataType.INT:
                 transport_size = DataTypeData.INTEGER
-                packed_data = struct.pack(f">{item.length * 'h'}", data)
-                print(f"{item.length * 'h'}")
-                print(len(packed_data))
+                new_length = item.length * 8
+                if isinstance(data, tuple):
+                    packed_data = struct.pack(f">{item.length * 'h'}", *data)
+                else:
+                    packed_data = struct.pack(f">h", data)
             
-            elif item.data_type == DataType.WORD:
-                transport_size = DataTypeData.BYTE_WORD_DWORD
-                packed_data = struct.pack(f"{item.length * 'H'}", data)
+            # elif item.data_type == DataType.WORD:
+            #     transport_size = DataTypeData.BYTE_WORD_DWORD
+            #     packed_data = struct.pack(f">{item.length * 'H'}", *data)
             
-            elif item.data_type == DataType.DINT:
-                transport_size = DataTypeData.REAL
-                packed_data = struct.pack(f"{item.length * 'l'}", data)
+            # elif item.data_type == DataType.DINT:
+            #     transport_size = DataTypeData.REAL
+            #     packed_data = struct.pack(f">{item.length * 'l'}", *data)
             
-            elif item.data_type == DataType.DWORD:
-                transport_size = DataTypeData.BYTE_WORD_DWORD
-                packed_data = struct.pack(f"{item.length * 'I'}", data)
+            # elif item.data_type == DataType.DWORD:
+            #     transport_size = DataTypeData.BYTE_WORD_DWORD
+            #     packed_data = struct.pack(f">{item.length * 'I'}", *data)
             
-            elif item.data_type == DataType.REAL:
-                transport_size = DataTypeData.REAL
-                packed_data = struct.pack(f"{item.length * 'f'}", data)
+            # elif item.data_type == DataType.REAL:
+            #     transport_size = DataTypeData.REAL
+            #     packed_data = struct.pack(f">{item.length * 'f'}", *data)
 
             else:
                 raise ValueError(
                     f"DataType: {item.data_type} not supported")
 
             packet.extend(transport_size.value.to_bytes(1, byteorder="big")) # Data transport size - This is not the DataType
-            packet.extend(DataTypeSize[item.data_type].to_bytes(2, byteorder="big"))
+            packet.extend(new_length.to_bytes(2, byteorder="big"))
             packet.extend(packed_data)
+            
+            # Add fill byte for BIT items
+            if item.data_type.BIT: 
+                packet.extend(b"\x00")
+            
+        data_length = len(packet) - parameter_length - tpkt_cotp_header_length
 
         # Update parameter length
-        packet[13:15] = (len(packet) - 17).to_bytes(2, byteorder='big')
+        packet[13:15] = (parameter_length).to_bytes(2, byteorder='big')
+
+        # Update data length
+        packet[15:17] = (data_length).to_bytes(2, byteorder="big")
 
         # Update item count
         packet[18] = len(items)
@@ -346,6 +367,6 @@ class WriteRequest(Request):
         # Update length
         packet[2:4] = len(packet).to_bytes(2, byteorder='big')
 
-        print(packet)
+        print("Full packet: ", packet)
 
         return packet
