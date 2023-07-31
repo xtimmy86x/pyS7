@@ -86,7 +86,6 @@ class Client:
 
         for request in requests:
             bytes_response = self.__send(WriteRequest(items=request, values=values))
-            print(bytes_response)
             response = WriteResponse(response=bytes_response, items=items)
             response.parse() # Raise error if any
 

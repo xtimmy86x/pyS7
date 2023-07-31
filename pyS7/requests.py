@@ -307,7 +307,6 @@ class WriteRequest(Request):
                 transport_size = DataTypeData.BIT
                 new_length = item.length * DataTypeSize[item.data_type]
                 packed_data = struct.pack(">?", data)
-                print(data, packed_data)
 
             elif item.data_type == DataType.BYTE:
                 transport_size = DataTypeData.BYTE_WORD_DWORD
@@ -357,7 +356,6 @@ class WriteRequest(Request):
             elif item.data_type == DataType.REAL:
                 transport_size = DataTypeData.BYTE_WORD_DWORD
                 new_length = item.length * DataTypeSize[item.data_type] * 8
-                print(new_length)
                 if isinstance(data, tuple):
                     packed_data = struct.pack(f">{item.length * 'f'}", *data)
                 else:
