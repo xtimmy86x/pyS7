@@ -61,7 +61,7 @@ def parse_read_response_optimized(bytes_response: bytes, item_map: ItemsMap) -> 
                     str_start = offset + (item.start - packed_item.start)
                     str_end = offset + \
                         (item.start - packed_item.start) + item.length
-                    data = bytes_response[str_start:str_end].decode()
+                    data = bytes_response[str_start:str_end].decode(encoding="ascii")
 
                 elif item.data_type == DataType.INT:
                     data = struct.unpack_from(
