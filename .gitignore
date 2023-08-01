@@ -1,13 +1,14 @@
 __pycache__/*
 .mypy_cache/*
+.pytest_cache/*
 
 benchmarks/*
 wip/*
 pca_files/*
-tests/*
 venv/*
 
 pyS7/__pycache__/*
 
+.coverage
 ideas.md
 TODO.md
