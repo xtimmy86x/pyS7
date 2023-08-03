@@ -34,7 +34,7 @@ class PDUNegotiationResponse:
 
 
 def parse_read_response_optimized(bytes_response: bytes, item_map: ItemsMap) -> list[bool | int | float | str | tuple[bool | int | float, ...]]:
-
+    
     parsed_data: list[tuple[int, tuple[bool | int | float | str, ...]]] = []
     offset: int = 21  # Response offset where data starts
 
@@ -86,7 +86,7 @@ def parse_read_response_optimized(bytes_response: bytes, item_map: ItemsMap) -> 
                 else:
                     raise ValueError(
                         f"DataType: {item.data_type} not supported")
-    
+                
                 parsed_data.append((idx, data))
 
             offset += packed_item.length
@@ -162,7 +162,6 @@ def parse_read_response(bytes_response: bytes, items: list[Item]) -> list[bool |
             else:
                 raise ValueError(f"DataType: {item.data_type} not supported")
 
-            print(data)
             parsed_data.append(data)
 
         else:
@@ -194,7 +193,6 @@ class ReadResponse:
         self.items = items
 
     def parse(self) -> list[bool | int | float | str | tuple[bool | int | float, ...]]:
-        print(self.response)
         return parse_read_response(bytes_response=self.response, items=self.items)
 
 
@@ -205,7 +203,6 @@ class ReadOptimizedResponse:
         self.items_map = items_map
 
     def parse(self) -> list[bool | int | float | str | tuple[bool | int | float, ...]]:
-        print(self.response)
         return parse_read_response_optimized(bytes_response=self.response, item_map=self.items_map)
 
 

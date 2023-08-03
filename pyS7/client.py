@@ -53,15 +53,18 @@ class Client:
 
     def read(self, items: Sequence[str | Item], optimize: bool = True) -> list[bool | int | float | str | tuple[bool | int | float, ...]]:
 
-        items: list[Item] = [map_address_to_item(address=item) if isinstance(
+        list_items: list[Item] = [map_address_to_item(address=item) if isinstance(
             item, str) else item for item in items]
 
         if optimize:
-            items_map = group_items(items=items, pdu_size=self.pdu_size)
-            items = list(items_map.keys())
+            items_map = group_items(items=list_items, pdu_size=self.pdu_size)
+            grouped_items = list(items_map.keys())
 
-        requests: list[list[Item]] = prepare_requests(
-            items=items, max_pdu=self.pdu_size)
+            requests: list[list[Item]] = prepare_requests(
+                items=grouped_items, max_pdu=self.pdu_size)
+
+        else:
+            requests = prepare_requests(items=list_items, max_pdu=self.pdu_size)
 
         data = []
         for request in requests:
@@ -69,7 +72,7 @@ class Client:
 
             if optimize:
                 response: Response = ReadOptimizedResponse(
-                    response=bytes_reponse, items_map=items_map)
+                    response=bytes_reponse, items_map={key:items_map[key] for key in request})
             else:
                 response = ReadResponse(response=bytes_reponse, items=request)
 

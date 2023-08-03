@@ -1,5 +1,5 @@
 import struct
-from typing import Protocol, runtime_checkable
+from typing import Protocol, Sequence, runtime_checkable
 
 from .constants import *
 from .item import Item
@@ -145,37 +145,41 @@ def ungroup(items_map: ItemsMap) -> list[Item]:
     original_items.sort(key=lambda elem: elem[0])
     return [item for (_, item) in original_items]
 
-
 def prepare_requests(items: list[Item], max_pdu: int) -> list[list[Item]]:
-
     requests: list[list[Item]] = [[]]
-    read_size_counter: int = READ_REQ_HEADER_SIZE + \
-        READ_REQ_PARAM_SIZE_NO_ITEMS  # 10 + 2
+
+    READ_REQ_OVERHEAD = READ_REQ_HEADER_SIZE + READ_REQ_PARAM_SIZE_NO_ITEMS  # 10 + 2
+    READ_RES_OVERHEAD = 21 # it must be replaced with constant
+
+    request_size = READ_REQ_OVERHEAD
+    response_size = READ_RES_OVERHEAD
 
     for item in items:
-        if item.size() + READ_REQ_HEADER_SIZE + READ_REQ_PARAM_SIZE_NO_ITEMS + READ_REQ_PARAM_SIZE_ITEM >= max_pdu:
+        if READ_REQ_OVERHEAD + READ_REQ_PARAM_SIZE_ITEM + item.size() >= max_pdu or READ_RES_OVERHEAD + item.size() + 5 > max_pdu:
             raise Exception(
                 f"{item} too big -> it cannot fit the size of the negotiated PDU ({max_pdu})")
 
-        elif item.size() + read_size_counter + READ_REQ_PARAM_SIZE_ITEM < max_pdu and len(requests[-1]) < MAX_READ_ITEMS:
+        elif request_size + READ_REQ_PARAM_SIZE_ITEM < max_pdu and response_size + item.size() + 5 < max_pdu and len(requests[-1]) < MAX_READ_ITEMS:
             requests[-1].append(item)
-            read_size_counter += item.size() + READ_REQ_PARAM_SIZE_ITEM
+            
+            request_size += READ_REQ_PARAM_SIZE_ITEM
+            response_size += item.size() + 5
 
         else:
             requests.append([item])
-            read_size_counter = READ_REQ_HEADER_SIZE + READ_REQ_PARAM_SIZE_NO_ITEMS
-
+            request_size = READ_REQ_OVERHEAD +  READ_REQ_PARAM_SIZE_ITEM
+            response_size = READ_RES_OVERHEAD + item.size() + 5
+    
     return requests
-
 
 class ReadRequest(Request):
 
-    def __init__(self, items: list[Item]) -> None:
+    def __init__(self, items: Sequence[Item]) -> None:
 
         self.items = items
         self.request = self.__prepare_packet(items=items)
 
-    def __prepare_packet(self, items: list[Item]) -> bytearray:
+    def __prepare_packet(self, items: Sequence[Item]) -> bytearray:
 
         packet = bytearray()
 
@@ -235,14 +239,14 @@ class ReadRequest(Request):
 
 class WriteRequest(Request):
 
-    def __init__(self, items: list[Item], values: bool | int | float | str | tuple[bool | int | float, ...]) -> None:
+    def __init__(self, items: Sequence[Item], values: Sequence[bool | int | float | str | tuple[bool | int | float, ...]]) -> None:
         
         self.items = items
         self.values = values
         
         self.request = self.__prepare_packet(items=items, values=values)
 
-    def __prepare_packet(self, items: list[Item], values: list[bool | int | float | str | tuple[bool | int | float, ...]]) -> bytearray:
+    def __prepare_packet(self, items: Sequence[Item], values: Sequence[bool | int | float | str | tuple[bool | int | float, ...]]) -> bytearray:
         packet = bytearray()
 
         # TPKT
@@ -319,6 +323,7 @@ class WriteRequest(Request):
             elif item.data_type == DataType.CHAR:
                 transport_size = DataTypeData.BYTE_WORD_DWORD
                 new_length = item.length * DataTypeSize[item.data_type] * 8
+                assert isinstance(data, str) 
                 packed_data = data.encode(encoding="ascii")
             
             elif item.data_type == DataType.INT:
@@ -389,7 +394,7 @@ class WriteRequest(Request):
         # Update item count
         packet[18] = len(items)
 
-        # Update length
+        # Update packet length
         packet[2:4] = len(packet).to_bytes(2, byteorder='big')
 
         return packet
