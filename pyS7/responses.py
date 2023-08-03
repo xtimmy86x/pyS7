@@ -86,11 +86,11 @@ def parse_read_response_optimized(bytes_response: bytes, item_map: ItemsMap) -> 
                 else:
                     raise ValueError(
                         f"DataType: {item.data_type} not supported")
-
+    
                 parsed_data.append((idx, data))
 
             offset += packed_item.length
-            offset += 1 if packed_item.length == 1 else 0
+            offset += 1 if packed_item.length % 2 != 0 else 0
 
         else:
             raise ReadResponseError(
@@ -125,10 +125,14 @@ def parse_read_response(bytes_response: bytes, items: list[Item]) -> list[bool |
                 data = struct.unpack_from(
                     f">{item.length * 'B'}", bytes_response, offset)
                 offset += item.size()
+                # Skip fill byte
+                offset += 0 if i == len(items) - 1 else 1
 
             elif item.data_type == DataType.CHAR:
                 data = bytes_response[offset:offset + item.length].decode()
                 offset += item.size()
+                # Skip byte if char length is odd
+                offset += 0 if item.length % 2 == 0 else 1
 
             elif item.data_type == DataType.INT:
                 data = struct.unpack_from(
@@ -158,6 +162,7 @@ def parse_read_response(bytes_response: bytes, items: list[Item]) -> list[bool |
             else:
                 raise ValueError(f"DataType: {item.data_type} not supported")
 
+            print(data)
             parsed_data.append(data)
 
         else:
@@ -189,6 +194,7 @@ class ReadResponse:
         self.items = items
 
     def parse(self) -> list[bool | int | float | str | tuple[bool | int | float, ...]]:
+        print(self.response)
         return parse_read_response(bytes_response=self.response, items=self.items)
 
 
@@ -199,6 +205,7 @@ class ReadOptimizedResponse:
         self.items_map = items_map
 
     def parse(self) -> list[bool | int | float | str | tuple[bool | int | float, ...]]:
+        print(self.response)
         return parse_read_response_optimized(bytes_response=self.response, item_map=self.items_map)
 
 
