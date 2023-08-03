@@ -80,16 +80,17 @@ class Client:
 
         return data
     
+    # TODO it can raise an error if there are too much items
     def write(self, items: Sequence[str | Item], values: Sequence[bool | int | float | str]) -> None:
         
-        items: list[Item] = [map_address_to_item(address=item) if isinstance(
+        items_list: list[Item] = [map_address_to_item(address=item) if isinstance(
             item, str) else item for item in items]
 
-        requests: list[list[Item]] = [items[i:i + MAX_WRITE_ITEMS] for i in range(0, len(items), MAX_WRITE_ITEMS)]
+        requests: list[list[Item]] = [items_list[i:i + MAX_WRITE_ITEMS] for i in range(0, len(items_list), MAX_WRITE_ITEMS)]
 
         for request in requests:
             bytes_response = self.__send(WriteRequest(items=request, values=values))
-            response = WriteResponse(response=bytes_response, items=items)
+            response = WriteResponse(response=bytes_response, items=items_list)
             response.parse() # Raise error if any
 
     def __send(self, request: Request) -> bytes:

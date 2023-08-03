@@ -53,7 +53,7 @@ class Item:
         """Return the Item size in bytes"""
         return DataTypeSize[self.data_type] * self.length
 
-    def __contains__(self, item: 'Item') -> bool:
+    def __contains__(self, item)-> bool: # type: ignore
         if self.memory_area == item.memory_area and \
            self.db_number == item.db_number and \
            self.start <= item.start and \

@@ -1,8 +1,6 @@
 import struct
 from typing import Any, Protocol, runtime_checkable
 
-from typing_extensions import Self
-
 from .constants import DataType, ReturnCode
 from .errors import ReadResponseError, WriteError
 from .item import Item
@@ -35,7 +33,7 @@ class PDUNegotiationResponse:
 
 def parse_read_response_optimized(bytes_response: bytes, item_map: ItemsMap) -> list[bool | int | float | str | tuple[bool | int | float, ...]]:
     
-    parsed_data: list[tuple[int, tuple[bool | int | float | str, ...]]] = []
+    parsed_data: list[tuple[int, str | tuple[bool | int | float, ...]]] = []
     offset: int = 21  # Response offset where data starts
 
     for packed_item in item_map.keys():
@@ -214,7 +212,7 @@ class NewReadResponse:
 
         self.n_messages = 1
 
-    def __iadd__(self, other) -> Self:
+    def __iadd__(self, other): # type: ignore
         self.response.extend(other.response)
         self.n_messages += 1
 
