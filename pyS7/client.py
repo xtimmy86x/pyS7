@@ -2,10 +2,10 @@ import socket
 from typing import Sequence
 
 from .address_parser import map_address_to_item
-from .constants import MAX_JOB_CALLED, MAX_JOB_CALLING, MAX_PDU, MAX_WRITE_ITEMS
+from .constants import MAX_JOB_CALLED, MAX_JOB_CALLING, MAX_PDU
 from .item import Item
 from .requests import (ConnectionRequest, PDUNegotiationRequest, ReadRequest,
-                       Request, WriteRequest, group_items, prepare_requests)
+                       Request, WriteRequest, group_items, prepare_requests, prepare_write_requests_and_values)
 from .responses import (ConnectionResponse, PDUNegotiationResponse,
                         ReadOptimizedResponse, ReadResponse, Response, WriteResponse)
 
@@ -56,6 +56,9 @@ class Client:
         list_items: list[Item] = [map_address_to_item(address=item) if isinstance(
             item, str) else item for item in items]
 
+        data: list[bool | int | float | str |
+                   tuple[bool | int | float, ...]] = []
+
         if optimize:
             items_map = group_items(items=list_items, pdu_size=self.pdu_size)
             grouped_items = list(items_map.keys())
@@ -63,42 +66,50 @@ class Client:
             requests: list[list[Item]] = prepare_requests(
                 items=grouped_items, max_pdu=self.pdu_size)
 
+            bytes_reponse = self.__send(ReadRequest(items=requests[0]))
+            response: Response = ReadOptimizedResponse(response=bytes_reponse, item_map={
+                                                       key: items_map[key] for key in requests[0]})
+
+            for i in range(1, len(requests)):
+                bytes_reponse = self.__send(ReadRequest(items=requests[i]))
+                response += ReadOptimizedResponse(response=bytes_reponse, item_map={
+                                                  key: items_map[key] for key in requests[i]})
+
+            data = response.parse()
+
         else:
-            requests = prepare_requests(items=list_items, max_pdu=self.pdu_size)
+            requests = prepare_requests(
+                items=list_items, max_pdu=self.pdu_size)
 
-        data = []
-        for request in requests:
-            bytes_reponse = self.__send(ReadRequest(items=request))
-
-            if optimize:
-                response: Response = ReadOptimizedResponse(
-                    response=bytes_reponse, items_map={key:items_map[key] for key in request})
-            else:
+            for request in requests:
+                bytes_reponse = self.__send(ReadRequest(items=request))
                 response = ReadResponse(response=bytes_reponse, items=request)
 
-            data.extend(response.parse())
+                data.extend(response.parse())
 
         return data
-    
-    # TODO it can raise an error if there are too much items
+
     def write(self, items: Sequence[str | Item], values: Sequence[bool | int | float | str]) -> None:
-        
+
         items_list: list[Item] = [map_address_to_item(address=item) if isinstance(
             item, str) else item for item in items]
 
-        requests: list[list[Item]] = [items_list[i:i + MAX_WRITE_ITEMS] for i in range(0, len(items_list), MAX_WRITE_ITEMS)]
+        requests, requests_values = prepare_write_requests_and_values(
+            items=items_list, values=values, max_pdu=self.pdu_size)
 
-        for request in requests:
-            bytes_response = self.__send(WriteRequest(items=request, values=values))
-            response = WriteResponse(response=bytes_response, items=items_list)
-            response.parse() # Raise error if any
+        for i, request in enumerate(requests):
+
+            bytes_response = self.__send(WriteRequest(
+                items=request, values=requests_values[i]))
+            response = WriteResponse(response=bytes_response, items=request)
+            response.parse()  # Raise error if any
 
     def __send(self, request: Request) -> bytes:
 
         if not isinstance(request, Request):
             raise ValueError(
                 f"Request type {type(request).__name__} not supported")
-        
+
         self.socket.send(request.serialize())
 
         bytes_response = self.socket.recv(self.pdu_size)

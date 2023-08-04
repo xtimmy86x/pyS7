@@ -73,7 +73,6 @@ DataTypeMap: dict[str, DataType] = {
     "REAL": DataType.REAL,
 }
 
-
 def map_address_to_item(address: str) -> Item:
     address = address.upper()
 
@@ -92,12 +91,17 @@ def map_address_to_item(address: str) -> Item:
             db_number = int(db_number)
             data_type = DataType.BIT
             start = int(start)
+            
+            if bit_offset is None:
+                raise AddressError(
+                    f"Missing bit_offset value")
+            
             bit_offset = int(bit_offset)
-            length = 1
-
             if not 0 <= bit_offset <= 7:
                 raise AddressError(
                     f"The bit offset must be a value between 0 and 7 included")
+            
+            length = 1
 
         elif str_data_type == "B" or str_data_type == "BYTE":
             db_number = int(db_number)
@@ -298,4 +302,4 @@ def map_address_to_item(address: str) -> Item:
         )
 
     else:
-        raise NotImplementedError("")
+        raise AddressError(f"Unsupported address '{address}'")

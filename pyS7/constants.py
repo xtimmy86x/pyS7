@@ -7,9 +7,19 @@ MAX_JOB_CALLED = 8
 MAX_READ_ITEMS = 20
 MAX_WRITE_ITEMS = 20
 
+TPKT_SIZE = 4
+COTP_SIZE = 3
+
 READ_REQ_HEADER_SIZE = 10
 READ_REQ_PARAM_SIZE_NO_ITEMS = 2
 READ_REQ_PARAM_SIZE_ITEM = 12
+
+WRITE_REQ_HEADER_SIZE = 10
+WRITE_REQ_PARAM_SIZE_NO_ITEMS = 2
+WRITE_REQ_PARAM_SIZE_ITEM = 12
+
+WRITE_RES_HEADER_SIZE = 12
+WRITE_RES_PARAM_SIZE = 2
 
 
 class MessageType(Enum):
@@ -56,14 +66,15 @@ DataTypeSize: dict[DataType, int] = {
     DataType.REAL: 4,
 }
 
+
 class DataTypeData(Enum):
-    #Transport size in data
-    NULL =               0 
-    BIT =                3
-    BYTE_WORD_DWORD =    4     
-    INTEGER =            5 
-    REAL =               7
-    OCTET_STRING =       9 
+    # Transport size in data
+    NULL = 0
+    BIT = 3
+    BYTE_WORD_DWORD = 4
+    INTEGER = 5
+    REAL = 7
+    OCTET_STRING = 9
 
 
 class ReturnCode(Enum):

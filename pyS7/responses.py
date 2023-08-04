@@ -31,73 +31,77 @@ class PDUNegotiationResponse:
         return (max_jobs_calling, max_jobs_called, pdu_size)
 
 
-def parse_read_response_optimized(bytes_response: bytes, item_map: ItemsMap) -> list[bool | int | float | str | tuple[bool | int | float, ...]]:
-    
+def parse_optimized_read_response(bytes_responses: list[bytes], items_map: list[ItemsMap]) -> list[bool | int | float | str | tuple[bool | int | float, ...]]:
+
     parsed_data: list[tuple[int, str | tuple[bool | int | float, ...]]] = []
-    offset: int = 21  # Response offset where data starts
 
-    for packed_item in item_map.keys():
+    for i, bytes_response in enumerate(bytes_responses):
+        offset: int = 21  # Response offset where data starts
 
-        return_code = struct.unpack_from(">B", bytes_response, offset)[0]
+        for packed_item in items_map[i].keys():
 
-        if ReturnCode(return_code) == ReturnCode.SUCCESS:
+            return_code = struct.unpack_from(">B", bytes_response, offset)[0]
 
-            offset += 4
+            if ReturnCode(return_code) == ReturnCode.SUCCESS:
 
-            items: list[tuple[int, Item]] = item_map[packed_item]
-            for idx, item in items:
+                offset += 4
 
-                if item.data_type == DataType.BIT:
-                    data: Any = bool(
-                        (bytes_response[offset] >> 7 - item.bit_offset) & 0b1)
+                items: list[tuple[int, Item]] = items_map[i][packed_item]
+                for idx, item in items:
 
-                elif item.data_type == DataType.BYTE:
-                    data = struct.unpack_from(
-                        f">{(item.start - packed_item.start) * 'x'}{item.length * 'B'}", bytes_response, offset)
+                    if item.data_type == DataType.BIT:
+                        data: Any = bool(
+                            (bytes_response[offset] >> 7 - item.bit_offset) & 0b1)
 
-                elif item.data_type == DataType.CHAR:
-                    str_start = offset + (item.start - packed_item.start)
-                    str_end = offset + \
-                        (item.start - packed_item.start) + item.length
-                    data = bytes_response[str_start:str_end].decode(encoding="ascii")
+                    elif item.data_type == DataType.BYTE:
+                        data = struct.unpack_from(
+                            f">{(item.start - packed_item.start) * 'x'}{item.length * 'B'}", bytes_response, offset)
 
-                elif item.data_type == DataType.INT:
-                    data = struct.unpack_from(
-                        f">{(item.start - packed_item.start) * 'x'}{item.length * 'h'}", bytes_response, offset)
+                    elif item.data_type == DataType.CHAR:
+                        str_start = offset + (item.start - packed_item.start)
+                        str_end = offset + \
+                            (item.start - packed_item.start) + item.length
+                        data = bytes_response[str_start:str_end].decode(
+                            encoding="ascii")
 
-                elif item.data_type == DataType.WORD:
-                    data = struct.unpack_from(
-                        f">{(item.start - packed_item.start) * 'x'}{item.length * 'H'}", bytes_response, offset)
+                    elif item.data_type == DataType.INT:
+                        data = struct.unpack_from(
+                            f">{(item.start - packed_item.start) * 'x'}{item.length * 'h'}", bytes_response, offset)
 
-                elif item.data_type == DataType.DWORD:
-                    data = struct.unpack_from(
-                        f">{(item.start - packed_item.start) * 'x'}{item.length * 'I'}", bytes_response, offset)
+                    elif item.data_type == DataType.WORD:
+                        data = struct.unpack_from(
+                            f">{(item.start - packed_item.start) * 'x'}{item.length * 'H'}", bytes_response, offset)
 
-                elif item.data_type == DataType.DINT:
-                    data = struct.unpack_from(
-                        f">{(item.start - packed_item.start) * 'x'}{item.length * 'l'}", bytes_response, offset)
+                    elif item.data_type == DataType.DWORD:
+                        data = struct.unpack_from(
+                            f">{(item.start - packed_item.start) * 'x'}{item.length * 'I'}", bytes_response, offset)
 
-                elif item.data_type == DataType.REAL:
-                    data = struct.unpack_from(
-                        f">{(item.start - packed_item.start) * 'x'}{item.length * 'f'}", bytes_response, offset)
+                    elif item.data_type == DataType.DINT:
+                        data = struct.unpack_from(
+                            f">{(item.start - packed_item.start) * 'x'}{item.length * 'l'}", bytes_response, offset)
 
-                else:
-                    raise ValueError(
-                        f"DataType: {item.data_type} not supported")
-                
-                parsed_data.append((idx, data))
+                    elif item.data_type == DataType.REAL:
+                        data = struct.unpack_from(
+                            f">{(item.start - packed_item.start) * 'x'}{item.length * 'f'}", bytes_response, offset)
 
-            offset += packed_item.length
-            offset += 1 if packed_item.length % 2 != 0 else 0
+                    else:
+                        raise ValueError(
+                            f"DataType: {item.data_type} not supported")
 
-        else:
-            raise ReadResponseError(
-                f"{packed_item}: {ReturnCode(return_code).name}")
+                    parsed_data.append((idx, data))
+
+                offset += packed_item.length
+                offset += 1 if packed_item.length % 2 != 0 else 0
+
+            else:
+                raise ReadResponseError(
+                    f"{packed_item}: {ReturnCode(return_code).name}")
 
     parsed_data.sort(key=lambda elem: elem[0])
 
     processed_data: list[bool | int | float | str | tuple[bool | int | float, ...]] = [data[0] if isinstance(data, tuple) and len(
         data) == 1 else data for (_, data) in parsed_data]
+
     return processed_data
 
 
@@ -171,6 +175,7 @@ def parse_read_response(bytes_response: bytes, items: list[Item]) -> list[bool |
 
     return processed_data
 
+
 def parse_write_response(bytes_response: bytes, items: list[Item]) -> None:
     offset = 21  # Response offset where data starts
 
@@ -179,9 +184,10 @@ def parse_write_response(bytes_response: bytes, items: list[Item]) -> None:
 
         if ReturnCode(return_code) == ReturnCode.SUCCESS:
             offset += 1
-        
+
         else:
-            raise WriteError(f"Impossible to write item {item} - {ReturnCode(return_code).name} ")
+            raise WriteError(
+                f"Impossible to write item {item} - {ReturnCode(return_code).name} ")
 
 
 class ReadResponse:
@@ -196,35 +202,22 @@ class ReadResponse:
 
 class ReadOptimizedResponse:
 
-    def __init__(self, response: bytes, items_map: ItemsMap) -> None:
-        self.response = response
-        self.items_map = items_map
-
-    def parse(self) -> list[bool | int | float | str | tuple[bool | int | float, ...]]:
-        return parse_read_response_optimized(bytes_response=self.response, item_map=self.items_map)
-
-
-class NewReadResponse:
-
-    def __init__(self, response: bytes, items_map: ItemsMap) -> None:
-        self.response: list[bytes] = [response]
-        self.items_map = items_map
+    def __init__(self, response: bytes, item_map: ItemsMap) -> None:
+        self.responses: list[bytes] = [response]
+        self.items_map = [item_map]
 
         self.n_messages = 1
 
-    def __iadd__(self, other): # type: ignore
-        self.response.extend(other.response)
+    def __iadd__(self, other):  # type: ignore
+        self.responses += other.responses
+        self.items_map += other.items_map
+
         self.n_messages += 1
 
         return self
 
     def parse(self) -> list[bool | int | float | str | tuple[bool | int | float, ...]]:
-        parsed_data = []
-        for response in self.response:
-            parsed_data.extend(parse_read_response_optimized(
-                bytes_response=response, item_map=self.items_map))
-
-        return parsed_data
+        return parse_optimized_read_response(bytes_responses=self.responses, items_map=self.items_map)
 
 
 class WriteResponse:

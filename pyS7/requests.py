@@ -145,11 +145,13 @@ def ungroup(items_map: ItemsMap) -> list[Item]:
     original_items.sort(key=lambda elem: elem[0])
     return [item for (_, item) in original_items]
 
+
 def prepare_requests(items: list[Item], max_pdu: int) -> list[list[Item]]:
     requests: list[list[Item]] = [[]]
 
-    READ_REQ_OVERHEAD = READ_REQ_HEADER_SIZE + READ_REQ_PARAM_SIZE_NO_ITEMS  # 10 + 2
-    READ_RES_OVERHEAD = 21 # it must be replaced with constant
+    READ_REQ_OVERHEAD = TPKT_SIZE + COTP_SIZE + READ_REQ_HEADER_SIZE + \
+        READ_REQ_PARAM_SIZE_NO_ITEMS  # 3 + 4 + 10 + 2
+    READ_RES_OVERHEAD = 21  # it must be replaced with constant 4 + 3 + 12 + 2
 
     request_size = READ_REQ_OVERHEAD
     response_size = READ_RES_OVERHEAD
@@ -161,16 +163,53 @@ def prepare_requests(items: list[Item], max_pdu: int) -> list[list[Item]]:
 
         elif request_size + READ_REQ_PARAM_SIZE_ITEM < max_pdu and response_size + item.size() + 5 < max_pdu and len(requests[-1]) < MAX_READ_ITEMS:
             requests[-1].append(item)
-            
+
             request_size += READ_REQ_PARAM_SIZE_ITEM
             response_size += item.size() + 5
 
         else:
             requests.append([item])
-            request_size = READ_REQ_OVERHEAD +  READ_REQ_PARAM_SIZE_ITEM
+            request_size = READ_REQ_OVERHEAD + READ_REQ_PARAM_SIZE_ITEM
             response_size = READ_RES_OVERHEAD + item.size() + 5
-    
+
     return requests
+
+
+def prepare_write_requests_and_values(items: list[Item], values: list[bool | int | float | str], max_pdu: int) -> list[list[Item]]:
+    requests: list[list[Item]] = [[]]
+    requests_values = [[]]
+
+    WRITE_REQ_OVERHEAD = TPKT_SIZE + COTP_SIZE + WRITE_REQ_HEADER_SIZE + \
+        WRITE_REQ_PARAM_SIZE_NO_ITEMS  # 3 + 4 + 10 + 2
+    WRITE_RES_OVERHEAD = TPKT_SIZE + COTP_SIZE + \
+        WRITE_RES_HEADER_SIZE + WRITE_RES_PARAM_SIZE  # 3 + 4 + 12 + 2
+
+    request_size = WRITE_REQ_OVERHEAD
+    response_size = WRITE_RES_OVERHEAD
+
+    for i, item in enumerate(items):
+
+        if WRITE_REQ_OVERHEAD + WRITE_REQ_PARAM_SIZE_ITEM + item.size() >= max_pdu or WRITE_RES_OVERHEAD + item.size() + 1 >= max_pdu:
+            raise Exception(
+                f"{item} too big -> it cannot fit the size of the negotiated PDU ({max_pdu})")
+
+        elif request_size + WRITE_REQ_PARAM_SIZE_ITEM + 4 + item.size() + item.length % 2 < max_pdu and response_size + 1 < max_pdu and len(requests[-1]) < MAX_WRITE_ITEMS:
+            requests[-1].append(item)
+            requests_values[-1].append(values[i])
+
+            request_size += WRITE_REQ_PARAM_SIZE_ITEM + 4 + item.size() + item.length % 2
+            response_size += 1
+
+        else:
+            requests.append([item])
+            requests_values.append([values[i]])
+
+            request_size = WRITE_REQ_OVERHEAD + WRITE_REQ_PARAM_SIZE_ITEM + 4 + item.size() + \
+                item.length % 2
+            response_size = WRITE_RES_OVERHEAD + 1
+
+    return requests, requests_values
+
 
 class ReadRequest(Request):
 
@@ -240,10 +279,10 @@ class ReadRequest(Request):
 class WriteRequest(Request):
 
     def __init__(self, items: Sequence[Item], values: Sequence[bool | int | float | str | tuple[bool | int | float, ...]]) -> None:
-        
+
         self.items = items
         self.values = values
-        
+
         self.request = self.__prepare_packet(items=items, values=values)
 
     def __prepare_packet(self, items: Sequence[Item], values: Sequence[bool | int | float | str | tuple[bool | int | float, ...]]) -> bytearray:
@@ -267,10 +306,11 @@ class WriteRequest(Request):
         packet.extend(b'\x00\x0e')  # Parameter length
         packet.extend(b'\x00\x00')  # Data length
 
-        tpkt_cotp_header_length = len(packet) # 17
-        
+        tpkt_cotp_header_length = len(packet)  # 17
+
         # S7: PARAMETER
-        packet.extend(Function.WRITE_VAR.value.to_bytes(1, byteorder="big")) # Function Write Var
+        packet.extend(Function.WRITE_VAR.value.to_bytes(
+            1, byteorder="big"))  # Function Write Var
         packet.extend(b'\x01')  # Item count
 
         # Item specification
@@ -278,18 +318,22 @@ class WriteRequest(Request):
             packet.extend(b'\x12')  # Variable specification
             packet.extend(b'\x0a')  # Length of following address specification
             packet.extend(b'\x10')  # Syntax ID: S7ANY (0x10)
-            
+
             if item.data_type == DataType.BIT:
-                packet.extend(DataType.BIT.value.to_bytes(1, byteorder='big'))  # Transport size
+                packet.extend(DataType.BIT.value.to_bytes(
+                    1, byteorder='big'))  # Transport size
             else:
-                packet.extend(DataType.BYTE.value.to_bytes(1, byteorder='big'))  # Transport size, write everything as bytes
-            
-            packet.extend((item.length * DataTypeSize[item.data_type]).to_bytes(2, byteorder="big"))  # Length (item length * size of data type)
+                # Transport size, write everything as bytes
+                packet.extend(DataType.BYTE.value.to_bytes(1, byteorder='big'))
+
+            # Length (item length * size of data type)
+            packet.extend(
+                (item.length * DataTypeSize[item.data_type]).to_bytes(2, byteorder="big"))
             packet.extend(item.db_number.to_bytes(
                 2, byteorder='big'))  # DB Number
             packet.extend(item.memory_area.value.to_bytes(
                 1, byteorder='big'))  # Area Code (0x84 for DB)
-            
+
             if item.data_type == DataType.BIT:
                 # Address (start * 8 + bit offset)
                 packet.extend(
@@ -297,13 +341,13 @@ class WriteRequest(Request):
             else:
                 packet.extend(
                     (item.start * 8 + item.bit_offset).to_bytes(3, byteorder="big"))
-            
+
         parameter_length = len(packet) - tpkt_cotp_header_length
 
         # S7 : DATA
         for i, item in enumerate(items):
-            
-            packet.extend(b'\x00') # Reserved (0x00)
+
+            packet.extend(b'\x00')  # Reserved (0x00)
 
             data = values[i]
 
@@ -319,13 +363,13 @@ class WriteRequest(Request):
                     packed_data = struct.pack(f">{item.length * 'B'}", *data)
                 else:
                     packed_data = struct.pack(f">B", data)
-            
+
             elif item.data_type == DataType.CHAR:
                 transport_size = DataTypeData.BYTE_WORD_DWORD
                 new_length = item.length * DataTypeSize[item.data_type] * 8
-                assert isinstance(data, str) 
+                assert isinstance(data, str)
                 packed_data = data.encode(encoding="ascii")
-            
+
             elif item.data_type == DataType.INT:
                 transport_size = DataTypeData.BYTE_WORD_DWORD
                 new_length = item.length * DataTypeSize[item.data_type] * 8
@@ -333,7 +377,7 @@ class WriteRequest(Request):
                     packed_data = struct.pack(f">{item.length * 'h'}", *data)
                 else:
                     packed_data = struct.pack(f">h", data)
-            
+
             elif item.data_type == DataType.WORD:
                 transport_size = DataTypeData.BYTE_WORD_DWORD
                 new_length = item.length * DataTypeSize[item.data_type] * 8
@@ -341,7 +385,7 @@ class WriteRequest(Request):
                     packed_data = struct.pack(f">{item.length * 'H'}", *data)
                 else:
                     packed_data = struct.pack(f">H", data)
-            
+
             elif item.data_type == DataType.DWORD:
                 transport_size = DataTypeData.BYTE_WORD_DWORD
                 new_length = item.length * DataTypeSize[item.data_type] * 8
@@ -365,20 +409,22 @@ class WriteRequest(Request):
                     packed_data = struct.pack(f">{item.length * 'f'}", *data)
                 else:
                     packed_data = struct.pack(f">f", data)
-            
+
             else:
                 # We should never enter here
                 raise ValueError("")
-            
-            packet.extend(transport_size.value.to_bytes(1, byteorder="big")) # Data transport size - This is not the DataType
+
+            # Data transport size - This is not the DataType
+            packet.extend(transport_size.value.to_bytes(1, byteorder="big"))
             packet.extend(new_length.to_bytes(2, byteorder="big"))
             packet.extend(packed_data)
 
-            data_item_length = 1 + 1 + 2 + item.length * DataTypeSize[item.data_type]
-            
+            data_item_length = 1 + 1 + 2 + \
+                item.length * DataTypeSize[item.data_type]
+
             if item.data_type == DataType.BIT and i < len(items) - 1:
                 packet.extend(b"\x00")
-            
+
             if len(packet) % 2 == 0 and i < len(items) - 1:
                 data_item_length += 1
                 packet.extend(b"\x00")
