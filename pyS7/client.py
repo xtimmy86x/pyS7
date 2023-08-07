@@ -22,7 +22,7 @@ class Client:
         timeout (int): The timeout in seconds for the network connection. Defaults to 5.
     """
 
-    def __init__(self, address: str, rack: int, slot: int, port: int = 1102, timeout: float = 5) -> None:
+    def __init__(self, address: str, rack: int, slot: int, port: int = 102, timeout: float = 5) -> None:
 
         self.address = address
         self.rack = rack
