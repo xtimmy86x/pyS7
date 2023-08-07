@@ -11,6 +11,16 @@ from .responses import (ConnectionResponse, PDUNegotiationResponse,
 
 
 class Client:
+    """The Client class provides a high-level interface for communicating with a Siemens S7 programmable logic controller (PLC) over a network connection. 
+    It allows for reading from and writing to memory locations in the PLC, with support for a variety of data types.
+
+    Attributes:
+        address (str): The IP address of the PLC.
+        rack (int): The rack number of the PLC.
+        slot (int): The slot number of the PLC.
+        port (int): The port number for the network connection. Defaults to 1102.
+        timeout (int): The timeout in seconds for the network connection. Defaults to 5.
+    """
 
     def __init__(self, address: str, rack: int, slot: int, port: int = 1102, timeout: float = 5) -> None:
 
@@ -28,6 +38,7 @@ class Client:
         self.current_jobs: int = 0
 
     def connect(self) -> None:
+        """Establishes a TCP connection to the S7 PLC and sets up initial communication parameters."""
 
         # Establish TCP connection
         self.socket.connect((self.address, self.port))
@@ -47,11 +58,33 @@ class Client:
         self.max_jobs_calling, self.max_jobs_called, self.pdu_size = pdu_negotiation_response.parse()
 
     def disconnect(self) -> None:
+        """Closes the TCP connection with the S7 PLC."""
 
         self.socket.shutdown(socket.SHUT_RDWR)
         self.socket.close()
 
     def read(self, items: Sequence[str | Item], optimize: bool = True) -> list[bool | int | float | str | tuple[bool | int | float, ...]]:
+        """Reads data from an S7 PLC using the specified addresses.
+
+        Args:
+            items (Sequence[str | Item]): A sequence of items or item addresses to be read from the PLC.
+            optimize (bool): If True, the items are grouped together in the request to optimize the communication. Defaults to True.
+
+        Returns:
+            A list of values read from the PLC, corresponding to the provided addresses.
+
+        Example:
+            >>> client = Client('192.168.100.10', 0, 1)
+            >>> client.connect()
+            >>> items = [
+                    'DB1,X0.0', 
+                    'DB2,I2', 
+                    Item(memory_area=MemoryArea.DB, db_number=3, data_type=DataType.REAL, start=4, bit_offset=0, length=1)
+                ]
+            >>> result = client.read(items)
+            >>> print(result)
+            [True, 300, 20.5] # these values corresponds to the PLC data at specified addresses
+        """
 
         list_items: list[Item] = [map_address_to_item(address=item) if isinstance(
             item, str) else item for item in items]
@@ -90,6 +123,22 @@ class Client:
         return data
 
     def write(self, items: Sequence[str | Item], values: Sequence[bool | int | float | str]) -> None:
+        """Writes data to an S7 PLC at the specified addresses.
+
+        Args:
+            items(Sequence[str | Item]): A sequence of items or item addresses where the data will be written to in the PLC.
+            values: A sequence of values to write to the PLC.
+
+        Raises:
+            pyS7.errors.Exception: If there's any error in the server's response.
+
+        Example:
+            >>> client = Client('192.168.100.10', 0, 1)
+            >>> client.connect()
+            >>> items = ['DB1,X0.0', 'DB1,I10', 'DB2,R14']
+            >>> values = [False, 500, 40.5]
+            >>> client.write(items, values)  # writes these values to the PLC at specified addresses
+        """
 
         items_list: list[Item] = [map_address_to_item(address=item) if isinstance(
             item, str) else item for item in items]
@@ -102,7 +151,7 @@ class Client:
             bytes_response = self.__send(WriteRequest(
                 items=request, values=requests_values[i]))
             response = WriteResponse(response=bytes_response, items=request)
-            response.parse()  # Raise error if any
+            response.parse()
 
     def __send(self, request: Request) -> bytes:
 
@@ -115,7 +164,3 @@ class Client:
         bytes_response = self.socket.recv(self.pdu_size)
 
         return bytes_response
-
-    def __del__(self) -> None:
-
-        self.disconnect()
