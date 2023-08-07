@@ -2,7 +2,7 @@ import struct
 from typing import Any, Protocol, runtime_checkable
 
 from .constants import DataType, ReturnCode
-from .errors import ReadResponseError, WriteError
+from .errors import ReadResponseError, WriteResponseError
 from .item import Item
 from .requests import ItemsMap
 
@@ -186,7 +186,7 @@ def parse_write_response(bytes_response: bytes, items: list[Item]) -> None:
             offset += 1
 
         else:
-            raise WriteError(
+            raise WriteResponseError(
                 f"Impossible to write item {item} - {ReturnCode(return_code).name} ")
 
 

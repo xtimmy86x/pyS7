@@ -4,5 +4,5 @@ class AddressError(Exception):
 class ReadResponseError(Exception):
     ...
 
-class WriteError(Exception):
+class WriteResponseError(Exception):
     ...
