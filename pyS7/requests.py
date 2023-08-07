@@ -174,10 +174,11 @@ def prepare_requests(items: list[Item], max_pdu: int) -> list[list[Item]]:
 
     return requests
 
+Values = bool | int | float | str | tuple[bool | int | float, ...]
 
-def prepare_write_requests_and_values(items: list[Item], values: list[bool | int | float | str], max_pdu: int) -> list[list[Item]]:
+def prepare_write_requests_and_values(items: Sequence[Item], values: Sequence[Values], max_pdu: int) -> tuple[list[list[Item]], list[list[Values]]]:
     requests: list[list[Item]] = [[]]
-    requests_values = [[]]
+    requests_values: list[list[Values]] = [[]]
 
     WRITE_REQ_OVERHEAD = TPKT_SIZE + COTP_SIZE + WRITE_REQ_HEADER_SIZE + \
         WRITE_REQ_PARAM_SIZE_NO_ITEMS  # 3 + 4 + 10 + 2
