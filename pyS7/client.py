@@ -18,7 +18,7 @@ class Client:
         address (str): The IP address of the PLC.
         rack (int): The rack number of the PLC.
         slot (int): The slot number of the PLC.
-        port (int): The port number for the network connection. Defaults to 1102.
+        port (int): The port number for the network connection. Defaults to 102.
         timeout (int): The timeout in seconds for the network connection. Defaults to 5.
     """
 
