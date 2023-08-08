@@ -30,15 +30,16 @@ def test_map_address_to_item(test_input, expected) -> None:
 
 @pytest.mark.parametrize("test_input, exception", 
     [
-        ("DBX50.1", pyS7.errors.AddressError),      # Wrong format
-        ("DB50.DBX50.1", pyS7.errors.AddressError), # Wrong format
-        ("DB12,X10", pyS7.errors.AddressError),     # Missing bit offset
-        ("DB12,X10.8", pyS7.errors.AddressError),   # Invalid bit offset
-        ("DT23", pyS7.errors.AddressError),         # Invalid address
-        ("DB1,FLOAT10", pyS7.errors.AddressError),  # FLOAT not good, use REAL instead
-        ("DB56,B11.5", pyS7.errors.AddressError),   # Unsupported bit offset for type BYTE
-        ("DB1,CHAR11.5", pyS7.errors.AddressError),   # Unsupported bit offset for type CHAR
-        ("DB30,I0.5", pyS7.errors.AddressError),   # Unsupported bit offset for type INT
+        ("DBX50.1", pyS7.errors.AddressError),          # Wrong format
+        ("DB50.DBX50.1", pyS7.errors.AddressError),     # Wrong format
+        ("DB12,X10", pyS7.errors.AddressError),         # Missing bit offset
+        ("DB12,X10.8", pyS7.errors.AddressError),       # Invalid bit offset
+        ("DT23", pyS7.errors.AddressError),             # Invalid address
+        ("DB1,FLOAT10", pyS7.errors.AddressError),      # FLOAT not good, use REAL instead
+        ("DB56,B11.5", pyS7.errors.AddressError),       # Unsupported bit offset for type BYTE
+        ("DB1,CHAR11.5", pyS7.errors.AddressError),     # Unsupported bit offset for type CHAR
+        ("DB30,I0.5", pyS7.errors.AddressError),        # Unsupported bit offset for type INT
+        ("DB16,DC5", pyS7.errors.AddressError),         # Wrong format
     ]
 )
 def test_invalid_address(test_input, exception) -> None:
