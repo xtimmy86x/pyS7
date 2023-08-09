@@ -1,6 +1,6 @@
 import re
 
-from .constants import MemoryArea, DataType
+from .constants import DataType, MemoryArea
 from .errors import AddressError
 from .item import Item
 
@@ -79,16 +79,16 @@ def map_address_to_item(address: str) -> Item:
             db_number = int(db_number)
             data_type = DataType.BIT
             start = int(start)
-            
+
             if bit_offset is None:
                 raise AddressError(
-                    f"Missing bit_offset value")
-            
+                    "Missing bit_offset value")
+
             bit_offset = int(bit_offset)
             if not 0 <= bit_offset <= 7:
                 raise AddressError(
-                    f"The bit offset must be a value between 0 and 7 included")
-            
+                    "The bit offset must be a value between 0 and 7 included")
+
             length = 1
 
         elif str_data_type == "B" or str_data_type == "BYTE":
@@ -216,7 +216,7 @@ def map_address_to_item(address: str) -> Item:
 
         if not 0 <= bit_offset <= 7:
             raise AddressError(
-                f"The bit offset must be a value between 0 and 7 included")
+                "The bit offset must be a value between 0 and 7 included")
 
         length = 1
 
@@ -246,7 +246,7 @@ def map_address_to_item(address: str) -> Item:
 
         if not 0 <= bit_offset <= 7:
             raise AddressError(
-                f"The bit offset must be a value between 0 and 7 included")
+                "The bit offset must be a value between 0 and 7 included")
 
         length = 1
 
@@ -276,7 +276,7 @@ def map_address_to_item(address: str) -> Item:
 
         if not 0 <= bit_offset <= 7:
             raise AddressError(
-                f"The bit offset must be a value between 0 and 7 included")
+                "The bit offset must be a value between 0 and 7 included")
 
         length = 1
 

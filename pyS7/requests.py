@@ -1,9 +1,27 @@
 import struct
 from typing import Protocol, Sequence, runtime_checkable
 
-from .constants import *
+from .constants import (
+    COTP_SIZE,
+    MAX_READ_ITEMS,
+    MAX_WRITE_ITEMS,
+    READ_REQ_HEADER_SIZE,
+    READ_REQ_PARAM_SIZE_ITEM,
+    READ_REQ_PARAM_SIZE_NO_ITEMS,
+    TPKT_SIZE,
+    WRITE_REQ_HEADER_SIZE,
+    WRITE_REQ_PARAM_SIZE_ITEM,
+    WRITE_REQ_PARAM_SIZE_NO_ITEMS,
+    WRITE_RES_HEADER_SIZE,
+    WRITE_RES_PARAM_SIZE,
+    DataType,
+    DataTypeData,
+    DataTypeSize,
+    Function,
+)
 from .item import Item
 
+Value = bool | int | float | str | tuple[bool | int | float, ...]
 
 @runtime_checkable
 class Request(Protocol):
@@ -174,11 +192,9 @@ def prepare_requests(items: list[Item], max_pdu: int) -> list[list[Item]]:
 
     return requests
 
-Values = bool | int | float | str | tuple[bool | int | float, ...]
-
-def prepare_write_requests_and_values(items: Sequence[Item], values: Sequence[Values], max_pdu: int) -> tuple[list[list[Item]], list[list[Values]]]:
+def prepare_write_requests_and_values(items: Sequence[Item], values: Sequence[Value], max_pdu: int) -> tuple[list[list[Item]], list[list[Value]]]:
     requests: list[list[Item]] = [[]]
-    requests_values: list[list[Values]] = [[]]
+    requests_values: list[list[Value]] = [[]]
 
     WRITE_REQ_OVERHEAD = TPKT_SIZE + COTP_SIZE + WRITE_REQ_HEADER_SIZE + \
         WRITE_REQ_PARAM_SIZE_NO_ITEMS  # 3 + 4 + 10 + 2
@@ -279,14 +295,14 @@ class ReadRequest(Request):
 
 class WriteRequest(Request):
 
-    def __init__(self, items: Sequence[Item], values: Sequence[bool | int | float | str | tuple[bool | int | float, ...]]) -> None:
+    def __init__(self, items: Sequence[Item], values: Sequence[Value]) -> None:
 
         self.items = items
         self.values = values
 
         self.request = self.__prepare_packet(items=items, values=values)
 
-    def __prepare_packet(self, items: Sequence[Item], values: Sequence[bool | int | float | str | tuple[bool | int | float, ...]]) -> bytearray:
+    def __prepare_packet(self, items: Sequence[Item], values: Sequence[Value]) -> bytearray:
         packet = bytearray()
 
         # TPKT
@@ -363,7 +379,7 @@ class WriteRequest(Request):
                 if isinstance(data, tuple):
                     packed_data = struct.pack(f">{item.length * 'B'}", *data)
                 else:
-                    packed_data = struct.pack(f">B", data)
+                    packed_data = struct.pack(">B", data)
 
             elif item.data_type == DataType.CHAR:
                 transport_size = DataTypeData.BYTE_WORD_DWORD
@@ -377,7 +393,7 @@ class WriteRequest(Request):
                 if isinstance(data, tuple):
                     packed_data = struct.pack(f">{item.length * 'h'}", *data)
                 else:
-                    packed_data = struct.pack(f">h", data)
+                    packed_data = struct.pack(">h", data)
 
             elif item.data_type == DataType.WORD:
                 transport_size = DataTypeData.BYTE_WORD_DWORD
@@ -385,7 +401,7 @@ class WriteRequest(Request):
                 if isinstance(data, tuple):
                     packed_data = struct.pack(f">{item.length * 'H'}", *data)
                 else:
-                    packed_data = struct.pack(f">H", data)
+                    packed_data = struct.pack(">H", data)
 
             elif item.data_type == DataType.DWORD:
                 transport_size = DataTypeData.BYTE_WORD_DWORD
@@ -393,7 +409,7 @@ class WriteRequest(Request):
                 if isinstance(data, tuple):
                     packed_data = struct.pack(f">{item.length * 'I'}", *data)
                 else:
-                    packed_data = struct.pack(f">I", data)
+                    packed_data = struct.pack(">I", data)
 
             elif item.data_type == DataType.DINT:
                 transport_size = DataTypeData.BYTE_WORD_DWORD
@@ -401,7 +417,7 @@ class WriteRequest(Request):
                 if isinstance(data, tuple):
                     packed_data = struct.pack(f">{item.length * 'l'}", *data)
                 else:
-                    packed_data = struct.pack(f">l", data)
+                    packed_data = struct.pack(">l", data)
 
             elif item.data_type == DataType.REAL:
                 transport_size = DataTypeData.BYTE_WORD_DWORD
@@ -409,7 +425,7 @@ class WriteRequest(Request):
                 if isinstance(data, tuple):
                     packed_data = struct.pack(f">{item.length * 'f'}", *data)
                 else:
-                    packed_data = struct.pack(f">f", data)
+                    packed_data = struct.pack(">f", data)
 
             else:
                 # We should never enter here

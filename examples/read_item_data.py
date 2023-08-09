@@ -5,13 +5,13 @@ if __name__ == "__main__":
     # Create a new Client object to connect to S7-300/400/1200/1500 PLC.
     # Provide the PLC's IP address and slot/rack information
     client = Client(address="192.168.5.100", rack=0, slot=1)
-    
+
     # Establish connection with the PLC
     client.connect()
 
     # Using Item provides greater flexibility and is recommended when there's a high number of items
     # Define a list of items to read from the PLC.
-    # Each item is an instance of the Item class with parameters specifying the memory area, 
+    # Each item is an instance of the Item class with parameters specifying the memory area,
     # datablock number, data type, start index, bit index and length.
     items = [
         Item(MemoryArea.DB, 1, DataType.BIT, 0, 6, 1),      # Read bit 6 of DB1

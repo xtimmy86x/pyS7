@@ -1,7 +1,7 @@
 """
 #######################################################################
 # The following code is meant for demonstration purposes only.
-# In a real-world application, you should use the Client class, 
+# In a real-world application, you should use the Client class,
 # which provides a high-level interface to interact
 # with S7 devices and ensures proper handling of resources.
 #######################################################################
@@ -9,8 +9,14 @@
 
 import socket
 
-from pyS7 import (Item, PDUNegotiationRequest, PDUNegotiationResponse,
-                  ReadRequest, ReadResponse, map_address_to_item)
+from pyS7 import (
+    Item,
+    PDUNegotiationRequest,
+    PDUNegotiationResponse,
+    ReadRequest,
+    ReadResponse,
+    map_address_to_item,
+)
 
 if __name__ == "__main__":
 

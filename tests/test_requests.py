@@ -1,6 +1,25 @@
-from pyS7.constants import COTP_SIZE, MAX_PDU, TPKT_SIZE, WRITE_REQ_HEADER_SIZE, WRITE_REQ_PARAM_SIZE_NO_ITEMS, WRITE_RES_HEADER_SIZE, WRITE_RES_PARAM_SIZE, MemoryArea, DataType
+from pyS7.constants import (
+    COTP_SIZE,
+    MAX_PDU,
+    TPKT_SIZE,
+    WRITE_REQ_HEADER_SIZE,
+    WRITE_REQ_PARAM_SIZE_NO_ITEMS,
+    WRITE_RES_HEADER_SIZE,
+    WRITE_RES_PARAM_SIZE,
+    DataType,
+    MemoryArea,
+)
 from pyS7.item import Item
-from pyS7.requests import ConnectionRequest, PDUNegotiationRequest, ReadRequest, WriteRequest, group_items, prepare_requests, prepare_write_requests_and_values
+from pyS7.requests import (
+    ConnectionRequest,
+    PDUNegotiationRequest,
+    ReadRequest,
+    WriteRequest,
+    group_items,
+    prepare_requests,
+    prepare_write_requests_and_values,
+)
+
 
 def test_connection_request() -> None:
     rack = 0
@@ -131,7 +150,7 @@ def test_write_request() -> None:
         (3, 4, 5),
         3.14,
         6.28,
-        (127, 128), 
+        (127, 128),
         (250, 251),
     ]
 
@@ -165,7 +184,7 @@ def test_group_items() -> None:
 
     expected_groups: dict[Item, list[Item]] = {
         Item(memory_area=MemoryArea.DB, db_number=1, data_type=DataType.BYTE, start=1, bit_offset=0, length=2): [
-            (1, Item(memory_area=MemoryArea.DB, db_number=1, data_type=DataType.BIT, start=1, bit_offset=7, length=1)), 
+            (1, Item(memory_area=MemoryArea.DB, db_number=1, data_type=DataType.BIT, start=1, bit_offset=7, length=1)),
             (0, Item(memory_area=MemoryArea.DB, db_number=1, data_type=DataType.BIT, start=2, bit_offset=5, length=1)),
         ],
         Item(memory_area=MemoryArea.DB, db_number=2, data_type=DataType.BYTE, start=10, bit_offset=0, length=1): [
@@ -195,7 +214,7 @@ def test_group_items() -> None:
     assert expected_groups == groups
 
 def test_prepare_request() -> None:
-    
+
     # Mock up items for testing
     items: list[Item] = [
         Item(memory_area=MemoryArea.DB, db_number=1, data_type=DataType.BIT, start=2, bit_offset=5, length=1),
@@ -231,7 +250,7 @@ def test_prepare_request() -> None:
         ],
         [
             Item(memory_area=MemoryArea.DB, db_number=2, data_type=DataType.CHAR, start=0, bit_offset=0, length=25),
-            Item(memory_area=MemoryArea.DB, db_number=1, data_type=DataType.REAL, start=20, bit_offset=0, length=10),    
+            Item(memory_area=MemoryArea.DB, db_number=1, data_type=DataType.REAL, start=20, bit_offset=0, length=10),
         ]
     ]
 
@@ -243,7 +262,7 @@ def test_prepare_request() -> None:
 
 # TODO
 def test_prepare_write_request() -> None:
-    
+
     pdu_size = 240
     # Mock up items for testing
     items: list[Item] = [
@@ -274,7 +293,7 @@ def test_prepare_write_request() -> None:
         (3, 4, 5),
         3.14,
         6.28,
-        (127, 128), 
+        (127, 128),
         (250, 251),
         "a" * 110,
         "b" * 25,
@@ -315,7 +334,7 @@ def test_prepare_write_request() -> None:
             (3, 4, 5),
             3.14,
             6.28,
-            (127, 128), 
+            (127, 128),
             (250, 251),
         ],
         [
@@ -334,13 +353,13 @@ def test_prepare_write_request() -> None:
 
     for i in range(len(requests)):
         assert expected_requests[i] == requests[i]
-        
+
         # TODO: We want to assert the bytes length is < max_pdu
-        WRITE_REQ_OVERHEAD = TPKT_SIZE + COTP_SIZE + WRITE_REQ_HEADER_SIZE + \
+        TPKT_SIZE + COTP_SIZE + WRITE_REQ_HEADER_SIZE + \
             WRITE_REQ_PARAM_SIZE_NO_ITEMS  # 3 + 4 + 10 + 2
-        WRITE_RES_OVERHEAD = TPKT_SIZE + COTP_SIZE + \
+        TPKT_SIZE + COTP_SIZE + \
             WRITE_RES_HEADER_SIZE + WRITE_RES_PARAM_SIZE  # 3 + 4 + 12 + 2
-        
+
 
         # assert WRITE_REQ_OVERHEAD + sum([elem.size() + for elem in requests[i]]) == None
 

@@ -4,14 +4,28 @@ from typing import Sequence
 from .address_parser import map_address_to_item
 from .constants import MAX_JOB_CALLED, MAX_JOB_CALLING, MAX_PDU
 from .item import Item
-from .requests import (ConnectionRequest, PDUNegotiationRequest, ReadRequest,
-                       Request, WriteRequest, group_items, prepare_requests, prepare_write_requests_and_values)
-from .responses import (ConnectionResponse, PDUNegotiationResponse,
-                        ReadOptimizedResponse, ReadResponse, Response, WriteResponse)
+from .requests import (
+    ConnectionRequest,
+    PDUNegotiationRequest,
+    ReadRequest,
+    Request,
+    WriteRequest,
+    group_items,
+    prepare_requests,
+    prepare_write_requests_and_values,
+)
+from .responses import (
+    ConnectionResponse,
+    PDUNegotiationResponse,
+    ReadOptimizedResponse,
+    ReadResponse,
+    Response,
+    WriteResponse,
+)
 
 
 class Client:
-    """The Client class provides a high-level interface for communicating with a Siemens S7 programmable logic controller (PLC) over a network connection. 
+    """The Client class provides a high-level interface for communicating with a Siemens S7 programmable logic controller (PLC) over a network connection.
     It allows for reading from and writing to memory locations in the PLC, with support for a variety of data types.
 
     Attributes:
@@ -46,7 +60,7 @@ class Client:
         # Do I need this?
         connection_bytes_response: bytes = self.__send(
             ConnectionRequest(rack=self.rack, slot=self.slot))
-        connection_response: ConnectionResponse = ConnectionResponse(
+        ConnectionResponse(
             response=connection_bytes_response)
 
         # Communication Setup
@@ -77,8 +91,8 @@ class Client:
             >>> client = Client('192.168.100.10', 0, 1)
             >>> client.connect()
             >>> items = [
-                    'DB1,X0.0', 
-                    'DB2,I2', 
+                    'DB1,X0.0',
+                    'DB2,I2',
                     Item(memory_area=MemoryArea.DB, db_number=3, data_type=DataType.REAL, start=4, bit_offset=0, length=1)
                 ]
             >>> result = client.read(items)
