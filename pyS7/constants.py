@@ -36,23 +36,23 @@ class Function(Enum):
 
 
 class MemoryArea(Enum):
-    MERKER = 0x83   # Flags (M) (Merker)
-    DB = 0x84       # Data blocks (DB)
-    INPUT = 0x81    # Inputs (I)
-    OUTPUT = 0x82   # Outputs (Q)
-    COUNTER = 0x1c  # S7 counters (C)
-    TIMER = 0x1d    # S7 timers (C)
+    MERKER = 0x83  # Flags (M) (Merker)
+    DB = 0x84  # Data blocks (DB)
+    INPUT = 0x81  # Inputs (I)
+    OUTPUT = 0x82  # Outputs (Q)
+    COUNTER = 0x1C  # S7 counters (C)
+    TIMER = 0x1D  # S7 timers (C)
 
 
 class DataType(Enum):
-    BIT = 1     # bit
-    BYTE = 2    # byte
-    CHAR = 3    #
-    WORD = 4    # Unsigned INT 16 bit
-    INT = 5     # Signed INT 16 bit
-    DWORD = 6   # Unsigned INT 32 bit
-    DINT = 7    # Signed INT 32 bit
-    REAL = 8    # FLOAT 32 bit
+    BIT = 1  # bit
+    BYTE = 2  # byte
+    CHAR = 3  #
+    WORD = 4  # Unsigned INT 16 bit
+    INT = 5  # Signed INT 16 bit
+    DWORD = 6  # Unsigned INT 32 bit
+    DINT = 7  # Signed INT 32 bit
+    REAL = 8  # FLOAT 32 bit
 
 
 DataTypeSize: dict[DataType, int] = {
@@ -84,8 +84,8 @@ class ReturnCode(Enum):
     OUT_OF_RANGE = 0x05
     UNSUPPORTED_DATA_TYPE = 0x06
     INCONSISTENT_DATA_TYPE = 0x07
-    OBJECT_DOES_NOT_EXIST = 0x0a
-    SUCCESS = 0xff
+    OBJECT_DOES_NOT_EXIST = 0x0A
+    SUCCESS = 0xFF
 
 
 class ErrorClass(Enum):
@@ -131,8 +131,8 @@ ReturnCodeDict: dict[int, str] = {
     0x05: "Address out of range",
     0x06: "Data type not supported",
     0x07: "Data type inconsistent",
-    0x0a: "Object does not exist",
-    0xff: "Success",
+    0x0A: "Object does not exist",
+    0xFF: "Success",
 }
 
 ErrorClassDict: dict[int, str] = {

@@ -54,6 +54,7 @@ select = [
 ]
 ignore = [
     "C901",  # too complex
+    "E501",  # line too long, black handle it
 ]
 
 [tool.ruff.per-file-ignores]

@@ -36,8 +36,9 @@ class Client:
         timeout (int): The timeout in seconds for the network connection. Defaults to 5.
     """
 
-    def __init__(self, address: str, rack: int, slot: int, port: int = 102, timeout: float = 5) -> None:
-
+    def __init__(
+        self, address: str, rack: int, slot: int, port: int = 102, timeout: float = 5
+    ) -> None:
         self.address = address
         self.rack = rack
         self.slot = slot
@@ -59,17 +60,23 @@ class Client:
 
         # Do I need this?
         connection_bytes_response: bytes = self.__send(
-            ConnectionRequest(rack=self.rack, slot=self.slot))
-        ConnectionResponse(
-            response=connection_bytes_response)
+            ConnectionRequest(rack=self.rack, slot=self.slot)
+        )
+        ConnectionResponse(response=connection_bytes_response)
 
         # Communication Setup
         pdu_negotation_bytes_response: bytes = self.__send(
-            PDUNegotiationRequest(max_pdu=self.pdu_size))
+            PDUNegotiationRequest(max_pdu=self.pdu_size)
+        )
         pdu_negotiation_response = PDUNegotiationResponse(
-            response=pdu_negotation_bytes_response)
+            response=pdu_negotation_bytes_response
+        )
 
-        self.max_jobs_calling, self.max_jobs_called, self.pdu_size = pdu_negotiation_response.parse()
+        (
+            self.max_jobs_calling,
+            self.max_jobs_called,
+            self.pdu_size,
+        ) = pdu_negotiation_response.parse()
 
     def disconnect(self) -> None:
         """Closes the TCP connection with the S7 PLC."""
@@ -77,7 +84,9 @@ class Client:
         self.socket.shutdown(socket.SHUT_RDWR)
         self.socket.close()
 
-    def read(self, items: Sequence[str | Item], optimize: bool = True) -> list[bool | int | float | str | tuple[bool | int | float, ...]]:
+    def read(
+        self, items: Sequence[str | Item], optimize: bool = True
+    ) -> list[bool | int | float | str | tuple[bool | int | float, ...]]:
         """Reads data from an S7 PLC using the specified addresses.
 
         Args:
@@ -100,33 +109,38 @@ class Client:
             [True, 300, 20.5] # these values corresponds to the PLC data at specified addresses
         """
 
-        list_items: list[Item] = [map_address_to_item(address=item) if isinstance(
-            item, str) else item for item in items]
+        list_items: list[Item] = [
+            map_address_to_item(address=item) if isinstance(item, str) else item
+            for item in items
+        ]
 
-        data: list[bool | int | float | str |
-                   tuple[bool | int | float, ...]] = []
+        data: list[bool | int | float | str | tuple[bool | int | float, ...]] = []
 
         if optimize:
             items_map = group_items(items=list_items, pdu_size=self.pdu_size)
             grouped_items = list(items_map.keys())
 
             requests: list[list[Item]] = prepare_requests(
-                items=grouped_items, max_pdu=self.pdu_size)
+                items=grouped_items, max_pdu=self.pdu_size
+            )
 
             bytes_reponse = self.__send(ReadRequest(items=requests[0]))
-            response: Response = ReadOptimizedResponse(response=bytes_reponse, item_map={
-                                                       key: items_map[key] for key in requests[0]})
+            response: Response = ReadOptimizedResponse(
+                response=bytes_reponse,
+                item_map={key: items_map[key] for key in requests[0]},
+            )
 
             for i in range(1, len(requests)):
                 bytes_reponse = self.__send(ReadRequest(items=requests[i]))
-                response += ReadOptimizedResponse(response=bytes_reponse, item_map={
-                                                  key: items_map[key] for key in requests[i]})
+                response += ReadOptimizedResponse(
+                    response=bytes_reponse,
+                    item_map={key: items_map[key] for key in requests[i]},
+                )
 
             data = response.parse()
 
         else:
-            requests = prepare_requests(
-                items=list_items, max_pdu=self.pdu_size)
+            requests = prepare_requests(items=list_items, max_pdu=self.pdu_size)
 
             for request in requests:
                 bytes_reponse = self.__send(ReadRequest(items=request))
@@ -136,7 +150,9 @@ class Client:
 
         return data
 
-    def write(self, items: Sequence[str | Item], values: Sequence[bool | int | float | str]) -> None:
+    def write(
+        self, items: Sequence[str | Item], values: Sequence[bool | int | float | str]
+    ) -> None:
         """Writes data to an S7 PLC at the specified addresses.
 
         Args:
@@ -154,24 +170,25 @@ class Client:
             >>> client.write(items, values)  # writes these values to the PLC at specified addresses
         """
 
-        items_list: list[Item] = [map_address_to_item(address=item) if isinstance(
-            item, str) else item for item in items]
+        items_list: list[Item] = [
+            map_address_to_item(address=item) if isinstance(item, str) else item
+            for item in items
+        ]
 
         requests, requests_values = prepare_write_requests_and_values(
-            items=items_list, values=values, max_pdu=self.pdu_size)
+            items=items_list, values=values, max_pdu=self.pdu_size
+        )
 
         for i, request in enumerate(requests):
-
-            bytes_response = self.__send(WriteRequest(
-                items=request, values=requests_values[i]))
+            bytes_response = self.__send(
+                WriteRequest(items=request, values=requests_values[i])
+            )
             response = WriteResponse(response=bytes_response, items=request)
             response.parse()
 
     def __send(self, request: Request) -> bytes:
-
         if not isinstance(request, Request):
-            raise ValueError(
-                f"Request type {type(request).__name__} not supported")
+            raise ValueError(f"Request type {type(request).__name__} not supported")
 
         self.socket.send(request.serialize())
 
