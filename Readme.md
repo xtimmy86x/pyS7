@@ -15,9 +15,7 @@ Key Features:
 
 **Disclaimer**: Safety should always be your first priority when interacting with manufacturing machines. Therefore, when using this code, it is crucial to have a solid understanding of the machines and the tasks at hand. By choosing to use this code, you agree to assume all risks and accept responsibility for any damages or loss, including but not limited to data corruption, machine downtime, or other adverse effects.
 
-Furthermore, please be aware that this code is currently in its development phase. Changes to the API are to be expected.
-
-
+Furthermore, please be aware that this code is under development. It is not battle-tested and changes to the API should be expected.
 
 ## Install
 
@@ -108,7 +106,7 @@ pyS7 uses a naming convention for PLC addresses, which slightly differs from the
 
 Please refer to the following table for getting the correct addresses and the supported types:
 
-| Address                       | Step7 equivalent      | Data type  | Description |
+| pyS7 Address                  | Step7 Address         | Data type     | Description |
 | ----------------------------- | --------------------- | ------------- | ----------- |
 | `DB2,X0.7`                    | `DB2.DBX0.7`          | Boolean       | Bit 7 (eighth) of byte 0 of DB 2 |
 | `DB36,B2`                     | `DB36.DBB2`           | Number        | Byte 2 (0-255) of DB 36 |
