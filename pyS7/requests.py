@@ -1,6 +1,8 @@
 import struct
 from typing import Protocol, Sequence, runtime_checkable
 
+from pyS7.errors import AddressError
+
 from .constants import (
     COTP_SIZE,
     MAX_READ_ITEMS,
@@ -165,7 +167,7 @@ def group_items(items: list[Item], pdu_size: int) -> ItemsMap:
     return groups
 
 
-def ungroup(items_map: ItemsMap) -> list[Item]:
+def ungroup(items_map: ItemsMap) -> list[Item]: # pragma: no cover
     original_items = []
 
     for original_items in items_map.values():
@@ -191,7 +193,7 @@ def prepare_requests(items: list[Item], max_pdu: int) -> list[list[Item]]:
             READ_REQ_OVERHEAD + READ_REQ_PARAM_SIZE_ITEM + item.size() >= max_pdu
             or READ_RES_OVERHEAD + item.size() + 5 > max_pdu
         ):
-            raise Exception(
+            raise AddressError(
                 f"{item} too big -> it cannot fit the size of the negotiated PDU ({max_pdu})"
             )
 
@@ -234,7 +236,7 @@ def prepare_write_requests_and_values(
             WRITE_REQ_OVERHEAD + WRITE_REQ_PARAM_SIZE_ITEM + item.size() >= max_pdu
             or WRITE_RES_OVERHEAD + item.size() + 1 >= max_pdu
         ):
-            raise Exception(
+            raise AddressError(
                 f"{item} too big -> it cannot fit the size of the negotiated PDU ({max_pdu})"
             )
 
@@ -472,10 +474,6 @@ class WriteRequest(Request):
                     packed_data = struct.pack(f">{item.length * 'f'}", *data)
                 else:
                     packed_data = struct.pack(">f", data)
-
-            else:
-                # We should never enter here
-                raise ValueError("")
 
             # Data transport size - This is not the DataType
             packet.extend(transport_size.value.to_bytes(1, byteorder="big"))
