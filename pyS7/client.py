@@ -1,3 +1,4 @@
+import errno
 import socket
 from typing import Sequence
 
@@ -50,7 +51,6 @@ class Client:
         self.pdu_size: int = MAX_PDU
         self.max_jobs_calling: int = MAX_JOB_CALLING
         self.max_jobs_called: int = MAX_JOB_CALLED
-        self.current_jobs: int = 0
 
     def connect(self) -> None:
         """Establishes a TCP connection to the S7 PLC and sets up initial communication parameters."""
@@ -58,7 +58,6 @@ class Client:
         # Establish TCP connection
         self.socket.connect((self.address, self.port))
 
-        # Do I need this?
         connection_bytes_response: bytes = self.__send(
             ConnectionRequest(rack=self.rack, slot=self.slot)
         )
