@@ -1,7 +1,5 @@
 from .address_parser import map_address_to_item
 from .client import Client
-from .constants import *
-from .errors import *
+from .constants import MemoryArea, DataType
+from .errors import AddressError, WriteResponseError, ReadResponseError
 from .item import Item
-from .requests import *
-from .responses import *

@@ -9,14 +9,9 @@
 
 import socket
 
-from pyS7 import (
-    Item,
-    PDUNegotiationRequest,
-    PDUNegotiationResponse,
-    ReadRequest,
-    ReadResponse,
-    map_address_to_item,
-)
+from pyS7 import Item, map_address_to_item
+from pyS7.requests import PDUNegotiationRequest, ReadRequest
+from pyS7.responses import PDUNegotiationResponse, ReadResponse
 
 if __name__ == "__main__":
 
@@ -30,7 +25,7 @@ if __name__ == "__main__":
         "M54.4",
         "IW22",
         "QR24",
-        "DB1,S10.5"
+        "DB1,S10.5",
     ]
 
     socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
