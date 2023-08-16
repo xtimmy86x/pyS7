@@ -17,10 +17,20 @@ def test_size_calculation() -> None:
     item = Item(memory_area=MemoryArea.MERKER, db_number=0, data_type=DataType.REAL, start=10, bit_offset=0, length=4)
     assert item.size() == DataTypeSize[DataType.REAL] * 4
 
-def test_item_contains() -> None:
-    item1 = Item(memory_area=MemoryArea.DB, db_number=1, data_type=DataType.REAL, start=0, bit_offset=0, length=1)
+@pytest.mark.parametrize("item1, item2, result", [
+    (Item(memory_area=MemoryArea.DB, db_number=1, data_type=DataType.REAL, start=0, bit_offset=0, length=1), Item(memory_area=MemoryArea.DB, db_number=1, data_type=DataType.INT, start=0, bit_offset=0, length=1), True),
+    (Item(memory_area=MemoryArea.DB, db_number=1, data_type=DataType.REAL, start=0, bit_offset=0, length=1), Item(memory_area=MemoryArea.DB, db_number=1, data_type=DataType.INT, start=10, bit_offset=0, length=1), True),
+    (Item(memory_area=MemoryArea.DB, db_number=1, data_type=DataType.REAL, start=0, bit_offset=0, length=1), Item(memory_area=MemoryArea.DB, db_number=1, data_type=DataType.INT, start=30, bit_offset=0, length=1), False),
+    (Item(memory_area=MemoryArea.DB, db_number=1, data_type=DataType.REAL, start=0, bit_offset=0, length=1), Item(memory_area=MemoryArea.MERKER, db_number=0, data_type=DataType.BYTE, start=0, bit_offset=0, length=1), False),
+])
+
+def test_item_contains(item1: Item, item2: Item, result: bool ) -> None:
+    assert item1.__contains__(item2) is result
+
+def test_item_not_contains() -> None:
+    item1 = Item(memory_area=MemoryArea.DB, db_number=1, data_type=DataType.REAL, start=20, bit_offset=0, length=1)
     item2 = Item(memory_area=MemoryArea.DB, db_number=1, data_type=DataType.INT, start=0, bit_offset=0, length=1)
-    assert item1.__contains__(item2) is True
+    assert item1.__contains__(item2) is False
 
 @pytest.mark.parametrize(
     "memory_area, db_number, data_type, start, bit_offset, length, exception",

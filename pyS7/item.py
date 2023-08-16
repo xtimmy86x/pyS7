@@ -15,7 +15,8 @@ class Item:
     def __post_init__(self) -> None:
         if not isinstance(self.memory_area, MemoryArea):
             raise TypeError(
-                f"Invalid memory_area: Expected type MemoryArea, got {type(self.memory_area)}"
+                f"Invalid memory_area: Expected type MemoryArea, \
+                got {type(self.memory_area)}"
             )
 
         if not isinstance(self.db_number, int):
@@ -25,7 +26,8 @@ class Item:
 
         if self.memory_area != MemoryArea.DB and self.db_number > 0:
             raise ValueError(
-                f"Invalid db_number: Must be 0 when memory_area is {self.memory_area}, but got {self.db_number}"
+                f"Invalid db_number: Must be 0 when memory_area is {self.memory_area}, \
+                  but got {self.db_number}"
             )
 
         if self.db_number < 0:
@@ -56,12 +58,14 @@ class Item:
 
         if self.data_type != DataType.BIT and self.bit_offset > 0:
             raise ValueError(
-                f"Invalid bit_offset: Must be 0 when data_type is not DataType.BIT, but got {self.bit_offset}"
+                f"Invalid bit_offset: Must be 0 when data_type is not DataType.BIT, \
+                but got {self.bit_offset}"
             )
 
         if self.bit_offset < 0 or self.bit_offset > 7:
             raise ValueError(
-                f"Invalid bit_offset: Expected value between 0 and 7, got {self.bit_offset}"
+                f"Invalid bit_offset: Expected value between 0 and 7, \
+                  got {self.bit_offset}"
             )
 
         if not isinstance(self.length, int):
@@ -83,8 +87,8 @@ class Item:
             self.memory_area == item.memory_area
             and self.db_number == item.db_number
             and self.start <= item.start
-            and DataTypeSize[self.data_type] * self.length
-            >= DataTypeSize[item.data_type] * item.length
+            and self.start + DataTypeSize[self.data_type] * self.length
+            >= item.start + DataTypeSize[item.data_type] * item.length
         ):
             return True
         return False
