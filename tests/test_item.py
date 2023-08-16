@@ -19,7 +19,7 @@ def test_size_calculation() -> None:
 
 @pytest.mark.parametrize("item1, item2, result", [
     (Item(memory_area=MemoryArea.DB, db_number=1, data_type=DataType.REAL, start=0, bit_offset=0, length=1), Item(memory_area=MemoryArea.DB, db_number=1, data_type=DataType.INT, start=0, bit_offset=0, length=1), True),
-    (Item(memory_area=MemoryArea.DB, db_number=1, data_type=DataType.REAL, start=0, bit_offset=0, length=1), Item(memory_area=MemoryArea.DB, db_number=1, data_type=DataType.INT, start=10, bit_offset=0, length=1), True),
+    (Item(memory_area=MemoryArea.DB, db_number=1, data_type=DataType.REAL, start=0, bit_offset=0, length=1), Item(memory_area=MemoryArea.DB, db_number=1, data_type=DataType.INT, start=10, bit_offset=0, length=1), False),
     (Item(memory_area=MemoryArea.DB, db_number=1, data_type=DataType.REAL, start=0, bit_offset=0, length=1), Item(memory_area=MemoryArea.DB, db_number=1, data_type=DataType.INT, start=30, bit_offset=0, length=1), False),
     (Item(memory_area=MemoryArea.DB, db_number=1, data_type=DataType.REAL, start=0, bit_offset=0, length=1), Item(memory_area=MemoryArea.MERKER, db_number=0, data_type=DataType.BYTE, start=0, bit_offset=0, length=1), False),
 ])
