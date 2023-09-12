@@ -1,4 +1,3 @@
-import errno
 import socket
 from typing import Sequence
 
@@ -168,6 +167,9 @@ class Client:
             >>> values = [False, 500, 40.5]
             >>> client.write(items, values)  # writes these values to the PLC at specified addresses
         """
+
+        if len(items) != len(values):
+            raise ValueError("The number of items should be equal to the number of values.")
 
         items_list: list[Item] = [
             map_address_to_item(address=item) if isinstance(item, str) else item
