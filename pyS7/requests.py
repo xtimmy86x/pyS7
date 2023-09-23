@@ -10,6 +10,9 @@ from .constants import (
     READ_REQ_HEADER_SIZE,
     READ_REQ_PARAM_SIZE_ITEM,
     READ_REQ_PARAM_SIZE_NO_ITEMS,
+    READ_RES_HEADER_SIZE,
+    READ_RES_PARAM_SIZE_ITEM,
+    READ_RES_PARAM_SIZE_NO_ITEMS,
     TPKT_SIZE,
     WRITE_REQ_HEADER_SIZE,
     WRITE_REQ_PARAM_SIZE_ITEM,
@@ -23,6 +26,7 @@ from .constants import (
 )
 from .item import Item
 
+ItemsMap = dict[Item, list[tuple[int, Item]]]
 Value = bool | int | float | str | tuple[bool | int | float, ...]
 
 
@@ -108,166 +112,6 @@ class PDUNegotiationRequest(Request):
         packet[23:25] = max_pdu.to_bytes(2, byteorder="big")
 
         return packet
-
-
-ItemsMap = dict[Item, list[tuple[int, Item]]]
-
-
-def group_items(items: list[Item], pdu_size: int) -> ItemsMap:
-    sorted_items = sorted(
-        enumerate(items),
-        key=lambda elem: (elem[1].memory_area.value, elem[1].db_number, elem[1].start),
-    )
-
-    groups = {}
-
-    for i, (idx, item) in enumerate(sorted_items):
-        if i == 0:
-            groups[item] = [(idx, item)]
-            previous_item = item
-        else:
-            if (
-                previous_item.memory_area == item.memory_area
-                and previous_item.db_number == item.db_number
-                and item.start - (previous_item.start + previous_item.size())
-                < READ_REQ_PARAM_SIZE_ITEM
-                and item.size()
-                + READ_REQ_HEADER_SIZE
-                + READ_REQ_PARAM_SIZE_NO_ITEMS
-                + READ_REQ_PARAM_SIZE_ITEM
-                < pdu_size
-            ):
-                new_start = previous_item.start
-                new_length = (
-                    max(
-                        previous_item.start + previous_item.size(),
-                        item.start + item.size(),
-                    )
-                    - previous_item.start
-                )
-
-                new_item = Item(
-                    memory_area=previous_item.memory_area,
-                    db_number=previous_item.db_number,
-                    data_type=DataType.BYTE,
-                    start=new_start,
-                    bit_offset=0,
-                    length=new_length,
-                )
-
-                tracked_items = groups.pop(previous_item)
-                # Update items_map to point to new item
-                groups[new_item] = tracked_items + [(idx, item)]
-                previous_item = new_item
-
-            else:
-                groups[item] = [(idx, item)]
-                previous_item = item
-
-    return groups
-
-
-def ungroup(items_map: ItemsMap) -> list[Item]: # pragma: no cover
-    original_items = []
-
-    for original_items in items_map.values():
-        original_items.extend(original_items)
-
-    original_items.sort(key=lambda elem: elem[0])
-    return [item for (_, item) in original_items]
-
-
-def prepare_requests(items: list[Item], max_pdu: int) -> list[list[Item]]:
-    requests: list[list[Item]] = [[]]
-
-    READ_REQ_OVERHEAD = (
-        TPKT_SIZE + COTP_SIZE + READ_REQ_HEADER_SIZE + READ_REQ_PARAM_SIZE_NO_ITEMS
-    )  # 3 + 4 + 10 + 2
-    READ_RES_OVERHEAD = 21  # it must be replaced with constant 4 + 3 + 12 + 2
-
-    request_size = READ_REQ_OVERHEAD
-    response_size = READ_RES_OVERHEAD
-
-    for item in items:
-        if (
-            READ_REQ_OVERHEAD + READ_REQ_PARAM_SIZE_ITEM + item.size() >= max_pdu
-            or READ_RES_OVERHEAD + item.size() + 5 > max_pdu
-        ):
-            raise AddressError(
-                f"{item} too big -> it cannot fit the size of the negotiated PDU ({max_pdu})"
-            )
-
-        elif (
-            request_size + READ_REQ_PARAM_SIZE_ITEM < max_pdu
-            and response_size + item.size() + 5 < max_pdu
-            and len(requests[-1]) < MAX_READ_ITEMS
-        ):
-            requests[-1].append(item)
-
-            request_size += READ_REQ_PARAM_SIZE_ITEM
-            response_size += item.size() + 5
-
-        else:
-            requests.append([item])
-            request_size = READ_REQ_OVERHEAD + READ_REQ_PARAM_SIZE_ITEM
-            response_size = READ_RES_OVERHEAD + item.size() + 5
-
-    return requests
-
-
-def prepare_write_requests_and_values(
-    items: Sequence[Item], values: Sequence[Value], max_pdu: int
-) -> tuple[list[list[Item]], list[list[Value]]]:
-    requests: list[list[Item]] = [[]]
-    requests_values: list[list[Value]] = [[]]
-
-    WRITE_REQ_OVERHEAD = (
-        TPKT_SIZE + COTP_SIZE + WRITE_REQ_HEADER_SIZE + WRITE_REQ_PARAM_SIZE_NO_ITEMS
-    )  # 3 + 4 + 10 + 2
-    WRITE_RES_OVERHEAD = (
-        TPKT_SIZE + COTP_SIZE + WRITE_RES_HEADER_SIZE + WRITE_RES_PARAM_SIZE
-    )  # 3 + 4 + 12 + 2
-
-    request_size = WRITE_REQ_OVERHEAD
-    response_size = WRITE_RES_OVERHEAD
-
-    for i, item in enumerate(items):
-        if (
-            WRITE_REQ_OVERHEAD + WRITE_REQ_PARAM_SIZE_ITEM + item.size() >= max_pdu
-            or WRITE_RES_OVERHEAD + item.size() + 1 >= max_pdu
-        ):
-            raise AddressError(
-                f"{item} too big -> it cannot fit the size of the negotiated PDU ({max_pdu})"
-            )
-
-        elif (
-            request_size + WRITE_REQ_PARAM_SIZE_ITEM + 4 + item.size() + item.length % 2
-            < max_pdu
-            and response_size + 1 < max_pdu
-            and len(requests[-1]) < MAX_WRITE_ITEMS
-        ):
-            requests[-1].append(item)
-            requests_values[-1].append(values[i])
-
-            request_size += (
-                WRITE_REQ_PARAM_SIZE_ITEM + 4 + item.size() + item.length % 2
-            )
-            response_size += 1
-
-        else:
-            requests.append([item])
-            requests_values.append([values[i]])
-
-            request_size = (
-                WRITE_REQ_OVERHEAD
-                + WRITE_REQ_PARAM_SIZE_ITEM
-                + 4
-                + item.size()
-                + item.length % 2
-            )
-            response_size = WRITE_RES_OVERHEAD + 1
-
-    return requests, requests_values
 
 
 class ReadRequest(Request):
@@ -504,3 +348,162 @@ class WriteRequest(Request):
         packet[2:4] = len(packet).to_bytes(2, byteorder="big")
 
         return packet
+
+
+def group_items(items: list[Item], pdu_size: int) -> ItemsMap:
+    sorted_items = sorted(
+        enumerate(items),
+        key=lambda elem: (elem[1].memory_area.value, elem[1].db_number, elem[1].start),
+    )
+
+    groups = {}
+
+    for i, (idx, item) in enumerate(sorted_items):
+        if i == 0:
+            groups[item] = [(idx, item)]
+            previous_item = item
+        else:
+            if (
+                previous_item.memory_area == item.memory_area
+                and previous_item.db_number == item.db_number
+                and item.start - (previous_item.start + previous_item.size())
+                < READ_REQ_PARAM_SIZE_ITEM
+                and item.size()
+                + READ_REQ_HEADER_SIZE
+                + READ_REQ_PARAM_SIZE_NO_ITEMS
+                + READ_REQ_PARAM_SIZE_ITEM
+                < pdu_size
+            ):
+                new_start = previous_item.start
+                new_length = (
+                    max(
+                        previous_item.start + previous_item.size(),
+                        item.start + item.size(),
+                    )
+                    - previous_item.start
+                )
+
+                new_item = Item(
+                    memory_area=previous_item.memory_area,
+                    db_number=previous_item.db_number,
+                    data_type=DataType.BYTE,
+                    start=new_start,
+                    bit_offset=0,
+                    length=new_length,
+                )
+
+                tracked_items = groups.pop(previous_item)
+                # Update items_map to point to new item
+                groups[new_item] = tracked_items + [(idx, item)]
+                previous_item = new_item
+
+            else:
+                groups[item] = [(idx, item)]
+                previous_item = item
+
+    return groups
+
+
+def ungroup(items_map: ItemsMap) -> list[Item]:  # pragma: no cover
+    original_items = []
+
+    for original_items in items_map.values():
+        original_items.extend(original_items)
+
+    original_items.sort(key=lambda elem: elem[0])
+    return [item for (_, item) in original_items]
+
+
+def prepare_requests(items: list[Item], max_pdu: int) -> list[list[Item]]:
+    requests: list[list[Item]] = [[]]
+
+    READ_REQ_OVERHEAD = (
+        TPKT_SIZE + COTP_SIZE + READ_REQ_HEADER_SIZE + READ_REQ_PARAM_SIZE_NO_ITEMS
+    )  # 3 + 4 + 10 + 2
+    READ_RES_OVERHEAD = (
+        TPKT_SIZE + COTP_SIZE + READ_RES_HEADER_SIZE + READ_RES_PARAM_SIZE_NO_ITEMS
+    )  # 4 + 3 + 12 + 2
+
+    request_size = READ_REQ_OVERHEAD
+    response_size = READ_RES_OVERHEAD
+
+    for item in items:
+        if (
+            READ_REQ_OVERHEAD + READ_REQ_PARAM_SIZE_ITEM + item.size() >= max_pdu
+            or READ_RES_OVERHEAD + READ_RES_PARAM_SIZE_ITEM + item.size() > max_pdu
+        ):
+            raise AddressError(
+                f"{item} too big -> it cannot fit the size of the negotiated PDU ({max_pdu})"
+            )
+
+        elif (
+            request_size + READ_REQ_PARAM_SIZE_ITEM < max_pdu
+            and response_size + READ_RES_PARAM_SIZE_ITEM + item.size() < max_pdu
+            and len(requests[-1]) < MAX_READ_ITEMS
+        ):
+            requests[-1].append(item)
+
+            request_size += READ_REQ_PARAM_SIZE_ITEM
+            response_size += READ_RES_PARAM_SIZE_ITEM + item.size()
+
+        else:
+            requests.append([item])
+            request_size = READ_REQ_OVERHEAD + READ_REQ_PARAM_SIZE_ITEM
+            response_size = READ_RES_OVERHEAD + READ_RES_PARAM_SIZE_ITEM + item.size()
+
+    return requests
+
+
+def prepare_write_requests_and_values(
+    items: Sequence[Item], values: Sequence[Value], max_pdu: int
+) -> tuple[list[list[Item]], list[list[Value]]]:
+    requests: list[list[Item]] = [[]]
+    requests_values: list[list[Value]] = [[]]
+
+    WRITE_REQ_OVERHEAD = (
+        TPKT_SIZE + COTP_SIZE + WRITE_REQ_HEADER_SIZE + WRITE_REQ_PARAM_SIZE_NO_ITEMS
+    )  # 3 + 4 + 10 + 2
+    WRITE_RES_OVERHEAD = (
+        TPKT_SIZE + COTP_SIZE + WRITE_RES_HEADER_SIZE + WRITE_RES_PARAM_SIZE
+    )  # 3 + 4 + 12 + 2
+
+    request_size = WRITE_REQ_OVERHEAD
+    response_size = WRITE_RES_OVERHEAD
+
+    for i, item in enumerate(items):
+        if (
+            WRITE_REQ_OVERHEAD + WRITE_REQ_PARAM_SIZE_ITEM + item.size() >= max_pdu
+            or WRITE_RES_OVERHEAD + item.size() + 1 >= max_pdu
+        ):
+            raise AddressError(
+                f"{item} too big -> it cannot fit the size of the negotiated PDU ({max_pdu})"
+            )
+
+        elif (
+            request_size + WRITE_REQ_PARAM_SIZE_ITEM + 4 + item.size() + item.length % 2
+            < max_pdu
+            and response_size + 1 < max_pdu
+            and len(requests[-1]) < MAX_WRITE_ITEMS
+        ):
+            requests[-1].append(item)
+            requests_values[-1].append(values[i])
+
+            request_size += (
+                WRITE_REQ_PARAM_SIZE_ITEM + 4 + item.size() + item.length % 2
+            )
+            response_size += 1
+
+        else:
+            requests.append([item])
+            requests_values.append([values[i]])
+
+            request_size = (
+                WRITE_REQ_OVERHEAD
+                + WRITE_REQ_PARAM_SIZE_ITEM
+                + 4
+                + item.size()
+                + item.length % 2
+            )
+            response_size = WRITE_RES_OVERHEAD + 1
+
+    return requests, requests_values
