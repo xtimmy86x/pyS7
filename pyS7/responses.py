@@ -49,9 +49,12 @@ def parse_optimized_read_response(
                 items: list[tuple[int, Item]] = items_map[i][packed_item]
                 for idx, item in items:
                     if item.data_type == DataType.BIT:
-                        data: Any = bool(
-                            (bytes_response[offset] >> 7 - item.bit_offset) & 0b1
-                        )
+                        if packed_item.data_type != DataType.BIT:
+                            data: Any = bool(
+                                (bytes_response[offset] >> 7 - item.bit_offset) & 0b1
+                            )
+                        else:
+                            data = bool(bytes_response)
 
                     elif item.data_type == DataType.BYTE:
                         data = struct.unpack_from(
