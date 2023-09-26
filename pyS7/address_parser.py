@@ -193,12 +193,15 @@ def map_address_to_item(address: str) -> Item:
         )
 
     elif address.startswith("I") or address.startswith("E"):
-        match = re.match(r"[I,E]([B,C,I,W,DI,D,R])?(\d+)(?:\.(\d+))?", address)
+        match = re.match(r"^[I,E]([B,C,I,W,DI,D,R])?(\d+)(?:\.(\d+))?", address)
 
         if match is None:
             raise AddressError(f"{address}")
 
         str_data_type, start, bit_offset = match.groups()
+        
+        if str_data_type is None and bit_offset is None:
+            raise AddressError(f"{address}")
 
         memory_area = MemoryArea.INPUT
         db_number = 0
@@ -232,6 +235,9 @@ def map_address_to_item(address: str) -> Item:
 
         str_data_type, start, bit_offset = match.groups()
 
+        if str_data_type is None and bit_offset is None:
+            raise AddressError(f"{address}")
+
         memory_area = MemoryArea.OUTPUT
         db_number = 0
         data_type = (
@@ -261,8 +267,11 @@ def map_address_to_item(address: str) -> Item:
 
         if match is None:
             raise AddressError(f"{address}")
-
+        
         str_data_type, start, bit_offset = match.groups()
+        
+        if str_data_type is None and bit_offset is None:
+            raise AddressError(f"{address}")
 
         memory_area = MemoryArea.MERKER
         db_number = 0
