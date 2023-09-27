@@ -3,6 +3,7 @@ from typing import Sequence
 
 from .address_parser import map_address_to_item
 from .constants import MAX_JOB_CALLED, MAX_JOB_CALLING, MAX_PDU
+from .errors import ConnectionClosed
 from .item import Item
 from .requests import (
     ConnectionRequest,
@@ -194,5 +195,7 @@ class Client:
         self.socket.send(request.serialize())
 
         bytes_response = self.socket.recv(self.pdu_size)
+        if len(bytes_response) == 0:
+            raise ConnectionClosed("The connection has been closed by the peer")
 
         return bytes_response
