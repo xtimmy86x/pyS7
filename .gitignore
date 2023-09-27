@@ -1,16 +1,16 @@
-__pycache__/*
-.mypy_cache/*
-.pytest_cache/*
-.ruff_cache/*
+__pycache__/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
 .vscode/
 
-benchmarks/*
-wip/*
-pca_files/*
-venv/*
+benchmarks/
+wip/
+pca_files/
+venv/
 
-pyS7/__pycache__/*
-tests/__pycache__/*
+pyS7/__pycache__/
+tests/__pycache__/
 
 .coverage
 ideas.md
