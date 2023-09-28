@@ -4,21 +4,17 @@ from typing import Protocol, Sequence, runtime_checkable
 from pyS7.errors import AddressError
 
 from .constants import (
-    COTP_SIZE,
     MAX_READ_ITEMS,
     MAX_WRITE_ITEMS,
     READ_REQ_HEADER_SIZE,
+    READ_REQ_OVERHEAD,
     READ_REQ_PARAM_SIZE_ITEM,
     READ_REQ_PARAM_SIZE_NO_ITEMS,
-    READ_RES_HEADER_SIZE,
+    READ_RES_OVERHEAD,
     READ_RES_PARAM_SIZE_ITEM,
-    READ_RES_PARAM_SIZE_NO_ITEMS,
-    TPKT_SIZE,
-    WRITE_REQ_HEADER_SIZE,
+    WRITE_REQ_OVERHEAD,
     WRITE_REQ_PARAM_SIZE_ITEM,
-    WRITE_REQ_PARAM_SIZE_NO_ITEMS,
-    WRITE_RES_HEADER_SIZE,
-    WRITE_RES_PARAM_SIZE,
+    WRITE_RES_OVERHEAD,
     DataType,
     DataTypeData,
     DataTypeSize,
@@ -417,13 +413,6 @@ def ungroup(items_map: ItemsMap) -> list[Item]:  # pragma: no cover
 def prepare_requests(items: list[Item], max_pdu: int) -> list[list[Item]]:
     requests: list[list[Item]] = [[]]
 
-    READ_REQ_OVERHEAD = (
-        TPKT_SIZE + COTP_SIZE + READ_REQ_HEADER_SIZE + READ_REQ_PARAM_SIZE_NO_ITEMS
-    )  # 3 + 4 + 10 + 2
-    READ_RES_OVERHEAD = (
-        TPKT_SIZE + COTP_SIZE + READ_RES_HEADER_SIZE + READ_RES_PARAM_SIZE_NO_ITEMS
-    )  # 4 + 3 + 12 + 2
-
     request_size = READ_REQ_OVERHEAD
     response_size = READ_RES_OVERHEAD
 
@@ -459,13 +448,6 @@ def prepare_write_requests_and_values(
 ) -> tuple[list[list[Item]], list[list[Value]]]:
     requests: list[list[Item]] = [[]]
     requests_values: list[list[Value]] = [[]]
-
-    WRITE_REQ_OVERHEAD = (
-        TPKT_SIZE + COTP_SIZE + WRITE_REQ_HEADER_SIZE + WRITE_REQ_PARAM_SIZE_NO_ITEMS
-    )  # 3 + 4 + 10 + 2
-    WRITE_RES_OVERHEAD = (
-        TPKT_SIZE + COTP_SIZE + WRITE_RES_HEADER_SIZE + WRITE_RES_PARAM_SIZE
-    )  # 3 + 4 + 12 + 2
 
     request_size = WRITE_REQ_OVERHEAD
     response_size = WRITE_RES_OVERHEAD
