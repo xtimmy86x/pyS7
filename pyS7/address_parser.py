@@ -1,4 +1,5 @@
 import re
+from typing import Dict, Optional
 
 from .constants import DataType, MemoryArea
 from .errors import AddressError
@@ -44,7 +45,7 @@ from .item import Item
 | `MR84`                        | `MR84`                | Number        | Floating point 32-bit number at byte 84 of memory area |
 """
 
-DataTypeMap: dict[str, DataType] = {
+DataTypeMap: Dict[str, DataType] = {
     "X": DataType.BIT,
     "B": DataType.BYTE,
     "BYTE": DataType.BYTE,
@@ -65,7 +66,7 @@ DataTypeMap: dict[str, DataType] = {
 def map_address_to_item(address: str) -> Item:
     address = address.upper()
 
-    match: re.Match[str] | None
+    match: Optional[re.Match[str]]
 
     if address.startswith("DB"):
         match = re.match(r"DB(\d+),([a-zA-Z]+)(\d+)(?:\.(\d+))?", address)
@@ -199,7 +200,7 @@ def map_address_to_item(address: str) -> Item:
             raise AddressError(f"{address}")
 
         str_data_type, start, bit_offset = match.groups()
-        
+
         if str_data_type is None and bit_offset is None:
             raise AddressError(f"{address}")
 
@@ -267,9 +268,9 @@ def map_address_to_item(address: str) -> Item:
 
         if match is None:
             raise AddressError(f"{address}")
-        
+
         str_data_type, start, bit_offset = match.groups()
-        
+
         if str_data_type is None and bit_offset is None:
             raise AddressError(f"{address}")
 

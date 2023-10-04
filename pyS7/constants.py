@@ -1,4 +1,5 @@
 from enum import Enum
+from typing import Dict
 
 MAX_PDU = 960
 MAX_JOB_CALLING = 8
@@ -71,7 +72,7 @@ class DataType(Enum):
     REAL = 8  # FLOAT 32 bit
 
 
-DataTypeSize: dict[DataType, int] = {
+DataTypeSize: Dict[DataType, int] = {
     DataType.BIT: 1,
     DataType.BYTE: 1,
     DataType.CHAR: 1,
@@ -140,7 +141,7 @@ class ErrorCodes(Enum):
 
 
 # Probably useless
-ReturnCodeDict: dict[int, str] = {
+ReturnCodeDict: Dict[int, str] = {
     0x00: "Reserved",
     0x01: "Hardware fault",
     0x03: "Accessing the object not allowed",
@@ -151,7 +152,7 @@ ReturnCodeDict: dict[int, str] = {
     0xFF: "Success",
 }
 
-ErrorClassDict: dict[int, str] = {
+ErrorClassDict: Dict[int, str] = {
     0x00: "No error",
     0x81: "Application relationship error",
     0x82: "Object definition error",
@@ -162,7 +163,7 @@ ErrorClassDict: dict[int, str] = {
 }
 
 
-ErrorCodesDict: dict[int, str] = {
+ErrorCodesDict: Dict[int, str] = {
     0x0000: "No error",
     0x0110: "Invalid block type number",
     0x0112: "Invalid parameter",

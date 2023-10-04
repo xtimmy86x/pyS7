@@ -1,3 +1,5 @@
+from typing import Any
+
 import pytest
 
 from pyS7.client import Client
@@ -25,13 +27,13 @@ def test_client_init(client: Client) -> None:
 
 
 def test_client_connect(client: Client, monkeypatch: pytest.MonkeyPatch) -> None:
-    def mock_connect(self, *args) -> None:
+    def mock_connect(self: Any, *args: Any) -> None:
         return None
 
-    def mock_send(self, bytes_request: bytes) -> None:
+    def mock_send(self: Any, bytes_request: bytes) -> None:
         return None
 
-    def mock_recv(self, buf_size: int) -> bytes:
+    def mock_recv(self: Any, buf_size: int) -> bytes:
         return b"\x03\x00\x00\x1b\x02\xf0\x802\x03\x00\x00\x00\x00\x00\x08\x00\x00\x00\x00\xf0\x00\x00\x08\x00\x08\x03\xc0"
 
     monkeypatch.setattr("socket.socket.connect", mock_connect)
@@ -49,10 +51,10 @@ def test_client_disconnect(client: Client, monkeypatch: pytest.MonkeyPatch) -> N
 
 
 def test_read(client: Client, monkeypatch: pytest.MonkeyPatch) -> None:
-    def mock_send(self, bytes_request: bytes) -> None:
+    def mock_send(self: Any, bytes_request: bytes) -> None:
         return None
 
-    def mock_recv(self, buf_size: int) -> bytes:
+    def mock_recv(self: Any, buf_size: int) -> bytes:
         return b"\x03\x00\x00'\x02\xf0\x802\x03\x00\x00\x00\x00\x00\x02\x00\x12\x00\x00\x04\x03\xff\x03\x00\x01\x01\x00\xff\x03\x00\x01\x01\x00\xff\x05\x00\x10\x00\x00"
 
     monkeypatch.setattr("socket.socket.send", mock_send)
@@ -64,10 +66,10 @@ def test_read(client: Client, monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_read_optimized(client: Client, monkeypatch: pytest.MonkeyPatch) -> None:
-    def mock_send(self, bytes_request: bytes) -> None:
+    def mock_send(self: Any, bytes_request: bytes) -> None:
         return None
 
-    def mock_recv(self, buf_size: int) -> bytes:
+    def mock_recv(self: Any, buf_size: int) -> bytes:
         return b"\x03\x00\x00!\x02\xf0\x802\x03\x00\x00\x00\x00\x00\x02\x00\x0c\x00\x00\x04\x02\xff\x03\x00\x01\x01\x00\xff\x05\x00\x10\x00\x00"
 
     monkeypatch.setattr("socket.socket.send", mock_send)
@@ -79,10 +81,10 @@ def test_read_optimized(client: Client, monkeypatch: pytest.MonkeyPatch) -> None
 
 
 def test_write(client: Client, monkeypatch: pytest.MonkeyPatch) -> None:
-    def mock_send(self, bytes_request: bytes) -> None:
+    def mock_send(self: Any, bytes_request: bytes) -> None:
         return None
 
-    def mock_recv(self, buf_size: int) -> bytes:
+    def mock_recv(self: Any, buf_size: int) -> bytes:
         return b"\x03\x00\x00\x18\x02\xf0\x802\x03\x00\x00\x00\x00\x00\x02\x00\x03\x00\x00\x05\x03\xff\xff\xff"
 
     monkeypatch.setattr("socket.socket.send", mock_send)

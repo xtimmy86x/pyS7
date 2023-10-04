@@ -1,5 +1,5 @@
 import socket
-from typing import Sequence
+from typing import List, Sequence, Union
 
 from .address_parser import map_address_to_item
 from .constants import MAX_JOB_CALLED, MAX_JOB_CALLING, MAX_PDU
@@ -10,6 +10,7 @@ from .requests import (
     PDUNegotiationRequest,
     ReadRequest,
     Request,
+    Value,
     WriteRequest,
     group_items,
     prepare_requests,
@@ -58,15 +59,13 @@ class Client:
         # Establish TCP connection
         self.socket.connect((self.address, self.port))
 
-        connection_bytes_response: bytes = self.__send(
-            ConnectionRequest(rack=self.rack, slot=self.slot)
-        )
+        connection_request = ConnectionRequest(rack=self.rack, slot=self.slot)
+        connection_bytes_response: bytes = self.__send(connection_request)
         ConnectionResponse(response=connection_bytes_response)
 
         # Communication Setup
-        pdu_negotation_bytes_response: bytes = self.__send(
-            PDUNegotiationRequest(max_pdu=self.pdu_size)
-        )
+        pdu_negotation_request = PDUNegotiationRequest(max_pdu=self.pdu_size)
+        pdu_negotation_bytes_response: bytes = self.__send(pdu_negotation_request)
         pdu_negotiation_response = PDUNegotiationResponse(
             response=pdu_negotation_bytes_response
         )
@@ -84,8 +83,8 @@ class Client:
         self.socket.close()
 
     def read(
-        self, items: Sequence[str | Item], optimize: bool = True
-    ) -> list[bool | int | float | str | tuple[bool | int | float, ...]]:
+        self, items: Sequence[Union[str, Item]], optimize: bool = True
+    ) -> List[Value]:
         """Reads data from an S7 PLC using the specified addresses.
 
         Args:
@@ -108,18 +107,18 @@ class Client:
             [True, 300, 20.5] # these values corresponds to the PLC data at specified addresses
         """
 
-        list_items: list[Item] = [
+        list_items: List[Item] = [
             map_address_to_item(address=item) if isinstance(item, str) else item
             for item in items
         ]
 
-        data: list[bool | int | float | str | tuple[bool | int | float, ...]] = []
+        data: List[Value] = []
 
         if optimize:
             items_map = group_items(items=list_items, pdu_size=self.pdu_size)
             grouped_items = list(items_map.keys())
 
-            requests: list[list[Item]] = prepare_requests(
+            requests: List[List[Item]] = prepare_requests(
                 items=grouped_items, max_pdu=self.pdu_size
             )
 
@@ -149,9 +148,7 @@ class Client:
 
         return data
 
-    def write(
-        self, items: Sequence[str | Item], values: Sequence[bool | int | float | str]
-    ) -> None:
+    def write(self, items: Sequence[Union[str, Item]], values: Sequence[Value]) -> None:
         """Writes data to an S7 PLC at the specified addresses.
 
         Args:
@@ -170,9 +167,11 @@ class Client:
         """
 
         if len(items) != len(values):
-            raise ValueError("The number of items should be equal to the number of values.")
+            raise ValueError(
+                "The number of items should be equal to the number of values."
+            )
 
-        items_list: list[Item] = [
+        items_list: List[Item] = [
             map_address_to_item(address=item) if isinstance(item, str) else item
             for item in items
         ]

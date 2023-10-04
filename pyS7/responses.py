@@ -1,10 +1,10 @@
 import struct
-from typing import Any, Protocol, runtime_checkable
+from typing import Any, List, Protocol, Tuple, Union, runtime_checkable
 
-from .constants import DataType, ReturnCode
+from .constants import READ_RES_OVERHEAD, WRITE_RES_OVERHEAD, DataType, ReturnCode
 from .errors import ReadResponseError, WriteResponseError
 from .item import Item
-from .requests import ItemsMap
+from .requests import ItemsMap, Value
 
 
 @runtime_checkable
@@ -25,7 +25,7 @@ class PDUNegotiationResponse:
     def __init__(self, response: bytes) -> None:
         self.response = response
 
-    def parse(self) -> tuple[int, int, int]:
+    def parse(self) -> Tuple[int, int, int]:
         max_jobs_calling, max_jobs_called, pdu_size = struct.unpack_from(
             ">HHH", self.response, offset=21
         )
@@ -33,17 +33,17 @@ class PDUNegotiationResponse:
 
 
 class ReadResponse:
-    def __init__(self, response: bytes, items: list[Item]) -> None:
+    def __init__(self, response: bytes, items: List[Item]) -> None:
         self.response = response
         self.items = items
 
-    def parse(self) -> list[bool | int | float | str | tuple[bool | int | float, ...]]:
+    def parse(self) -> List[Value]:
         return parse_read_response(bytes_response=self.response, items=self.items)
 
 
 class ReadOptimizedResponse:
     def __init__(self, response: bytes, item_map: ItemsMap) -> None:
-        self.responses: list[bytes] = [response]
+        self.responses: List[bytes] = [response]
         self.items_map = [item_map]
 
         self.n_messages = 1
@@ -56,26 +56,24 @@ class ReadOptimizedResponse:
 
         return self
 
-    def parse(self) -> list[bool | int | float | str | tuple[bool | int | float, ...]]:
+    def parse(self) -> List[Value]:
         return parse_optimized_read_response(
             bytes_responses=self.responses, items_map=self.items_map
         )
 
 
 class WriteResponse:
-    def __init__(self, response: bytes, items: list[Item]) -> None:
+    def __init__(self, response: bytes, items: List[Item]) -> None:
         self.response: bytes = response
-        self.items: list[Item] = items
+        self.items: List[Item] = items
 
     def parse(self) -> None:
         parse_write_response(bytes_response=self.response, items=self.items)
 
 
-def parse_read_response(
-    bytes_response: bytes, items: list[Item]
-) -> list[bool | int | float | str | tuple[bool | int | float, ...]]:
-    parsed_data: list[tuple[bool | int | float, ...]] = []
-    offset = 21  # Response offset where data starts
+def parse_read_response(bytes_response: bytes, items: List[Item]) -> List[Value]:
+    parsed_data: List[Tuple[Union[bool, int, float], ...]] = []
+    offset = READ_RES_OVERHEAD  # Response offset where data starts
 
     for i, item in enumerate(items):
         return_code = struct.unpack_from(">B", bytes_response, offset)[0]
@@ -141,7 +139,7 @@ def parse_read_response(
         else:
             raise ReadResponseError(f"{item}: {ReturnCode(return_code).name}")
 
-    processed_data: list[bool | int | float | str | tuple[bool | int | float, ...]] = [
+    processed_data: List[Value] = [
         data[0] if isinstance(data, tuple) and len(data) == 1 else data
         for data in parsed_data
     ]
@@ -150,12 +148,12 @@ def parse_read_response(
 
 
 def parse_optimized_read_response(
-    bytes_responses: list[bytes], items_map: list[ItemsMap]
-) -> list[bool | int | float | str | tuple[bool | int | float, ...]]:
-    parsed_data: list[tuple[int, str | tuple[bool | int | float, ...]]] = []
+    bytes_responses: List[bytes], items_map: List[ItemsMap]
+) -> List[Value]:
+    parsed_data: List[Tuple[int, Union[str, Tuple[Union[bool, int, float], ...]]]] = []
 
     for i, bytes_response in enumerate(bytes_responses):
-        offset: int = 21  # Response offset where data starts
+        offset: int = READ_RES_OVERHEAD  # Response offset where data starts
 
         for packed_item in items_map[i].keys():
             return_code = struct.unpack_from(">B", bytes_response, offset)[0]
@@ -163,7 +161,7 @@ def parse_optimized_read_response(
             if ReturnCode(return_code) == ReturnCode.SUCCESS:
                 offset += 4
 
-                items: list[tuple[int, Item]] = items_map[i][packed_item]
+                items: List[Tuple[int, Item]] = items_map[i][packed_item]
                 for idx, item in items:
                     if item.data_type == DataType.BIT:
                         if packed_item.data_type != DataType.BIT:
@@ -239,7 +237,7 @@ def parse_optimized_read_response(
 
     parsed_data.sort(key=lambda elem: elem[0])
 
-    processed_data: list[bool | int | float | str | tuple[bool | int | float, ...]] = [
+    processed_data: List[Value] = [
         data[0] if isinstance(data, tuple) and len(data) == 1 else data
         for (_, data) in parsed_data
     ]
@@ -247,8 +245,8 @@ def parse_optimized_read_response(
     return processed_data
 
 
-def parse_write_response(bytes_response: bytes, items: list[Item]) -> None:
-    offset = 21  # Response offset where data starts
+def parse_write_response(bytes_response: bytes, items: List[Item]) -> None:
+    offset = WRITE_RES_OVERHEAD  # Response offset where data starts
 
     for item in items:
         return_code = struct.unpack_from(">B", bytes_response, offset)[0]

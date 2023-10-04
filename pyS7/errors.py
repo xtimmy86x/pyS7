@@ -5,14 +5,17 @@ class AddressError(Exception):
 
 class ReadResponseError(Exception):
     """Raised when it is impossible to correctly parse a 'read' response from the peer."""
+
     ...
 
 
 class WriteResponseError(Exception):
     """Raised when it is impossible to correctly parse a 'write' response from the peer."""
+
     ...
 
 
 class ConnectionClosed(Exception):
     """Raised when the connection is closed by the peer."""
+
     ...

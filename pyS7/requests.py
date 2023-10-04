@@ -1,5 +1,5 @@
 import struct
-from typing import Protocol, Sequence, runtime_checkable
+from typing import Dict, List, Protocol, Sequence, Tuple, Union, runtime_checkable
 
 from pyS7.errors import AddressError
 
@@ -22,8 +22,8 @@ from .constants import (
 )
 from .item import Item
 
-ItemsMap = dict[Item, list[tuple[int, Item]]]
-Value = bool | int | float | str | tuple[bool | int | float, ...]
+ItemsMap = Dict[Item, List[Tuple[int, Item]]]
+Value = Union[bool, int, float, str, Tuple[Union[bool, int, float], ...]]
 
 
 @runtime_checkable
@@ -346,7 +346,7 @@ class WriteRequest(Request):
         return packet
 
 
-def group_items(items: list[Item], pdu_size: int) -> ItemsMap:
+def group_items(items: List[Item], pdu_size: int) -> ItemsMap:
     sorted_items = sorted(
         enumerate(items),
         key=lambda elem: (elem[1].memory_area.value, elem[1].db_number, elem[1].start),
@@ -400,7 +400,7 @@ def group_items(items: list[Item], pdu_size: int) -> ItemsMap:
     return groups
 
 
-def ungroup(items_map: ItemsMap) -> list[Item]:  # pragma: no cover
+def ungroup(items_map: ItemsMap) -> List[Item]:  # pragma: no cover
     original_items = []
 
     for original_items in items_map.values():
@@ -410,8 +410,8 @@ def ungroup(items_map: ItemsMap) -> list[Item]:  # pragma: no cover
     return [item for (_, item) in original_items]
 
 
-def prepare_requests(items: list[Item], max_pdu: int) -> list[list[Item]]:
-    requests: list[list[Item]] = [[]]
+def prepare_requests(items: List[Item], max_pdu: int) -> List[List[Item]]:
+    requests: List[List[Item]] = [[]]
 
     request_size = READ_REQ_OVERHEAD
     response_size = READ_RES_OVERHEAD
@@ -445,9 +445,9 @@ def prepare_requests(items: list[Item], max_pdu: int) -> list[list[Item]]:
 
 def prepare_write_requests_and_values(
     items: Sequence[Item], values: Sequence[Value], max_pdu: int
-) -> tuple[list[list[Item]], list[list[Value]]]:
-    requests: list[list[Item]] = [[]]
-    requests_values: list[list[Value]] = [[]]
+) -> Tuple[List[List[Item]], List[List[Value]]]:
+    requests: List[List[Item]] = [[]]
+    requests_values: List[List[Value]] = [[]]
 
     request_size = WRITE_REQ_OVERHEAD
     response_size = WRITE_RES_OVERHEAD

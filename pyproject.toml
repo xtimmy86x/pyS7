@@ -4,10 +4,10 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pyS7"
-version = "0.1.5"
+version = "0.1.6"
 description = ""
 readme = "Readme.md"
-requires-python = ">=3.9"
+requires-python = ">=3.8"
 keywords = ["plc", "s7", "siemens"]
 license = {file = "LICENCE"}
 authors = [
