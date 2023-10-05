@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pyS7"
-version = "0.1.6"
+version = "0.1.7"
 description = ""
 readme = "Readme.md"
 requires-python = ">=3.8"
@@ -20,11 +20,20 @@ classifiers = [
     "Topic :: System :: Networking",
     "Intended Audience :: Developers",
     "Intended Audience :: Manufacturing",
-    "License :: OSI Approved :: MIT License"
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
 ]
 
 [tool.setuptools]
 packages = ["pyS7"]
+package_data = {
+    "pyS7": ["py.typed"]
+}
 
 [tool.pytest.ini_options]
 addopts = "--cov --cov-report=term-missing -vv"
