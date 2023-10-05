@@ -29,11 +29,18 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
 ]
 
+[project.optional-dependencies]
+# development dependency groups
+dev = [
+    'black>=23.7.0',
+    'mypy>=1.4.1',
+    'pytest>=7.4.0',
+    'pytest-cov>=4.1.0',
+    'ruff>=0.0.283'
+]
+
 [tool.setuptools]
 packages = ["pyS7"]
-package_data = {
-    "pyS7": ["py.typed"]
-}
 
 [tool.pytest.ini_options]
 addopts = "--cov --cov-report=term-missing -vv"
