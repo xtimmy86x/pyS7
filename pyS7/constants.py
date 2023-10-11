@@ -46,6 +46,12 @@ class MessageType(Enum):
     USERDATA = 7
 
 
+class ConnectionType(int, Enum):
+    PG = 1
+    OP = 2
+    S7Basic = 3
+
+
 class Function(Enum):
     COMM_SETUP = 240
     READ_VAR = 4

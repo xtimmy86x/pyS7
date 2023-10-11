@@ -122,5 +122,5 @@ def test_invalid_item_creation(
     length: int,
     exception: Union[TypeError, ValueError],
 ) -> None:
-    with pytest.raises(exception): # type: ignore
+    with pytest.raises(exception):  # type: ignore
         Item(memory_area, db_number, data_type, start, bit_offset, length)

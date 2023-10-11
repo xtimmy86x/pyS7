@@ -15,6 +15,7 @@ from .constants import (
     WRITE_REQ_OVERHEAD,
     WRITE_REQ_PARAM_SIZE_ITEM,
     WRITE_RES_OVERHEAD,
+    ConnectionType,
     DataType,
     DataTypeData,
     DataTypeSize,
@@ -35,19 +36,25 @@ class Request(Protocol):
 
 
 class ConnectionRequest(Request):
-    def __init__(self, rack: int, slot: int) -> None:
-        self.request = self.__prepare_packet(rack=rack, slot=slot)
+    def __init__(self, rack: int, slot: int, connection_type: ConnectionType) -> None:
+        self.request = self.__prepare_packet(
+            rack=rack, slot=slot, connection_type=connection_type
+        )
 
-    def __prepare_packet(self, rack: int, slot: int) -> bytearray:
+    def __prepare_packet(
+        self, rack: int, slot: int, connection_type: ConnectionType
+    ) -> bytearray:
         packet = bytearray()
 
         packet.extend(b"\x03")
         packet.extend(b"\x00")
         packet.extend(b"\x00")
         packet.extend(b"\x16")
+
         packet.extend(b"\x11")
         packet.extend(b"\xe0")
         packet.extend(b"\x00")
+
         packet.extend(b"\x00")
         packet.extend(b"\x00")
         packet.extend(b"\x02")
@@ -64,6 +71,9 @@ class ConnectionRequest(Request):
         packet.extend(b"\x01")
         packet.extend(b"\x02")
 
+        # Connection type
+        packet[20] = connection_type.value
+
         # Rack and Slot
         packet[21] = rack * 32 + slot
 
@@ -71,46 +81,47 @@ class ConnectionRequest(Request):
 
 
 class PDUNegotiationRequest(Request):
+    """Request for negotiating the PDU size with the S7 device."""
+
     def __init__(self, max_pdu: int) -> None:
         self.request = self.__prepare_packet(max_pdu=max_pdu)
 
     def __prepare_packet(self, max_pdu: int) -> bytearray:
         packet = bytearray()
 
+        # TPKT
         packet.extend(b"\x03")
         packet.extend(b"\x00")
-        packet.extend(b"\x00")
-        packet.extend(b"\x19")
+        packet.extend(b"\x00\x19")
 
+        # COTP (see RFC 2126)
         packet.extend(b"\x02")
         packet.extend(b"\xf0")
         packet.extend(b"\x80")
 
-        packet.extend(b"\x32")
+        # S7: HEADER
+        packet.extend(b"\x32")  # S7 Protocol Id (0x32)
         packet.extend(b"\x01")
-        packet.extend(b"\x00")
-        packet.extend(b"\x00")
-        packet.extend(b"\x00")
-        packet.extend(b"\x00")
-        packet.extend(b"\x00")
-        packet.extend(b"\x08")
-        packet.extend(b"\x00")
-        packet.extend(b"\x00")
+        packet.extend(b"\x00\x00")  # Redundancy Identification (Reserved)
+        packet.extend(b"\x00\x00")  # Protocol Data Unit Reference
+        packet.extend(b"\x00\x08")  # Parameter length
+        packet.extend(b"\x00\x00")  # Data length
+
+        # S7: PARAMETER
         packet.extend(b"\xf0")
         packet.extend(b"\x00")
         packet.extend(b"\x00")
         packet.extend(b"\x08")
         packet.extend(b"\x00")
         packet.extend(b"\x08")
-        packet.extend(b"\x03")
-        packet.extend(b"\xc0")
-
-        packet[23:25] = max_pdu.to_bytes(2, byteorder="big")
+        packet.extend(max_pdu.to_bytes(2, byteorder="big"))
 
         return packet
 
 
 class ReadRequest(Request):
+    """Request for reading data from an S7 device."""
+
     def __init__(self, items: Sequence[Item]) -> None:
         self.items = items
         self.request = self.__prepare_packet(items=items)
@@ -176,6 +187,8 @@ class ReadRequest(Request):
 
 
 class WriteRequest(Request):
+    """Request for writing data to an S7 device."""
+
     def __init__(self, items: Sequence[Item], values: Sequence[Value]) -> None:
         self.items = items
         self.values = values
@@ -347,6 +360,8 @@ class WriteRequest(Request):
 
 
 def group_items(items: List[Item], pdu_size: int) -> ItemsMap:
+    """Group the given items based on memory area, db number, and starting address."""
+
     sorted_items = sorted(
         enumerate(items),
         key=lambda elem: (elem[1].memory_area.value, elem[1].db_number, elem[1].start),

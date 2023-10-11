@@ -60,5 +60,5 @@ def test_map_address_to_item(test_input: str, expected: Item) -> None:
     ],
 )
 def test_invalid_address(test_input: str, exception: AddressError) -> None:
-    with pytest.raises(exception): # type: ignore
+    with pytest.raises(exception):  # type: ignore
         map_address_to_item(test_input)

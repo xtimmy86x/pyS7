@@ -12,6 +12,7 @@ from pyS7.constants import (
     WRITE_REQ_PARAM_SIZE_NO_ITEMS,
     WRITE_RES_HEADER_SIZE,
     WRITE_RES_PARAM_SIZE,
+    ConnectionType,
     DataType,
     DataTypeData,
     DataTypeSize,
@@ -34,7 +35,10 @@ from pyS7.requests import (
 def test_connection_request() -> None:
     rack = 0
     slot = 2
-    connection_request = ConnectionRequest(rack=rack, slot=slot)
+    connection_type = ConnectionType.S7Basic
+    connection_request = ConnectionRequest(
+        rack=rack, slot=slot, connection_type=connection_type
+    )
 
     expected_packet = bytearray(
         [
@@ -58,10 +62,11 @@ def test_connection_request() -> None:
             0x00,
             0xC2,
             0x02,
-            0x01,
+            connection_type.value,
+            rack * 32 + slot,
         ]
     )
-    expected_packet.append(rack * 32 + slot)
+
     assert connection_request.request == expected_packet
     assert connection_request.serialize() == bytes(expected_packet)
 

@@ -2,7 +2,7 @@ import socket
 from typing import List, Sequence, Union
 
 from .address_parser import map_address_to_item
-from .constants import MAX_JOB_CALLED, MAX_JOB_CALLING, MAX_PDU
+from .constants import MAX_JOB_CALLED, MAX_JOB_CALLING, MAX_PDU, ConnectionType
 from .errors import ConnectionClosed
 from .item import Item
 from .requests import (
@@ -34,16 +34,24 @@ class Client:
         address (str): The IP address of the PLC.
         rack (int): The rack number of the PLC.
         slot (int): The slot number of the PLC.
+        connection_type (ConnectionType): The type of PLC connection (S7Basic, PG, OP). Default is ConnectionType.S7Basic.
         port (int): The port number for the network connection. Defaults to 102.
         timeout (int): The timeout in seconds for the network connection. Defaults to 5.
     """
 
     def __init__(
-        self, address: str, rack: int, slot: int, port: int = 102, timeout: float = 5
+        self,
+        address: str,
+        rack: int,
+        slot: int,
+        connection_type: ConnectionType = ConnectionType.S7Basic,
+        port: int = 102,
+        timeout: float = 5,
     ) -> None:
         self.address = address
         self.rack = rack
         self.slot = slot
+        self.connection_type = connection_type
         self.port = port
 
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -59,7 +67,9 @@ class Client:
         # Establish TCP connection
         self.socket.connect((self.address, self.port))
 
-        connection_request = ConnectionRequest(rack=self.rack, slot=self.slot)
+        connection_request = ConnectionRequest(
+            connection_type=self.connection_type, rack=self.rack, slot=self.slot
+        )
         connection_bytes_response: bytes = self.__send(connection_request)
         ConnectionResponse(response=connection_bytes_response)
 
@@ -88,11 +98,11 @@ class Client:
         """Reads data from an S7 PLC using the specified addresses.
 
         Args:
-            items (Sequence[str | Item]): A sequence of items or item addresses to be read from the PLC.
+            items (Sequence[Item | str]): A sequence of items or item addresses to be read from the PLC.
             optimize (bool): If True, the items are grouped together in the request to optimize the communication. Defaults to True.
 
         Returns:
-            A list of values read from the PLC, corresponding to the provided addresses.
+            List[Value]: Values read from the PLC corresponding to the input addresses.
 
         Example:
             >>> client = Client('192.168.100.10', 0, 1)
@@ -152,11 +162,12 @@ class Client:
         """Writes data to an S7 PLC at the specified addresses.
 
         Args:
-            items(Sequence[str | Item]): A sequence of items or item addresses where the data will be written to in the PLC.
-            values: A sequence of values to write to the PLC.
+            items (Sequence[Item | str]): A sequence of items or item addresses where the data will be written to in the PLC.
+            values (Sequence[Value]): Values to be written to the PLC.
 
         Raises:
-            pyS7.errors.Exception: If there's any error in the server's response.
+            ValueError: If the number of items doesn't match the number of values.
+            WriteResponseError: If it is impossible to parse the write response.
 
         Example:
             >>> client = Client('192.168.100.10', 0, 1)

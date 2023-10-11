@@ -3,12 +3,12 @@ from typing import Any
 import pytest
 
 from pyS7.client import Client
-from pyS7.constants import MAX_JOB_CALLED, MAX_JOB_CALLING, MAX_PDU
+from pyS7.constants import MAX_JOB_CALLED, MAX_JOB_CALLING, MAX_PDU, ConnectionType
 
 
 @pytest.fixture
 def client() -> Client:
-    client = Client("192.168.100.10", 0, 1, 102, 5)
+    client = Client("192.168.100.10", 0, 1, ConnectionType.S7Basic, 102, 5)
     return client
 
 
@@ -16,6 +16,7 @@ def test_client_init(client: Client) -> None:
     assert client.address == "192.168.100.10"
     assert client.rack == 0
     assert client.slot == 1
+    assert client.connection_type == ConnectionType.S7Basic
     assert client.port == 102
 
     assert client.socket is not None
