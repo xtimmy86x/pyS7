@@ -143,7 +143,7 @@ Please refer to the following table for getting the correct addresses and the su
 | `MR84`                        | `MR84`                | Number        | Floating point 32-bit number at byte 84 of memory area |
 
 
-## Licence
+## License
 
 This project is licensed under the terms of the MIT license.
-For more information, see the [LICENCE](https://github.com/FiloCara/pyS7/blob/main/LICENSE) file.
+For more information, see the [LICENSE](https://github.com/FiloCara/pyS7/blob/main/LICENSE) file.
