@@ -3,8 +3,8 @@ from typing import Any, List, Protocol, Tuple, Union, runtime_checkable
 
 from .constants import READ_RES_OVERHEAD, WRITE_RES_OVERHEAD, DataType, ReturnCode
 from .errors import S7ReadResponseError, S7WriteResponseError
-from .item import Item
-from .requests import ItemsMap, Value
+from .requests import TagsMap, Value
+from .tag import S7Tag
 
 
 @runtime_checkable
@@ -33,24 +33,24 @@ class PDUNegotiationResponse:
 
 
 class ReadResponse:
-    def __init__(self, response: bytes, items: List[Item]) -> None:
+    def __init__(self, response: bytes, tags: List[S7Tag]) -> None:
         self.response = response
-        self.items = items
+        self.tags = tags
 
     def parse(self) -> List[Value]:
-        return parse_read_response(bytes_response=self.response, items=self.items)
+        return parse_read_response(bytes_response=self.response, tags=self.tags)
 
 
 class ReadOptimizedResponse:
-    def __init__(self, response: bytes, item_map: ItemsMap) -> None:
+    def __init__(self, response: bytes, tag_map: TagsMap) -> None:
         self.responses: List[bytes] = [response]
-        self.items_map = [item_map]
+        self.tags_map = [tag_map]
 
         self.n_messages = 1
 
     def __iadd__(self, other):  # type: ignore
         self.responses += other.responses
-        self.items_map += other.items_map
+        self.tags_map += other.tags_map
 
         self.n_messages += 1
 
@@ -58,86 +58,86 @@ class ReadOptimizedResponse:
 
     def parse(self) -> List[Value]:
         return parse_optimized_read_response(
-            bytes_responses=self.responses, items_map=self.items_map
+            bytes_responses=self.responses, tags_map=self.tags_map
         )
 
 
 class WriteResponse:
-    def __init__(self, response: bytes, items: List[Item]) -> None:
+    def __init__(self, response: bytes, tags: List[S7Tag]) -> None:
         self.response: bytes = response
-        self.items: List[Item] = items
+        self.tags: List[S7Tag] = tags
 
     def parse(self) -> None:
-        parse_write_response(bytes_response=self.response, items=self.items)
+        parse_write_response(bytes_response=self.response, tags=self.tags)
 
 
-def parse_read_response(bytes_response: bytes, items: List[Item]) -> List[Value]:
+def parse_read_response(bytes_response: bytes, tags: List[S7Tag]) -> List[Value]:
     parsed_data: List[Tuple[Union[bool, int, float], ...]] = []
     offset = READ_RES_OVERHEAD  # Response offset where data starts
 
-    for i, item in enumerate(items):
+    for i, tag in enumerate(tags):
         return_code = struct.unpack_from(">B", bytes_response, offset)[0]
 
         if ReturnCode(return_code) == ReturnCode.SUCCESS:
             offset += 4
 
-            if item.data_type == DataType.BIT:
+            if tag.data_type == DataType.BIT:
                 data: Any = bool(bytes_response[offset])
-                offset += item.size()
+                offset += tag.size()
                 # Skip fill byte
-                offset += 0 if i == len(items) - 1 else 1
+                offset += 0 if i == len(tags) - 1 else 1
 
-            elif item.data_type == DataType.BYTE:
+            elif tag.data_type == DataType.BYTE:
                 data = struct.unpack_from(
-                    f">{item.length * 'B'}", bytes_response, offset
+                    f">{tag.length * 'B'}", bytes_response, offset
                 )
-                offset += item.size()
+                offset += tag.size()
                 # Skip fill byte
-                offset += 0 if i == len(items) - 1 else 1
+                offset += 0 if i == len(tags) - 1 else 1
 
-            elif item.data_type == DataType.CHAR:
-                data = bytes_response[offset : offset + item.length].decode()
-                offset += item.size()
+            elif tag.data_type == DataType.CHAR:
+                data = bytes_response[offset : offset + tag.length].decode()
+                offset += tag.size()
                 # Skip byte if char length is odd
-                offset += 0 if item.length % 2 == 0 else 1
+                offset += 0 if tag.length % 2 == 0 else 1
 
-            elif item.data_type == DataType.INT:
+            elif tag.data_type == DataType.INT:
                 data = struct.unpack_from(
-                    f">{item.length * 'h'}", bytes_response, offset
+                    f">{tag.length * 'h'}", bytes_response, offset
                 )
-                offset += item.size()
+                offset += tag.size()
 
-            elif item.data_type == DataType.WORD:
+            elif tag.data_type == DataType.WORD:
                 data = struct.unpack_from(
-                    f">{item.length * 'H'}", bytes_response, offset
+                    f">{tag.length * 'H'}", bytes_response, offset
                 )
-                offset += item.size()
+                offset += tag.size()
 
-            elif item.data_type == DataType.DWORD:
+            elif tag.data_type == DataType.DWORD:
                 data = struct.unpack_from(
-                    f">{item.length * 'I'}", bytes_response, offset
+                    f">{tag.length * 'I'}", bytes_response, offset
                 )
-                offset += item.size()
+                offset += tag.size()
 
-            elif item.data_type == DataType.DINT:
+            elif tag.data_type == DataType.DINT:
                 data = struct.unpack_from(
-                    f">{item.length * 'l'}", bytes_response, offset
+                    f">{tag.length * 'l'}", bytes_response, offset
                 )
-                offset += item.size()
+                offset += tag.size()
 
-            elif item.data_type == DataType.REAL:
+            elif tag.data_type == DataType.REAL:
                 data = struct.unpack_from(
-                    f">{item.length * 'f'}", bytes_response, offset
+                    f">{tag.length * 'f'}", bytes_response, offset
                 )
-                offset += item.size()
+                offset += tag.size()
 
             else:
-                raise ValueError(f"DataType: {item.data_type} not supported")
+                raise ValueError(f"DataType: {tag.data_type} not supported")
 
             parsed_data.append(data)
 
         else:
-            raise S7ReadResponseError(f"{item}: {ReturnCode(return_code).name}")
+            raise S7ReadResponseError(f"{tag}: {ReturnCode(return_code).name}")
 
     processed_data: List[Value] = [
         data[0] if isinstance(data, tuple) and len(data) == 1 else data
@@ -148,91 +148,89 @@ def parse_read_response(bytes_response: bytes, items: List[Item]) -> List[Value]
 
 
 def parse_optimized_read_response(
-    bytes_responses: List[bytes], items_map: List[ItemsMap]
+    bytes_responses: List[bytes], tags_map: List[TagsMap]
 ) -> List[Value]:
     parsed_data: List[Tuple[int, Union[str, Tuple[Union[bool, int, float], ...]]]] = []
 
     for i, bytes_response in enumerate(bytes_responses):
         offset: int = READ_RES_OVERHEAD  # Response offset where data starts
 
-        for packed_item in items_map[i].keys():
+        for packed_tag in tags_map[i].keys():
             return_code = struct.unpack_from(">B", bytes_response, offset)[0]
 
             if ReturnCode(return_code) == ReturnCode.SUCCESS:
                 offset += 4
 
-                items: List[Tuple[int, Item]] = items_map[i][packed_item]
-                for idx, item in items:
-                    if item.data_type == DataType.BIT:
-                        if packed_item.data_type != DataType.BIT:
+                tags: List[Tuple[int, S7Tag]] = tags_map[i][packed_tag]
+                for idx, tag in tags:
+                    if tag.data_type == DataType.BIT:
+                        if packed_tag.data_type != DataType.BIT:
                             data: Any = bool(
-                                (bytes_response[offset] >> 7 - item.bit_offset) & 0b1
+                                (bytes_response[offset] >> 7 - tag.bit_offset) & 0b1
                             )
                         else:
                             data = bool(bytes_response)
 
-                    elif item.data_type == DataType.BYTE:
+                    elif tag.data_type == DataType.BYTE:
                         data = struct.unpack_from(
-                            f">{(item.start - packed_item.start) * 'x'}{item.length * 'B'}",
+                            f">{(tag.start - packed_tag.start) * 'x'}{tag.length * 'B'}",
                             bytes_response,
                             offset,
                         )
 
-                    elif item.data_type == DataType.CHAR:
-                        str_start = offset + (item.start - packed_item.start)
-                        str_end = (
-                            offset + (item.start - packed_item.start) + item.length
-                        )
+                    elif tag.data_type == DataType.CHAR:
+                        str_start = offset + (tag.start - packed_tag.start)
+                        str_end = offset + (tag.start - packed_tag.start) + tag.length
                         data = bytes_response[str_start:str_end].decode(
                             encoding="ascii"
                         )
 
-                    elif item.data_type == DataType.INT:
+                    elif tag.data_type == DataType.INT:
                         data = struct.unpack_from(
-                            f">{(item.start - packed_item.start) * 'x'}{item.length * 'h'}",
+                            f">{(tag.start - packed_tag.start) * 'x'}{tag.length * 'h'}",
                             bytes_response,
                             offset,
                         )
 
-                    elif item.data_type == DataType.WORD:
+                    elif tag.data_type == DataType.WORD:
                         data = struct.unpack_from(
-                            f">{(item.start - packed_item.start) * 'x'}{item.length * 'H'}",
+                            f">{(tag.start - packed_tag.start) * 'x'}{tag.length * 'H'}",
                             bytes_response,
                             offset,
                         )
 
-                    elif item.data_type == DataType.DWORD:
+                    elif tag.data_type == DataType.DWORD:
                         data = struct.unpack_from(
-                            f">{(item.start - packed_item.start) * 'x'}{item.length * 'I'}",
+                            f">{(tag.start - packed_tag.start) * 'x'}{tag.length * 'I'}",
                             bytes_response,
                             offset,
                         )
 
-                    elif item.data_type == DataType.DINT:
+                    elif tag.data_type == DataType.DINT:
                         data = struct.unpack_from(
-                            f">{(item.start - packed_item.start) * 'x'}{item.length * 'l'}",
+                            f">{(tag.start - packed_tag.start) * 'x'}{tag.length * 'l'}",
                             bytes_response,
                             offset,
                         )
 
-                    elif item.data_type == DataType.REAL:
+                    elif tag.data_type == DataType.REAL:
                         data = struct.unpack_from(
-                            f">{(item.start - packed_item.start) * 'x'}{item.length * 'f'}",
+                            f">{(tag.start - packed_tag.start) * 'x'}{tag.length * 'f'}",
                             bytes_response,
                             offset,
                         )
 
                     else:
-                        raise ValueError(f"DataType: {item.data_type} not supported")
+                        raise ValueError(f"DataType: {tag.data_type} not supported")
 
                     parsed_data.append((idx, data))
 
-                offset += packed_item.length
-                offset += 1 if packed_item.length % 2 != 0 else 0
+                offset += packed_tag.length
+                offset += 1 if packed_tag.length % 2 != 0 else 0
 
             else:
-                raise S7ReadResponseError    (
-                    f"{packed_item}: {ReturnCode(return_code).name}"
+                raise S7ReadResponseError(
+                    f"{packed_tag}: {ReturnCode(return_code).name}"
                 )
 
     parsed_data.sort(key=lambda elem: elem[0])
@@ -245,10 +243,10 @@ def parse_optimized_read_response(
     return processed_data
 
 
-def parse_write_response(bytes_response: bytes, items: List[Item]) -> None:
+def parse_write_response(bytes_response: bytes, tags: List[S7Tag]) -> None:
     offset = WRITE_RES_OVERHEAD  # Response offset where data starts
 
-    for item in items:
+    for tag in tags:
         return_code = struct.unpack_from(">B", bytes_response, offset)[0]
 
         if ReturnCode(return_code) == ReturnCode.SUCCESS:
@@ -256,5 +254,5 @@ def parse_write_response(bytes_response: bytes, items: List[Item]) -> None:
 
         else:
             raise S7WriteResponseError(
-                f"Impossible to write item {item} - {ReturnCode(return_code).name} "
+                f"Impossible to write tag {tag} - {ReturnCode(return_code).name} "
             )

@@ -3,17 +3,17 @@ from typing import Any
 
 import pytest
 
-from pyS7.client import Client
+from pyS7.client import S7Client
 from pyS7.constants import MAX_JOB_CALLED, MAX_JOB_CALLING, MAX_PDU, ConnectionType
 
 
 @pytest.fixture
-def client() -> Client:
-    client = Client("192.168.100.10", 0, 1, ConnectionType.S7Basic, 102, 5)
+def client() -> S7Client:
+    client = S7Client("192.168.100.10", 0, 1, ConnectionType.S7Basic, 102, 5)
     return client
 
 
-def test_client_init(client: Client) -> None:
+def test_client_init(client: S7Client) -> None:
     assert client.address == "192.168.100.10"
     assert client.rack == 0
     assert client.slot == 1
@@ -28,7 +28,7 @@ def test_client_init(client: Client) -> None:
     assert client.pdu_size == MAX_PDU
 
 
-def test_client_connect(client: Client, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_client_connect(client: S7Client, monkeypatch: pytest.MonkeyPatch) -> None:
     def mock_connect(self: Any, *args: Any) -> None:
         return None
 
@@ -48,7 +48,7 @@ def test_client_connect(client: Client, monkeypatch: pytest.MonkeyPatch) -> None
     assert client.socket.gettimeout() == 5
 
 
-def test_client_disconnect(client: Client, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_client_disconnect(client: S7Client, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("socket.socket.shutdown", lambda *args, **kwargs: None)
     monkeypatch.setattr("socket.socket.close", lambda *args, **kwargs: None)
 
@@ -57,7 +57,7 @@ def test_client_disconnect(client: Client, monkeypatch: pytest.MonkeyPatch) -> N
     assert client.socket is None
 
 
-def test_read(client: Client, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_read(client: S7Client, monkeypatch: pytest.MonkeyPatch) -> None:
     def mock_send(self: Any, bytes_request: bytes) -> None:
         return None
 
@@ -70,12 +70,12 @@ def test_read(client: Client, monkeypatch: pytest.MonkeyPatch) -> None:
     # Ensure socket is initialized
     client.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
-    items = ["DB1,X0.0", "DB1,X0.1", "DB2,I2"]
-    result = client.read(items, optimize=False)
+    tags = ["DB1,X0.0", "DB1,X0.1", "DB2,I2"]
+    result = client.read(tags, optimize=False)
     assert result == [True, True, 0]
 
 
-def test_read_optimized(client: Client, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_read_optimized(client: S7Client, monkeypatch: pytest.MonkeyPatch) -> None:
     def mock_send(self: Any, bytes_request: bytes) -> None:
         return None
 
@@ -88,12 +88,12 @@ def test_read_optimized(client: Client, monkeypatch: pytest.MonkeyPatch) -> None
     # Ensure socket is initialized
     client.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
-    items = ["DB1,X0.1", "DB2,I2"]
-    result = client.read(items, optimize=True)
+    tags = ["DB1,X0.1", "DB2,I2"]
+    result = client.read(tags, optimize=True)
     assert result == [True, 0]
 
 
-def test_write(client: Client, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_write(client: S7Client, monkeypatch: pytest.MonkeyPatch) -> None:
     def mock_send(self: Any, bytes_request: bytes) -> None:
         return None
 
@@ -106,7 +106,7 @@ def test_write(client: Client, monkeypatch: pytest.MonkeyPatch) -> None:
     # Ensure socket is initialized
     client.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
-    items = ["DB1,X0.0", "DB1,X0.1", "DB2,I2"]
+    tags = ["DB1,X0.0", "DB1,X0.1", "DB2,I2"]
     values = [False, True, 69]
 
-    client.write(items, values)
+    client.write(tags, values)

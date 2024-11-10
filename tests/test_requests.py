@@ -8,8 +8,8 @@ from pyS7.constants import (
     MAX_PDU,
     TPKT_SIZE,
     WRITE_REQ_HEADER_SIZE,
-    WRITE_REQ_PARAM_SIZE_ITEM,
-    WRITE_REQ_PARAM_SIZE_NO_ITEMS,
+    WRITE_REQ_PARAM_SIZE_TAG,
+    WRITE_REQ_PARAM_SIZE_NO_TAGS,
     WRITE_RES_HEADER_SIZE,
     WRITE_RES_PARAM_SIZE,
     ConnectionType,
@@ -19,14 +19,14 @@ from pyS7.constants import (
     MemoryArea,
 )
 from pyS7.errors import S7AddressError
-from pyS7.item import Item
+from pyS7.tag import S7Tag
 from pyS7.requests import (
     ConnectionRequest,
     PDUNegotiationRequest,
     ReadRequest,
     Value,
     WriteRequest,
-    group_items,
+    group_tags,
     prepare_requests,
     prepare_write_requests_and_values,
 )
@@ -124,41 +124,41 @@ def assert_read_header(packet: bytearray) -> None:
     # packet[18] checked later
 
 
-def assert_read_item(packet: bytearray, offset: int, item: Item) -> None:
+def assert_read_tag(packet: bytearray, offset: int, tag: S7Tag) -> None:
     assert packet[offset] == 0x12
     assert packet[offset + 1] == 0x0A
     assert packet[offset + 2] == 0x10
-    assert packet[offset + 3] == item.data_type.value.to_bytes(1, byteorder="big")[0]
-    assert packet[offset + 4 : offset + 6] == item.length.to_bytes(2, byteorder="big")
-    assert packet[offset + 6 : offset + 8] == item.db_number.to_bytes(
+    assert packet[offset + 3] == tag.data_type.value.to_bytes(1, byteorder="big")[0]
+    assert packet[offset + 4 : offset + 6] == tag.length.to_bytes(2, byteorder="big")
+    assert packet[offset + 6 : offset + 8] == tag.db_number.to_bytes(
         2, byteorder="big"
     )
-    assert packet[offset + 8] == item.memory_area.value
-    if item.data_type == DataType.BIT:
+    assert packet[offset + 8] == tag.memory_area.value
+    if tag.data_type == DataType.BIT:
         assert packet[offset + 9 : offset + 12] == (
-            item.start * 8 + 7 - item.bit_offset
+            tag.start * 8 + 7 - tag.bit_offset
         ).to_bytes(3, byteorder="big")
     else:
         assert packet[offset + 9 : offset + 12] == (
-            item.start * 8 + item.bit_offset
+            tag.start * 8 + tag.bit_offset
         ).to_bytes(3, byteorder="big")
 
 
 def test_read_request() -> None:
-    items = [
-        Item(MemoryArea.DB, 1, DataType.BIT, 0, 6, 1),
-        Item(MemoryArea.DB, 1, DataType.INT, 30, 0, 1),
-        Item(MemoryArea.DB, 1, DataType.INT, 32, 0, 1),
-        Item(MemoryArea.DB, 1, DataType.INT, 34, 0, 1),
-        Item(MemoryArea.DB, 1, DataType.INT, 36, 0, 1),
-        Item(MemoryArea.DB, 1, DataType.INT, 38, 0, 1),
-        Item(MemoryArea.DB, 1, DataType.REAL, 64, 0, 1),
-        Item(MemoryArea.DB, 1, DataType.REAL, 68, 0, 1),
-        Item(MemoryArea.DB, 1, DataType.REAL, 72, 0, 4),
-        Item(MemoryArea.DB, 1, DataType.CHAR, 102, 0, 37),
+    tags = [
+        S7Tag(MemoryArea.DB, 1, DataType.BIT, 0, 6, 1),
+        S7Tag(MemoryArea.DB, 1, DataType.INT, 30, 0, 1),
+        S7Tag(MemoryArea.DB, 1, DataType.INT, 32, 0, 1),
+        S7Tag(MemoryArea.DB, 1, DataType.INT, 34, 0, 1),
+        S7Tag(MemoryArea.DB, 1, DataType.INT, 36, 0, 1),
+        S7Tag(MemoryArea.DB, 1, DataType.INT, 38, 0, 1),
+        S7Tag(MemoryArea.DB, 1, DataType.REAL, 64, 0, 1),
+        S7Tag(MemoryArea.DB, 1, DataType.REAL, 68, 0, 1),
+        S7Tag(MemoryArea.DB, 1, DataType.REAL, 72, 0, 4),
+        S7Tag(MemoryArea.DB, 1, DataType.CHAR, 102, 0, 37),
     ]
 
-    read_request = ReadRequest(items=items)
+    read_request = ReadRequest(tags=tags)
 
     packet = read_request.request
 
@@ -166,12 +166,12 @@ def test_read_request() -> None:
 
     assert packet[2:4] == len(packet).to_bytes(2, byteorder="big")
     assert packet[13:15] == (len(packet) - 17).to_bytes(2, byteorder="big")
-    assert packet[18] == len(items)
+    assert packet[18] == len(tags)
 
-    # Validate items
+    # Validate tags
     offset = 19
-    for item in items:
-        assert_read_item(packet, offset, item)
+    for tag in tags:
+        assert_read_tag(packet, offset, tag)
         offset += 12
 
 
@@ -191,42 +191,42 @@ def assert_write_header(packet: bytearray) -> None:
     # packet[18] checked later
 
 
-def assert_write_item(packet: bytearray, offset: int, item: Item) -> None:
+def assert_write_tag(packet: bytearray, offset: int, tag: S7Tag) -> None:
     assert packet[offset] == 0x12
     assert packet[offset + 1] == 0x0A
     assert packet[offset + 2] == 0x10
-    if item.data_type == DataType.BIT:
+    if tag.data_type == DataType.BIT:
         assert packet[offset + 3] == DataType.BIT.value.to_bytes(1, byteorder="big")[0]
     else:
         assert packet[offset + 3] == DataType.BYTE.value.to_bytes(1, byteorder="big")[0]
-    assert packet[offset + 4 : offset + 6] == item.size().to_bytes(2, byteorder="big")
-    assert packet[offset + 6 : offset + 8] == item.db_number.to_bytes(
+    assert packet[offset + 4 : offset + 6] == tag.size().to_bytes(2, byteorder="big")
+    assert packet[offset + 6 : offset + 8] == tag.db_number.to_bytes(
         2, byteorder="big"
     )
-    assert packet[offset + 8] == item.memory_area.value.to_bytes(1, byteorder="big")[0]
-    if item.data_type == DataType.BIT:
+    assert packet[offset + 8] == tag.memory_area.value.to_bytes(1, byteorder="big")[0]
+    if tag.data_type == DataType.BIT:
         assert packet[offset + 9 : offset + 12] == (
-            item.start * 8 + 7 - item.bit_offset
+            tag.start * 8 + 7 - tag.bit_offset
         ).to_bytes(3, byteorder="big")
     else:
         assert packet[offset + 9 : offset + 12] == (
-            item.start * 8 + item.bit_offset
+            tag.start * 8 + tag.bit_offset
         ).to_bytes(3, byteorder="big")
 
 
 # TODO
-def assert_write_data(packet: bytearray, offset: int, item: Item, value: Value) -> None:
+def assert_write_data(packet: bytearray, offset: int, tag: S7Tag, value: Value) -> None:
     # assert packet[offset-2:offset+10] == 1
     assert packet[offset] == 0x00
-    if item.data_type == DataType.BIT:
+    if tag.data_type == DataType.BIT:
         assert packet[offset + 1] == DataTypeData.BIT.value
         assert packet[offset + 2 : offset + 4] == (
-            item.length * DataTypeSize[item.data_type]
+            tag.length * DataTypeSize[tag.data_type]
         ).to_bytes(2, byteorder="big")
     else:
         assert packet[offset + 1] == DataTypeData.BYTE_WORD_DWORD.value
         assert packet[offset + 2 : offset + 4] == (
-            item.length * DataTypeSize[item.data_type] * 8
+            tag.length * DataTypeSize[tag.data_type] * 8
         ).to_bytes(2, byteorder="big")
 
     struct_fmts = {
@@ -239,38 +239,38 @@ def assert_write_data(packet: bytearray, offset: int, item: Item, value: Value) 
         DataType.REAL: "f",
     }
 
-    if item.data_type in struct_fmts.keys():
+    if tag.data_type in struct_fmts.keys():
         if isinstance(value, tuple):
-            assert packet[offset + 4 : offset + 4 + item.size()] == struct.pack(
-                f">{item.length*struct_fmts[item.data_type]}", *value
+            assert packet[offset + 4 : offset + 4 + tag.size()] == struct.pack(
+                f">{tag.length*struct_fmts[tag.data_type]}", *value
             )
         else:
-            assert packet[offset + 4 : offset + 4 + item.size()] == struct.pack(
-                f">{struct_fmts[item.data_type]}", value
+            assert packet[offset + 4 : offset + 4 + tag.size()] == struct.pack(
+                f">{struct_fmts[tag.data_type]}", value
             )
 
 
 # TODO: to be finished
 def test_write_request() -> None:
-    items: List[Item] = [
-        Item(MemoryArea.DB, 1, DataType.BIT, 2, 5, 1),
-        Item(MemoryArea.DB, 1, DataType.BIT, 1, 7, 1),
-        Item(MemoryArea.DB, 2, DataType.BIT, 10, 2, 1),
-        Item(MemoryArea.DB, 2, DataType.BIT, 10, 3, 1),
-        Item(MemoryArea.INPUT, 0, DataType.BYTE, 16, 0, 1),
-        Item(MemoryArea.INPUT, 0, DataType.BYTE, 20, 0, 2),
-        Item(MemoryArea.DB, 23, DataType.INT, 4, 0, 1),
-        Item(MemoryArea.DB, 23, DataType.INT, 6, 0, 1),
-        Item(MemoryArea.DB, 23, DataType.INT, 6, 0, 3),
-        Item(MemoryArea.DB, 23, DataType.WORD, 12, 0, 1),
-        Item(MemoryArea.DB, 23, DataType.WORD, 14, 0, 2),
-        Item(MemoryArea.DB, 23, DataType.DWORD, 18, 0, 1),
-        Item(MemoryArea.DB, 23, DataType.DWORD, 22, 0, 2),
-        Item(MemoryArea.DB, 23, DataType.DINT, 30, 0, 1),
-        Item(MemoryArea.DB, 23, DataType.DINT, 34, 0, 3),
-        Item(MemoryArea.MERKER, 0, DataType.REAL, 40, 0, 1),
-        Item(MemoryArea.MERKER, 0, DataType.REAL, 60, 0, 2),
-        Item(MemoryArea.OUTPUT, 0, DataType.CHAR, 0, 0, 31),
+    tags: List[S7Tag] = [
+        S7Tag(MemoryArea.DB, 1, DataType.BIT, 2, 5, 1),
+        S7Tag(MemoryArea.DB, 1, DataType.BIT, 1, 7, 1),
+        S7Tag(MemoryArea.DB, 2, DataType.BIT, 10, 2, 1),
+        S7Tag(MemoryArea.DB, 2, DataType.BIT, 10, 3, 1),
+        S7Tag(MemoryArea.INPUT, 0, DataType.BYTE, 16, 0, 1),
+        S7Tag(MemoryArea.INPUT, 0, DataType.BYTE, 20, 0, 2),
+        S7Tag(MemoryArea.DB, 23, DataType.INT, 4, 0, 1),
+        S7Tag(MemoryArea.DB, 23, DataType.INT, 6, 0, 1),
+        S7Tag(MemoryArea.DB, 23, DataType.INT, 6, 0, 3),
+        S7Tag(MemoryArea.DB, 23, DataType.WORD, 12, 0, 1),
+        S7Tag(MemoryArea.DB, 23, DataType.WORD, 14, 0, 2),
+        S7Tag(MemoryArea.DB, 23, DataType.DWORD, 18, 0, 1),
+        S7Tag(MemoryArea.DB, 23, DataType.DWORD, 22, 0, 2),
+        S7Tag(MemoryArea.DB, 23, DataType.DINT, 30, 0, 1),
+        S7Tag(MemoryArea.DB, 23, DataType.DINT, 34, 0, 3),
+        S7Tag(MemoryArea.MERKER, 0, DataType.REAL, 40, 0, 1),
+        S7Tag(MemoryArea.MERKER, 0, DataType.REAL, 60, 0, 2),
+        S7Tag(MemoryArea.OUTPUT, 0, DataType.CHAR, 0, 0, 31),
     ]
 
     # Mock up values
@@ -295,7 +295,7 @@ def test_write_request() -> None:
         "a" * 31,
     ]
 
-    write_request = WriteRequest(items=items, values=values)
+    write_request = WriteRequest(tags=tags, values=values)
 
     packet = write_request.request
 
@@ -304,121 +304,121 @@ def test_write_request() -> None:
     # TODO
     # assert packet[2:4] == len(packet).to_bytes(2, byteorder='big')
     # assert packet[13:15] == (len(packet) - 17).to_bytes(2, byteorder='big')
-    # assert packet[18] == len(items)
+    # assert packet[18] == len(tags)
 
-    # Validate items
+    # Validate tags
     offset = 19
-    for item in items:
-        assert_write_item(packet, offset, item)
+    for tag in tags:
+        assert_write_tag(packet, offset, tag)
         offset += 12
 
     # Validate data
-    for i, item in enumerate(items):
-        assert item == item
-        assert_write_data(packet, offset, item, values[i])
-        offset += 4 + item.size()
+    for i, tag in enumerate(tags):
+        assert tag == tag
+        assert_write_data(packet, offset, tag, values[i])
+        offset += 4 + tag.size()
 
         # Assert for fill byte
-        if item.data_type == DataType.BIT and i < len(items) - 1:
+        if tag.data_type == DataType.BIT and i < len(tags) - 1:
             assert packet[offset] == 0
             offset += 1
 
         # Lenght must be even
-        if len(packet[:offset]) % 2 == 0 and i < len(items) - 1:
+        if len(packet[:offset]) % 2 == 0 and i < len(tags) - 1:
             # assert packet[offset-10:offset] == 0
             assert packet[offset] == 0
             offset += 1
 
 
-def test_group_items() -> None:
-    # Mock up items for testing
-    items: List[Item] = [
-        Item(MemoryArea.DB, 1, DataType.BIT, 2, 5, 1),
-        Item(MemoryArea.DB, 1, DataType.BIT, 1, 7, 1),
-        Item(MemoryArea.DB, 2, DataType.BIT, 10, 2, 1),
-        Item(MemoryArea.DB, 2, DataType.BIT, 10, 3, 1),
-        Item(MemoryArea.DB, 23, DataType.INT, 4, 0, 1),
-        Item(MemoryArea.DB, 23, DataType.INT, 6, 0, 1),
-        Item(MemoryArea.DB, 23, DataType.INT, 6, 0, 3),
-        Item(MemoryArea.MERKER, 0, DataType.REAL, 40, 0, 1),
-        Item(MemoryArea.MERKER, 0, DataType.REAL, 60, 0, 1),
-        Item(MemoryArea.INPUT, 0, DataType.BYTE, 20, 0, 2),
-        Item(MemoryArea.INPUT, 0, DataType.BYTE, 16, 0, 2),
+def test_group_tags() -> None:
+    # Mock up tags for testing
+    tags: List[S7Tag] = [
+        S7Tag(MemoryArea.DB, 1, DataType.BIT, 2, 5, 1),
+        S7Tag(MemoryArea.DB, 1, DataType.BIT, 1, 7, 1),
+        S7Tag(MemoryArea.DB, 2, DataType.BIT, 10, 2, 1),
+        S7Tag(MemoryArea.DB, 2, DataType.BIT, 10, 3, 1),
+        S7Tag(MemoryArea.DB, 23, DataType.INT, 4, 0, 1),
+        S7Tag(MemoryArea.DB, 23, DataType.INT, 6, 0, 1),
+        S7Tag(MemoryArea.DB, 23, DataType.INT, 6, 0, 3),
+        S7Tag(MemoryArea.MERKER, 0, DataType.REAL, 40, 0, 1),
+        S7Tag(MemoryArea.MERKER, 0, DataType.REAL, 60, 0, 1),
+        S7Tag(MemoryArea.INPUT, 0, DataType.BYTE, 20, 0, 2),
+        S7Tag(MemoryArea.INPUT, 0, DataType.BYTE, 16, 0, 2),
     ]
 
-    expected_groups: Dict[Item, List[Tuple[int, Item]]] = {
-        Item(MemoryArea.DB, 1, DataType.BYTE, 1, 0, 2): [
-            (1, Item(MemoryArea.DB, 1, DataType.BIT, 1, 7, 1)),
-            (0, Item(MemoryArea.DB, 1, DataType.BIT, 2, 5, 1)),
+    expected_groups: Dict[S7Tag, List[Tuple[int, S7Tag]]] = {
+        S7Tag(MemoryArea.DB, 1, DataType.BYTE, 1, 0, 2): [
+            (1, S7Tag(MemoryArea.DB, 1, DataType.BIT, 1, 7, 1)),
+            (0, S7Tag(MemoryArea.DB, 1, DataType.BIT, 2, 5, 1)),
         ],
-        Item(MemoryArea.DB, 2, DataType.BYTE, 10, 0, 1): [
-            (2, Item(MemoryArea.DB, 2, DataType.BIT, 10, 2, 1)),
-            (3, Item(MemoryArea.DB, 2, DataType.BIT, 10, 3, 1)),
+        S7Tag(MemoryArea.DB, 2, DataType.BYTE, 10, 0, 1): [
+            (2, S7Tag(MemoryArea.DB, 2, DataType.BIT, 10, 2, 1)),
+            (3, S7Tag(MemoryArea.DB, 2, DataType.BIT, 10, 3, 1)),
         ],
-        Item(MemoryArea.DB, 23, DataType.BYTE, 4, 0, 8): [
-            (4, Item(MemoryArea.DB, 23, DataType.INT, 4, 0, 1)),
-            (5, Item(MemoryArea.DB, 23, DataType.INT, 6, 0, 1)),
-            (6, Item(MemoryArea.DB, 23, DataType.INT, 6, 0, 3)),
+        S7Tag(MemoryArea.DB, 23, DataType.BYTE, 4, 0, 8): [
+            (4, S7Tag(MemoryArea.DB, 23, DataType.INT, 4, 0, 1)),
+            (5, S7Tag(MemoryArea.DB, 23, DataType.INT, 6, 0, 1)),
+            (6, S7Tag(MemoryArea.DB, 23, DataType.INT, 6, 0, 3)),
         ],
-        Item(MemoryArea.MERKER, 0, DataType.REAL, 40, 0, 1): [
-            (7, Item(MemoryArea.MERKER, 0, DataType.REAL, 40, 0, 1)),
+        S7Tag(MemoryArea.MERKER, 0, DataType.REAL, 40, 0, 1): [
+            (7, S7Tag(MemoryArea.MERKER, 0, DataType.REAL, 40, 0, 1)),
         ],
-        Item(MemoryArea.MERKER, 0, DataType.REAL, 60, 0, 1): [
-            (8, Item(MemoryArea.MERKER, 0, DataType.REAL, 60, 0, 1)),
+        S7Tag(MemoryArea.MERKER, 0, DataType.REAL, 60, 0, 1): [
+            (8, S7Tag(MemoryArea.MERKER, 0, DataType.REAL, 60, 0, 1)),
         ],
-        Item(MemoryArea.INPUT, 0, DataType.BYTE, 16, 0, 6): [
-            (10, Item(MemoryArea.INPUT, 0, DataType.BYTE, 16, 0, 2)),
-            (9, Item(MemoryArea.INPUT, 0, DataType.BYTE, 20, 0, 2)),
+        S7Tag(MemoryArea.INPUT, 0, DataType.BYTE, 16, 0, 6): [
+            (10, S7Tag(MemoryArea.INPUT, 0, DataType.BYTE, 16, 0, 2)),
+            (9, S7Tag(MemoryArea.INPUT, 0, DataType.BYTE, 20, 0, 2)),
         ],
     }
 
-    # group_items expect an ordered sequence of Item
-    groups = group_items(items=items, pdu_size=240)
+    # group_tags expect an ordered sequence of tag
+    groups = group_tags(tags=tags, pdu_size=240)
 
     assert expected_groups == groups
 
 
 def test_prepare_request() -> None:
-    # Mock up items for testing
-    items: List[Item] = [
-        Item(MemoryArea.DB, 1, DataType.BIT, 2, 5, 1),
-        Item(MemoryArea.DB, 1, DataType.BIT, 1, 7, 1),
-        Item(MemoryArea.DB, 2, DataType.BIT, 10, 2, 1),
-        Item(MemoryArea.DB, 2, DataType.BIT, 10, 3, 1),
-        Item(MemoryArea.DB, 23, DataType.INT, 4, 0, 1),
-        Item(MemoryArea.DB, 23, DataType.INT, 6, 0, 1),
-        Item(MemoryArea.DB, 23, DataType.INT, 6, 0, 3),
-        Item(MemoryArea.MERKER, 0, DataType.REAL, 40, 0, 1),
-        Item(MemoryArea.MERKER, 0, DataType.REAL, 60, 0, 1),
-        Item(MemoryArea.INPUT, 0, DataType.BYTE, 20, 0, 2),
-        Item(MemoryArea.INPUT, 0, DataType.BYTE, 16, 0, 2),
-        Item(MemoryArea.DB, 3, DataType.CHAR, 0, 0, 110),
-        Item(MemoryArea.DB, 2, DataType.CHAR, 0, 0, 25),
-        Item(MemoryArea.DB, 1, DataType.REAL, 20, 0, 10),
+    # Mock up tags for testing
+    tags: List[S7Tag] = [
+        S7Tag(MemoryArea.DB, 1, DataType.BIT, 2, 5, 1),
+        S7Tag(MemoryArea.DB, 1, DataType.BIT, 1, 7, 1),
+        S7Tag(MemoryArea.DB, 2, DataType.BIT, 10, 2, 1),
+        S7Tag(MemoryArea.DB, 2, DataType.BIT, 10, 3, 1),
+        S7Tag(MemoryArea.DB, 23, DataType.INT, 4, 0, 1),
+        S7Tag(MemoryArea.DB, 23, DataType.INT, 6, 0, 1),
+        S7Tag(MemoryArea.DB, 23, DataType.INT, 6, 0, 3),
+        S7Tag(MemoryArea.MERKER, 0, DataType.REAL, 40, 0, 1),
+        S7Tag(MemoryArea.MERKER, 0, DataType.REAL, 60, 0, 1),
+        S7Tag(MemoryArea.INPUT, 0, DataType.BYTE, 20, 0, 2),
+        S7Tag(MemoryArea.INPUT, 0, DataType.BYTE, 16, 0, 2),
+        S7Tag(MemoryArea.DB, 3, DataType.CHAR, 0, 0, 110),
+        S7Tag(MemoryArea.DB, 2, DataType.CHAR, 0, 0, 25),
+        S7Tag(MemoryArea.DB, 1, DataType.REAL, 20, 0, 10),
     ]
 
     expected_requests = [
         [
-            Item(MemoryArea.DB, 1, DataType.BIT, 2, 5, 1),
-            Item(MemoryArea.DB, 1, DataType.BIT, 1, 7, 1),
-            Item(MemoryArea.DB, 2, DataType.BIT, 10, 2, 1),
-            Item(MemoryArea.DB, 2, DataType.BIT, 10, 3, 1),
-            Item(MemoryArea.DB, 23, DataType.INT, 4, 0, 1),
-            Item(MemoryArea.DB, 23, DataType.INT, 6, 0, 1),
-            Item(MemoryArea.DB, 23, DataType.INT, 6, 0, 3),
-            Item(MemoryArea.MERKER, 0, DataType.REAL, 40, 0, 1),
-            Item(MemoryArea.MERKER, 0, DataType.REAL, 60, 0, 1),
-            Item(MemoryArea.INPUT, 0, DataType.BYTE, 20, 0, 2),
-            Item(MemoryArea.INPUT, 0, DataType.BYTE, 16, 0, 2),
-            Item(MemoryArea.DB, 3, DataType.CHAR, 0, 0, 110),
+            S7Tag(MemoryArea.DB, 1, DataType.BIT, 2, 5, 1),
+            S7Tag(MemoryArea.DB, 1, DataType.BIT, 1, 7, 1),
+            S7Tag(MemoryArea.DB, 2, DataType.BIT, 10, 2, 1),
+            S7Tag(MemoryArea.DB, 2, DataType.BIT, 10, 3, 1),
+            S7Tag(MemoryArea.DB, 23, DataType.INT, 4, 0, 1),
+            S7Tag(MemoryArea.DB, 23, DataType.INT, 6, 0, 1),
+            S7Tag(MemoryArea.DB, 23, DataType.INT, 6, 0, 3),
+            S7Tag(MemoryArea.MERKER, 0, DataType.REAL, 40, 0, 1),
+            S7Tag(MemoryArea.MERKER, 0, DataType.REAL, 60, 0, 1),
+            S7Tag(MemoryArea.INPUT, 0, DataType.BYTE, 20, 0, 2),
+            S7Tag(MemoryArea.INPUT, 0, DataType.BYTE, 16, 0, 2),
+            S7Tag(MemoryArea.DB, 3, DataType.CHAR, 0, 0, 110),
         ],
         [
-            Item(MemoryArea.DB, 2, DataType.CHAR, 0, 0, 25),
-            Item(MemoryArea.DB, 1, DataType.REAL, 20, 0, 10),
+            S7Tag(MemoryArea.DB, 2, DataType.CHAR, 0, 0, 25),
+            S7Tag(MemoryArea.DB, 1, DataType.REAL, 20, 0, 10),
         ],
     ]
 
-    requests = prepare_requests(items=items, max_pdu=240)
+    requests = prepare_requests(tags=tags, max_pdu=240)
 
     assert len(expected_requests) == len(requests)
     for i in range(len(requests)):
@@ -427,31 +427,31 @@ def test_prepare_request() -> None:
 
 def test_prepare_request_exception() -> None:
     pdu_size = 240
-    items = [
-        Item(MemoryArea.MERKER, 0, DataType.REAL, 0, 0, 250),
+    tags = [
+        S7Tag(MemoryArea.MERKER, 0, DataType.REAL, 0, 0, 250),
     ]
     with pytest.raises(S7AddressError):
-        _, _ = prepare_requests(items=items, max_pdu=pdu_size)
+        _, _ = prepare_requests(tags=tags, max_pdu=pdu_size)
 
 
 def test_prepare_write_request() -> None:
     pdu_size = 240
-    # Mock up items for testing
-    items: List[Item] = [
-        Item(MemoryArea.DB, 1, DataType.BIT, 2, 5, 1),
-        Item(MemoryArea.DB, 1, DataType.BIT, 1, 7, 1),
-        Item(MemoryArea.DB, 2, DataType.BIT, 10, 2, 1),
-        Item(MemoryArea.DB, 2, DataType.BIT, 10, 3, 1),
-        Item(MemoryArea.DB, 23, DataType.INT, 4, 0, 1),
-        Item(MemoryArea.DB, 23, DataType.INT, 6, 0, 1),
-        Item(MemoryArea.DB, 23, DataType.INT, 6, 0, 3),
-        Item(MemoryArea.MERKER, 0, DataType.REAL, 40, 0, 1),
-        Item(MemoryArea.MERKER, 0, DataType.REAL, 60, 0, 1),
-        Item(MemoryArea.INPUT, 0, DataType.BYTE, 20, 0, 2),
-        Item(MemoryArea.INPUT, 0, DataType.BYTE, 16, 0, 2),
-        Item(MemoryArea.DB, 3, DataType.CHAR, 0, 0, 110),
-        Item(MemoryArea.DB, 2, DataType.CHAR, 0, 0, 25),
-        Item(MemoryArea.DB, 1, DataType.REAL, 20, 0, 10),
+    # Mock up tags for testing
+    tags: List[S7Tag] = [
+        S7Tag(MemoryArea.DB, 1, DataType.BIT, 2, 5, 1),
+        S7Tag(MemoryArea.DB, 1, DataType.BIT, 1, 7, 1),
+        S7Tag(MemoryArea.DB, 2, DataType.BIT, 10, 2, 1),
+        S7Tag(MemoryArea.DB, 2, DataType.BIT, 10, 3, 1),
+        S7Tag(MemoryArea.DB, 23, DataType.INT, 4, 0, 1),
+        S7Tag(MemoryArea.DB, 23, DataType.INT, 6, 0, 1),
+        S7Tag(MemoryArea.DB, 23, DataType.INT, 6, 0, 3),
+        S7Tag(MemoryArea.MERKER, 0, DataType.REAL, 40, 0, 1),
+        S7Tag(MemoryArea.MERKER, 0, DataType.REAL, 60, 0, 1),
+        S7Tag(MemoryArea.INPUT, 0, DataType.BYTE, 20, 0, 2),
+        S7Tag(MemoryArea.INPUT, 0, DataType.BYTE, 16, 0, 2),
+        S7Tag(MemoryArea.DB, 3, DataType.CHAR, 0, 0, 110),
+        S7Tag(MemoryArea.DB, 2, DataType.CHAR, 0, 0, 25),
+        S7Tag(MemoryArea.DB, 1, DataType.REAL, 20, 0, 10),
     ]
 
     # Mock up values
@@ -472,26 +472,26 @@ def test_prepare_write_request() -> None:
         (1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 1.8, 1.9, 2.0),
     ]
 
-    expected_requests: List[List[Item]] = [
+    expected_requests: List[List[S7Tag]] = [
         [
-            Item(MemoryArea.DB, 1, DataType.BIT, 2, 5, 1),
-            Item(MemoryArea.DB, 1, DataType.BIT, 1, 7, 1),
-            Item(MemoryArea.DB, 2, DataType.BIT, 10, 2, 1),
-            Item(MemoryArea.DB, 2, DataType.BIT, 10, 3, 1),
-            Item(MemoryArea.DB, 23, DataType.INT, 4, 0, 1),
-            Item(MemoryArea.DB, 23, DataType.INT, 6, 0, 1),
-            Item(MemoryArea.DB, 23, DataType.INT, 6, 0, 3),
-            Item(MemoryArea.MERKER, 0, DataType.REAL, 40, 0, 1),
-            Item(MemoryArea.MERKER, 0, DataType.REAL, 60, 0, 1),
-            Item(MemoryArea.INPUT, 0, DataType.BYTE, 20, 0, 2),
-            Item(MemoryArea.INPUT, 0, DataType.BYTE, 16, 0, 2),
+            S7Tag(MemoryArea.DB, 1, DataType.BIT, 2, 5, 1),
+            S7Tag(MemoryArea.DB, 1, DataType.BIT, 1, 7, 1),
+            S7Tag(MemoryArea.DB, 2, DataType.BIT, 10, 2, 1),
+            S7Tag(MemoryArea.DB, 2, DataType.BIT, 10, 3, 1),
+            S7Tag(MemoryArea.DB, 23, DataType.INT, 4, 0, 1),
+            S7Tag(MemoryArea.DB, 23, DataType.INT, 6, 0, 1),
+            S7Tag(MemoryArea.DB, 23, DataType.INT, 6, 0, 3),
+            S7Tag(MemoryArea.MERKER, 0, DataType.REAL, 40, 0, 1),
+            S7Tag(MemoryArea.MERKER, 0, DataType.REAL, 60, 0, 1),
+            S7Tag(MemoryArea.INPUT, 0, DataType.BYTE, 20, 0, 2),
+            S7Tag(MemoryArea.INPUT, 0, DataType.BYTE, 16, 0, 2),
         ],
         [
-            Item(MemoryArea.DB, 3, DataType.CHAR, 0, 0, 110),
-            Item(MemoryArea.DB, 2, DataType.CHAR, 0, 0, 25),
+            S7Tag(MemoryArea.DB, 3, DataType.CHAR, 0, 0, 110),
+            S7Tag(MemoryArea.DB, 2, DataType.CHAR, 0, 0, 25),
         ],
         [
-            Item(MemoryArea.DB, 1, DataType.REAL, 20, 0, 10),
+            S7Tag(MemoryArea.DB, 1, DataType.REAL, 20, 0, 10),
         ],
     ]
 
@@ -517,7 +517,7 @@ def test_prepare_write_request() -> None:
     ]
 
     requests, requests_values = prepare_write_requests_and_values(
-        items=items, values=values, max_pdu=pdu_size
+        tags=tags, values=values, max_pdu=pdu_size
     )
 
     assert len(expected_requests) == len(requests)
@@ -531,7 +531,7 @@ def test_prepare_write_request() -> None:
             TPKT_SIZE
             + COTP_SIZE
             + WRITE_REQ_HEADER_SIZE
-            + WRITE_REQ_PARAM_SIZE_NO_ITEMS
+            + WRITE_REQ_PARAM_SIZE_NO_TAGS
         )  # 3 + 4 + 10 + 2
         WRITE_RES_OVERHEAD = (
             TPKT_SIZE + COTP_SIZE + WRITE_RES_HEADER_SIZE + WRITE_RES_PARAM_SIZE
@@ -541,13 +541,13 @@ def test_prepare_write_request() -> None:
             WRITE_REQ_OVERHEAD
             + sum(
                 [
-                    WRITE_REQ_PARAM_SIZE_ITEM + 4 + elem.size() + elem.length % 2
+                    WRITE_REQ_PARAM_SIZE_TAG + 4 + elem.size() + elem.length % 2
                     for elem in requests[i]
                 ]
             )
             < pdu_size
         )
-        assert WRITE_RES_OVERHEAD + sum([1 for _ in range(len(items))]) < pdu_size
+        assert WRITE_RES_OVERHEAD + sum([1 for _ in range(len(tags))]) < pdu_size
 
     for i in range(len(requests_values)):
         assert expected_value_requests[i] == requests_values[i]
@@ -555,12 +555,12 @@ def test_prepare_write_request() -> None:
 
 def test_prepare_write_request_exception() -> None:
     pdu_size = 240
-    items = [
-        Item(MemoryArea.MERKER, 0, DataType.REAL, 0, 0, 200),
+    tags = [
+        S7Tag(MemoryArea.MERKER, 0, DataType.REAL, 0, 0, 200),
     ]
     values = [tuple([0.1] * 200)]
 
     with pytest.raises(S7AddressError):
         _, _ = prepare_write_requests_and_values(
-            items=items, values=values, max_pdu=pdu_size
+            tags=tags, values=values, max_pdu=pdu_size
         )

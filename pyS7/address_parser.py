@@ -3,7 +3,7 @@ from typing import Dict, Optional
 
 from .constants import DataType, MemoryArea
 from .errors import S7AddressError
-from .item import Item
+from .tag import S7Tag
 
 """
 ### Supported variables
@@ -63,7 +63,7 @@ DataTypeMap: Dict[str, DataType] = {
 }
 
 
-def map_address_to_item(address: str) -> Item:
+def map_address_to_tag(address: str) -> S7Tag:
     address = address.upper()
 
     match: Optional[re.Match[str]]
@@ -198,7 +198,7 @@ def map_address_to_item(address: str) -> Item:
         else:
             raise S7AddressError(f"Impossible to parse address: '{address}")
 
-        return Item(
+        return S7Tag(
             memory_area=MemoryArea.DB,
             db_number=db_number,
             data_type=data_type,
@@ -233,7 +233,7 @@ def map_address_to_item(address: str) -> Item:
 
         length = 1
 
-        return Item(
+        return S7Tag(
             memory_area=memory_area,
             db_number=db_number,
             data_type=data_type,
@@ -268,7 +268,7 @@ def map_address_to_item(address: str) -> Item:
 
         length = 1
 
-        return Item(
+        return S7Tag(
             memory_area=memory_area,
             db_number=db_number,
             data_type=data_type,
@@ -303,7 +303,7 @@ def map_address_to_item(address: str) -> Item:
 
         length = 1
 
-        return Item(
+        return S7Tag(
             memory_area=memory_area,
             db_number=db_number,
             data_type=data_type,

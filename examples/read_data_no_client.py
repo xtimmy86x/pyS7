@@ -1,7 +1,7 @@
 """
 #######################################################################
 # The following code is meant for demonstration purposes only.
-# In a real-world application, you should use the Client class,
+# In a real-world application, you should use the S7Client class,
 # which provides a high-level interface to interact
 # with S7 devices and ensures proper handling of resources.
 #######################################################################
@@ -9,12 +9,11 @@
 
 import socket
 
-from pyS7 import Item, map_address_to_item
+from pyS7 import S7Tag, map_address_to_tag
 from pyS7.requests import PDUNegotiationRequest, ReadRequest
 from pyS7.responses import PDUNegotiationResponse, ReadResponse
 
 if __name__ == "__main__":
-
     address: str = "192.168.5.100"
     port: int = 102
 
@@ -43,8 +42,7 @@ if __name__ == "__main__":
 
     # Setup Communication -> ack
     negotiation_bytes_response: bytes = socket.recv(980)
-    negotiation_response = PDUNegotiationResponse(
-        response=negotiation_bytes_response)
+    negotiation_response = PDUNegotiationResponse(response=negotiation_bytes_response)
 
     # Extract negotiated pdu...
     max_jobs_calling, max_jobs_called, pdu_size = negotiation_response.parse()
@@ -53,16 +51,16 @@ if __name__ == "__main__":
     ################# READ REQUEST ######################
     #####################################################
 
-    # Make sure to convert string addresses to Items
-    items: list[Item] = [map_address_to_item(addr) for addr in addresses]
+    # Make sure to convert string addresses to tags
+    tags: list[S7Tag] = [map_address_to_tag(addr) for addr in addresses]
 
     # Read
-    read_request = ReadRequest(items=items)
+    read_request = ReadRequest(tags=tags)
     socket.send(read_request.serialize())
 
     # Read -> ack
     read_bytes_response: bytes = socket.recv(pdu_size)
-    read_response = ReadResponse(response=read_bytes_response, items=items)
+    read_response = ReadResponse(response=read_bytes_response, tags=tags)
 
     data = read_response.parse()
 

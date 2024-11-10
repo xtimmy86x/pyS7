@@ -1,5 +1,5 @@
-from .address_parser import map_address_to_item
-from .client import Client
+from .address_parser import map_address_to_tag
+from .client import S7Client
 from .constants import ConnectionType, DataType, MemoryArea
 from .errors import (
     S7AddressError,
@@ -8,4 +8,4 @@ from .errors import (
     S7ReadResponseError,
     S7WriteResponseError,
 )
-from .item import Item
+from .tag import S7Tag

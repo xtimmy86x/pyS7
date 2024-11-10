@@ -4,7 +4,7 @@ from typing import List
 import pytest
 
 from pyS7.constants import DataType, MemoryArea
-from pyS7.item import Item
+from pyS7.tag import S7Tag
 from pyS7.responses import (
     ConnectionResponse,
     PDUNegotiationResponse,
@@ -57,7 +57,7 @@ def test_pdu_negotiation_response(
 
 
 ReadResponseTestCase = namedtuple(
-    "ReadResponseTestCase", ["bytes_response", "items", "parsed_values"]
+    "ReadResponseTestCase", ["bytes_response", "tags", "parsed_values"]
 )
 read_response_test_cases: List[ReadResponseTestCase] = [
     ReadResponseTestCase(
@@ -65,26 +65,26 @@ read_response_test_cases: List[ReadResponseTestCase] = [
         b" \x80\x00\x00\x00\xff\x05\x00 \xff\xff\x80\x00\xff\x05\x00"
         b" \x00\x00\x00\x00\xff\x05\x00 \x00\x00\x7f\xff\xff\x05\x00 \x7f\xff\xff\xff",
         [
-            Item(MemoryArea.DB, 1, DataType.BIT, 0, 0, 1),
-            Item(MemoryArea.DB, 1, DataType.BIT, 0, 1, 1),
-            Item(MemoryArea.DB, 1, DataType.BIT, 0, 2, 1),
-            Item(MemoryArea.DB, 1, DataType.BIT, 0, 3, 1),
-            Item(MemoryArea.DB, 1, DataType.BIT, 0, 4, 1),
-            Item(MemoryArea.DB, 1, DataType.BIT, 0, 5, 1),
-            Item(MemoryArea.DB, 1, DataType.BIT, 0, 6, 1),
-            Item(MemoryArea.DB, 1, DataType.BIT, 0, 7, 1),
-            Item(MemoryArea.DB, 1, DataType.BYTE, 20, 0, 1),
-            Item(MemoryArea.DB, 1, DataType.BYTE, 21, 0, 1),
-            Item(MemoryArea.DB, 1, DataType.INT, 30, 0, 1),
-            Item(MemoryArea.DB, 1, DataType.INT, 32, 0, 1),
-            Item(MemoryArea.DB, 1, DataType.INT, 34, 0, 1),
-            Item(MemoryArea.DB, 1, DataType.INT, 36, 0, 1),
-            Item(MemoryArea.DB, 1, DataType.INT, 38, 0, 1),
-            Item(MemoryArea.DB, 1, DataType.DINT, 40, 0, 1),
-            Item(MemoryArea.DB, 1, DataType.DINT, 44, 0, 1),
-            Item(MemoryArea.DB, 1, DataType.DINT, 48, 0, 1),
-            Item(MemoryArea.DB, 1, DataType.DINT, 52, 0, 1),
-            Item(MemoryArea.DB, 1, DataType.DINT, 56, 0, 1),
+            S7Tag(MemoryArea.DB, 1, DataType.BIT, 0, 0, 1),
+            S7Tag(MemoryArea.DB, 1, DataType.BIT, 0, 1, 1),
+            S7Tag(MemoryArea.DB, 1, DataType.BIT, 0, 2, 1),
+            S7Tag(MemoryArea.DB, 1, DataType.BIT, 0, 3, 1),
+            S7Tag(MemoryArea.DB, 1, DataType.BIT, 0, 4, 1),
+            S7Tag(MemoryArea.DB, 1, DataType.BIT, 0, 5, 1),
+            S7Tag(MemoryArea.DB, 1, DataType.BIT, 0, 6, 1),
+            S7Tag(MemoryArea.DB, 1, DataType.BIT, 0, 7, 1),
+            S7Tag(MemoryArea.DB, 1, DataType.BYTE, 20, 0, 1),
+            S7Tag(MemoryArea.DB, 1, DataType.BYTE, 21, 0, 1),
+            S7Tag(MemoryArea.DB, 1, DataType.INT, 30, 0, 1),
+            S7Tag(MemoryArea.DB, 1, DataType.INT, 32, 0, 1),
+            S7Tag(MemoryArea.DB, 1, DataType.INT, 34, 0, 1),
+            S7Tag(MemoryArea.DB, 1, DataType.INT, 36, 0, 1),
+            S7Tag(MemoryArea.DB, 1, DataType.INT, 38, 0, 1),
+            S7Tag(MemoryArea.DB, 1, DataType.DINT, 40, 0, 1),
+            S7Tag(MemoryArea.DB, 1, DataType.DINT, 44, 0, 1),
+            S7Tag(MemoryArea.DB, 1, DataType.DINT, 48, 0, 1),
+            S7Tag(MemoryArea.DB, 1, DataType.DINT, 52, 0, 1),
+            S7Tag(MemoryArea.DB, 1, DataType.DINT, 56, 0, 1),
         ],
         [
             True,
@@ -115,26 +115,26 @@ read_response_test_cases: List[ReadResponseTestCase] = [
         b" hello\xff\x04\x00\x10\x00\x00\xff\x04\x00\x10\x00\x00\xff\x04\x00\x10\x124\xff\x04\x00\x10\x00\x00\xff\x04\x00\x10\xab\xcd\xff\x04\x00\x10\x00\x00\xff\x04\x00\x10\xff\xff\xff\x04\x00"
         b" \x00\x00\x00\x00\xff\x04\x00 \x00\x00\x00\x00",
         [
-            Item(MemoryArea.DB, 1, DataType.REAL, 60, 0, 1),
-            Item(MemoryArea.DB, 1, DataType.REAL, 64, 0, 1),
-            Item(MemoryArea.DB, 1, DataType.REAL, 68, 0, 1),
-            Item(MemoryArea.DB, 1, DataType.REAL, 72, 0, 1),
-            Item(MemoryArea.DB, 1, DataType.REAL, 76, 0, 1),
-            Item(MemoryArea.DB, 1, DataType.REAL, 80, 0, 1),
-            Item(MemoryArea.DB, 1, DataType.REAL, 84, 0, 1),
-            Item(MemoryArea.DB, 1, DataType.REAL, 88, 0, 1),
-            Item(MemoryArea.DB, 1, DataType.REAL, 92, 0, 1),
-            Item(MemoryArea.DB, 1, DataType.CHAR, 102, 0, 21),
-            Item(MemoryArea.DB, 1, DataType.CHAR, 102, 0, 44),
-            Item(MemoryArea.DB, 1, DataType.WORD, 200, 0, 1),
-            Item(MemoryArea.DB, 1, DataType.WORD, 202, 0, 1),
-            Item(MemoryArea.DB, 1, DataType.WORD, 204, 0, 1),
-            Item(MemoryArea.DB, 1, DataType.WORD, 206, 0, 1),
-            Item(MemoryArea.DB, 1, DataType.WORD, 208, 0, 1),
-            Item(MemoryArea.DB, 1, DataType.WORD, 210, 0, 1),
-            Item(MemoryArea.DB, 1, DataType.WORD, 212, 0, 1),
-            Item(MemoryArea.DB, 1, DataType.DWORD, 300, 0, 1),
-            Item(MemoryArea.DB, 1, DataType.DWORD, 304, 0, 1),
+            S7Tag(MemoryArea.DB, 1, DataType.REAL, 60, 0, 1),
+            S7Tag(MemoryArea.DB, 1, DataType.REAL, 64, 0, 1),
+            S7Tag(MemoryArea.DB, 1, DataType.REAL, 68, 0, 1),
+            S7Tag(MemoryArea.DB, 1, DataType.REAL, 72, 0, 1),
+            S7Tag(MemoryArea.DB, 1, DataType.REAL, 76, 0, 1),
+            S7Tag(MemoryArea.DB, 1, DataType.REAL, 80, 0, 1),
+            S7Tag(MemoryArea.DB, 1, DataType.REAL, 84, 0, 1),
+            S7Tag(MemoryArea.DB, 1, DataType.REAL, 88, 0, 1),
+            S7Tag(MemoryArea.DB, 1, DataType.REAL, 92, 0, 1),
+            S7Tag(MemoryArea.DB, 1, DataType.CHAR, 102, 0, 21),
+            S7Tag(MemoryArea.DB, 1, DataType.CHAR, 102, 0, 44),
+            S7Tag(MemoryArea.DB, 1, DataType.WORD, 200, 0, 1),
+            S7Tag(MemoryArea.DB, 1, DataType.WORD, 202, 0, 1),
+            S7Tag(MemoryArea.DB, 1, DataType.WORD, 204, 0, 1),
+            S7Tag(MemoryArea.DB, 1, DataType.WORD, 206, 0, 1),
+            S7Tag(MemoryArea.DB, 1, DataType.WORD, 208, 0, 1),
+            S7Tag(MemoryArea.DB, 1, DataType.WORD, 210, 0, 1),
+            S7Tag(MemoryArea.DB, 1, DataType.WORD, 212, 0, 1),
+            S7Tag(MemoryArea.DB, 1, DataType.DWORD, 300, 0, 1),
+            S7Tag(MemoryArea.DB, 1, DataType.DWORD, 304, 0, 1),
         ],
         [
             -3.4028230607370965e38,
@@ -164,33 +164,33 @@ read_response_test_cases: List[ReadResponseTestCase] = [
         b" \x124Vx\xff\x04\x00 \x00\x00\x00\x00\xff\x04\x00 \x124\xab\xcd\xff\x04\x00"
         b" \x00\x00\x00\x00\xff\x04\x00 \xff\xff\xff\xff",
         [
-            Item(MemoryArea.DB, 1, DataType.DWORD, 308, 0, 1),
-            Item(MemoryArea.DB, 1, DataType.DWORD, 312, 0, 1),
-            Item(MemoryArea.DB, 1, DataType.DWORD, 316, 0, 1),
-            Item(MemoryArea.DB, 1, DataType.DWORD, 320, 0, 1),
-            Item(MemoryArea.DB, 1, DataType.DWORD, 324, 0, 1),
+            S7Tag(MemoryArea.DB, 1, DataType.DWORD, 308, 0, 1),
+            S7Tag(MemoryArea.DB, 1, DataType.DWORD, 312, 0, 1),
+            S7Tag(MemoryArea.DB, 1, DataType.DWORD, 316, 0, 1),
+            S7Tag(MemoryArea.DB, 1, DataType.DWORD, 320, 0, 1),
+            S7Tag(MemoryArea.DB, 1, DataType.DWORD, 324, 0, 1),
         ],
         [305419896, 0, 305441741, 0, 4294967295],
     ),
     ReadResponseTestCase(
         b"\x03\x00\x00\x83\x02\xf0\x802\x03\x00\x00\x00\x00\x00\x02\x00n\x00\x00\x04\x10\xff\x03\x00\x01\x01\x00\xff\x03\x00\x01\x01\x00\xff\x03\x00\x01\x01\x00\xff\x03\x00\x01\x00\x00\xff\x03\x00\x01\x01\x00\xff\x03\x00\x01\x00\x08\xff\x03\x00\x01\x01\x00\xff\x03\x00\x01\x00\x00\xff\x04\x00\x08\x00\x00\xff\x04\x00\x08\xff\x00\xff\x05\x00\x10\x80\x00\xff\x05\x00\x10\xfb.\xff\x05\x00\x10\x00\x00\xff\x05\x00\x10\x04\xd2\xff\x05\x00\x10\x7f\xff\xff\x05\x00\x80\x80\x00\x00\x00\xff\xff\x80\x00\x00\x00\x00\x00\x00\x00\x7f\xff",
         [
-            Item(MemoryArea.DB, 1, DataType.BIT, 0, 0, 1),
-            Item(MemoryArea.DB, 1, DataType.BIT, 0, 1, 1),
-            Item(MemoryArea.DB, 1, DataType.BIT, 0, 2, 1),
-            Item(MemoryArea.DB, 1, DataType.BIT, 0, 3, 1),
-            Item(MemoryArea.DB, 1, DataType.BIT, 0, 4, 1),
-            Item(MemoryArea.DB, 1, DataType.BIT, 0, 5, 1),
-            Item(MemoryArea.DB, 1, DataType.BIT, 0, 6, 1),
-            Item(MemoryArea.DB, 1, DataType.BIT, 0, 7, 1),
-            Item(MemoryArea.DB, 1, DataType.BYTE, 20, 0, 1),
-            Item(MemoryArea.DB, 1, DataType.BYTE, 21, 0, 1),
-            Item(MemoryArea.DB, 1, DataType.INT, 30, 0, 1),
-            Item(MemoryArea.DB, 1, DataType.INT, 32, 0, 1),
-            Item(MemoryArea.DB, 1, DataType.INT, 34, 0, 1),
-            Item(MemoryArea.DB, 1, DataType.INT, 36, 0, 1),
-            Item(MemoryArea.DB, 1, DataType.INT, 38, 0, 1),
-            Item(MemoryArea.DB, 2, DataType.DINT, 40, 0, 4),
+            S7Tag(MemoryArea.DB, 1, DataType.BIT, 0, 0, 1),
+            S7Tag(MemoryArea.DB, 1, DataType.BIT, 0, 1, 1),
+            S7Tag(MemoryArea.DB, 1, DataType.BIT, 0, 2, 1),
+            S7Tag(MemoryArea.DB, 1, DataType.BIT, 0, 3, 1),
+            S7Tag(MemoryArea.DB, 1, DataType.BIT, 0, 4, 1),
+            S7Tag(MemoryArea.DB, 1, DataType.BIT, 0, 5, 1),
+            S7Tag(MemoryArea.DB, 1, DataType.BIT, 0, 6, 1),
+            S7Tag(MemoryArea.DB, 1, DataType.BIT, 0, 7, 1),
+            S7Tag(MemoryArea.DB, 1, DataType.BYTE, 20, 0, 1),
+            S7Tag(MemoryArea.DB, 1, DataType.BYTE, 21, 0, 1),
+            S7Tag(MemoryArea.DB, 1, DataType.INT, 30, 0, 1),
+            S7Tag(MemoryArea.DB, 1, DataType.INT, 32, 0, 1),
+            S7Tag(MemoryArea.DB, 1, DataType.INT, 34, 0, 1),
+            S7Tag(MemoryArea.DB, 1, DataType.INT, 36, 0, 1),
+            S7Tag(MemoryArea.DB, 1, DataType.INT, 38, 0, 1),
+            S7Tag(MemoryArea.DB, 2, DataType.DINT, 40, 0, 4),
         ],
         [
             True,
@@ -218,7 +218,7 @@ read_response_test_cases: List[ReadResponseTestCase] = [
 def test_parse_read_response(test_case: ReadResponseTestCase) -> None:
     assert (
         parse_read_response(
-            bytes_response=test_case.bytes_response, items=test_case.items
+            bytes_response=test_case.bytes_response, tags=test_case.tags
         )
         == test_case.parsed_values
     )
@@ -227,16 +227,16 @@ def test_parse_read_response(test_case: ReadResponseTestCase) -> None:
 @pytest.mark.parametrize("test_case", read_response_test_cases)
 def test_read_response(test_case: ReadResponseTestCase) -> None:
     read_response = ReadResponse(
-        response=test_case.bytes_response, items=test_case.items
+        response=test_case.bytes_response, tags=test_case.tags
     )
 
     assert read_response.response == test_case.bytes_response
-    assert read_response.items == test_case.items
+    assert read_response.tags == test_case.tags
     assert read_response.parse() == test_case.parsed_values
 
 
 ReadResponseOptimizedTestCase = namedtuple(
-    "ReadResponseOptimizedTestCase", ["bytes_response", "items_map", "parsed_values"]
+    "ReadResponseOptimizedTestCase", ["bytes_response", "tags_map", "parsed_values"]
 )
 read_response_optimized_test_case: List[ReadResponseOptimizedTestCase] = [
     ReadResponseOptimizedTestCase(
@@ -247,58 +247,58 @@ read_response_optimized_test_case: List[ReadResponseOptimizedTestCase] = [
         ],
         [
             {
-                Item(MemoryArea.DB, 1, DataType.BYTE, 0, 0, 1): [
-                    (0, Item(MemoryArea.DB, 1, DataType.BIT, 0, 0, 1)),
-                    (1, Item(MemoryArea.DB, 1, DataType.BIT, 0, 1, 1)),
-                    (2, Item(MemoryArea.DB, 1, DataType.BIT, 0, 2, 1)),
-                    (3, Item(MemoryArea.DB, 1, DataType.BIT, 0, 3, 1)),
-                    (4, Item(MemoryArea.DB, 1, DataType.BIT, 0, 4, 1)),
-                    (5, Item(MemoryArea.DB, 1, DataType.BIT, 0, 5, 1)),
-                    (6, Item(MemoryArea.DB, 1, DataType.BIT, 0, 6, 1)),
-                    (7, Item(MemoryArea.DB, 1, DataType.BIT, 0, 7, 1)),
+                S7Tag(MemoryArea.DB, 1, DataType.BYTE, 0, 0, 1): [
+                    (0, S7Tag(MemoryArea.DB, 1, DataType.BIT, 0, 0, 1)),
+                    (1, S7Tag(MemoryArea.DB, 1, DataType.BIT, 0, 1, 1)),
+                    (2, S7Tag(MemoryArea.DB, 1, DataType.BIT, 0, 2, 1)),
+                    (3, S7Tag(MemoryArea.DB, 1, DataType.BIT, 0, 3, 1)),
+                    (4, S7Tag(MemoryArea.DB, 1, DataType.BIT, 0, 4, 1)),
+                    (5, S7Tag(MemoryArea.DB, 1, DataType.BIT, 0, 5, 1)),
+                    (6, S7Tag(MemoryArea.DB, 1, DataType.BIT, 0, 6, 1)),
+                    (7, S7Tag(MemoryArea.DB, 1, DataType.BIT, 0, 7, 1)),
                 ],
-                Item(MemoryArea.DB, 1, DataType.BYTE, 20, 0, 126): [
-                    (8, Item(MemoryArea.DB, 1, DataType.BYTE, 20, 0, 1)),
-                    (9, Item(MemoryArea.DB, 1, DataType.BYTE, 21, 0, 1)),
-                    (10, Item(MemoryArea.DB, 1, DataType.INT, 30, 0, 1)),
-                    (11, Item(MemoryArea.DB, 1, DataType.INT, 32, 0, 1)),
-                    (12, Item(MemoryArea.DB, 1, DataType.INT, 34, 0, 1)),
-                    (13, Item(MemoryArea.DB, 1, DataType.INT, 36, 0, 1)),
-                    (14, Item(MemoryArea.DB, 1, DataType.INT, 38, 0, 1)),
-                    (15, Item(MemoryArea.DB, 1, DataType.DINT, 40, 0, 1)),
-                    (16, Item(MemoryArea.DB, 1, DataType.DINT, 44, 0, 1)),
-                    (17, Item(MemoryArea.DB, 1, DataType.DINT, 48, 0, 1)),
-                    (18, Item(MemoryArea.DB, 1, DataType.DINT, 52, 0, 1)),
-                    (19, Item(MemoryArea.DB, 1, DataType.DINT, 56, 0, 1)),
-                    (20, Item(MemoryArea.DB, 1, DataType.REAL, 60, 0, 1)),
-                    (21, Item(MemoryArea.DB, 1, DataType.REAL, 64, 0, 1)),
-                    (22, Item(MemoryArea.DB, 1, DataType.REAL, 68, 0, 1)),
-                    (23, Item(MemoryArea.DB, 1, DataType.REAL, 72, 0, 1)),
-                    (24, Item(MemoryArea.DB, 1, DataType.REAL, 76, 0, 1)),
-                    (25, Item(MemoryArea.DB, 1, DataType.REAL, 80, 0, 1)),
-                    (26, Item(MemoryArea.DB, 1, DataType.REAL, 84, 0, 1)),
-                    (27, Item(MemoryArea.DB, 1, DataType.REAL, 88, 0, 1)),
-                    (28, Item(MemoryArea.DB, 1, DataType.REAL, 92, 0, 1)),
-                    (29, Item(MemoryArea.DB, 1, DataType.CHAR, 102, 0, 21)),
-                    (30, Item(MemoryArea.DB, 1, DataType.CHAR, 102, 0, 44)),
+                S7Tag(MemoryArea.DB, 1, DataType.BYTE, 20, 0, 126): [
+                    (8, S7Tag(MemoryArea.DB, 1, DataType.BYTE, 20, 0, 1)),
+                    (9, S7Tag(MemoryArea.DB, 1, DataType.BYTE, 21, 0, 1)),
+                    (10, S7Tag(MemoryArea.DB, 1, DataType.INT, 30, 0, 1)),
+                    (11, S7Tag(MemoryArea.DB, 1, DataType.INT, 32, 0, 1)),
+                    (12, S7Tag(MemoryArea.DB, 1, DataType.INT, 34, 0, 1)),
+                    (13, S7Tag(MemoryArea.DB, 1, DataType.INT, 36, 0, 1)),
+                    (14, S7Tag(MemoryArea.DB, 1, DataType.INT, 38, 0, 1)),
+                    (15, S7Tag(MemoryArea.DB, 1, DataType.DINT, 40, 0, 1)),
+                    (16, S7Tag(MemoryArea.DB, 1, DataType.DINT, 44, 0, 1)),
+                    (17, S7Tag(MemoryArea.DB, 1, DataType.DINT, 48, 0, 1)),
+                    (18, S7Tag(MemoryArea.DB, 1, DataType.DINT, 52, 0, 1)),
+                    (19, S7Tag(MemoryArea.DB, 1, DataType.DINT, 56, 0, 1)),
+                    (20, S7Tag(MemoryArea.DB, 1, DataType.REAL, 60, 0, 1)),
+                    (21, S7Tag(MemoryArea.DB, 1, DataType.REAL, 64, 0, 1)),
+                    (22, S7Tag(MemoryArea.DB, 1, DataType.REAL, 68, 0, 1)),
+                    (23, S7Tag(MemoryArea.DB, 1, DataType.REAL, 72, 0, 1)),
+                    (24, S7Tag(MemoryArea.DB, 1, DataType.REAL, 76, 0, 1)),
+                    (25, S7Tag(MemoryArea.DB, 1, DataType.REAL, 80, 0, 1)),
+                    (26, S7Tag(MemoryArea.DB, 1, DataType.REAL, 84, 0, 1)),
+                    (27, S7Tag(MemoryArea.DB, 1, DataType.REAL, 88, 0, 1)),
+                    (28, S7Tag(MemoryArea.DB, 1, DataType.REAL, 92, 0, 1)),
+                    (29, S7Tag(MemoryArea.DB, 1, DataType.CHAR, 102, 0, 21)),
+                    (30, S7Tag(MemoryArea.DB, 1, DataType.CHAR, 102, 0, 44)),
                 ],
-                Item(MemoryArea.DB, 1, DataType.BYTE, 200, 0, 14): [
-                    (31, Item(MemoryArea.DB, 1, DataType.WORD, 200, 0, 1)),
-                    (32, Item(MemoryArea.DB, 1, DataType.WORD, 202, 0, 1)),
-                    (33, Item(MemoryArea.DB, 1, DataType.WORD, 204, 0, 1)),
-                    (34, Item(MemoryArea.DB, 1, DataType.WORD, 206, 0, 1)),
-                    (35, Item(MemoryArea.DB, 1, DataType.WORD, 208, 0, 1)),
-                    (36, Item(MemoryArea.DB, 1, DataType.WORD, 210, 0, 1)),
-                    (37, Item(MemoryArea.DB, 1, DataType.WORD, 212, 0, 1)),
+                S7Tag(MemoryArea.DB, 1, DataType.BYTE, 200, 0, 14): [
+                    (31, S7Tag(MemoryArea.DB, 1, DataType.WORD, 200, 0, 1)),
+                    (32, S7Tag(MemoryArea.DB, 1, DataType.WORD, 202, 0, 1)),
+                    (33, S7Tag(MemoryArea.DB, 1, DataType.WORD, 204, 0, 1)),
+                    (34, S7Tag(MemoryArea.DB, 1, DataType.WORD, 206, 0, 1)),
+                    (35, S7Tag(MemoryArea.DB, 1, DataType.WORD, 208, 0, 1)),
+                    (36, S7Tag(MemoryArea.DB, 1, DataType.WORD, 210, 0, 1)),
+                    (37, S7Tag(MemoryArea.DB, 1, DataType.WORD, 212, 0, 1)),
                 ],
-                Item(MemoryArea.DB, 1, DataType.BYTE, 300, 0, 28): [
-                    (38, Item(MemoryArea.DB, 1, DataType.DWORD, 300, 0, 1)),
-                    (39, Item(MemoryArea.DB, 1, DataType.DWORD, 304, 0, 1)),
-                    (40, Item(MemoryArea.DB, 1, DataType.DWORD, 308, 0, 1)),
-                    (41, Item(MemoryArea.DB, 1, DataType.DWORD, 312, 0, 1)),
-                    (42, Item(MemoryArea.DB, 1, DataType.DWORD, 316, 0, 1)),
-                    (43, Item(MemoryArea.DB, 1, DataType.DWORD, 320, 0, 1)),
-                    (44, Item(MemoryArea.DB, 1, DataType.DWORD, 324, 0, 1)),
+                S7Tag(MemoryArea.DB, 1, DataType.BYTE, 300, 0, 28): [
+                    (38, S7Tag(MemoryArea.DB, 1, DataType.DWORD, 300, 0, 1)),
+                    (39, S7Tag(MemoryArea.DB, 1, DataType.DWORD, 304, 0, 1)),
+                    (40, S7Tag(MemoryArea.DB, 1, DataType.DWORD, 308, 0, 1)),
+                    (41, S7Tag(MemoryArea.DB, 1, DataType.DWORD, 312, 0, 1)),
+                    (42, S7Tag(MemoryArea.DB, 1, DataType.DWORD, 316, 0, 1)),
+                    (43, S7Tag(MemoryArea.DB, 1, DataType.DWORD, 320, 0, 1)),
+                    (44, S7Tag(MemoryArea.DB, 1, DataType.DWORD, 324, 0, 1)),
                 ],
             }
         ],
@@ -359,7 +359,7 @@ def test_parse_optimized_read_response(
 ) -> None:
     assert (
         parse_optimized_read_response(
-            bytes_responses=test_case.bytes_response, items_map=test_case.items_map
+            bytes_responses=test_case.bytes_response, tags_map=test_case.tags_map
         )
         == test_case.parsed_values
     )
@@ -368,11 +368,11 @@ def test_parse_optimized_read_response(
 @pytest.mark.parametrize("test_case", read_response_optimized_test_case)
 def test_read_optimized_response(test_case: ReadResponseOptimizedTestCase) -> None:
     read_response = ReadOptimizedResponse(
-        response=test_case.bytes_response[0], item_map=test_case.items_map[0]
+        response=test_case.bytes_response[0], tag_map=test_case.tags_map[0]
     )
 
     assert read_response.responses == test_case.bytes_response
-    assert read_response.items_map == test_case.items_map
+    assert read_response.tags_map == test_case.tags_map
     assert read_response.n_messages == 1
     assert read_response.parse() == test_case.parsed_values
 
@@ -383,7 +383,7 @@ def test_read_optimized_response(test_case: ReadResponseOptimizedTestCase) -> No
 
 #     read_reponse_optimized1 += read_reponse_optimized2
 
-# WriteResponseTestCase = namedtuple("WriteResponseTestCase", ["bytes_response", "items", "parsed_values"])
+# WriteResponseTestCase = namedtuple("WriteResponseTestCase", ["bytes_response", "tags", "parsed_values"])
 
 # write_response_test_case = [
 #     WriteResponseTestCase(),
@@ -392,4 +392,4 @@ def test_read_optimized_response(test_case: ReadResponseOptimizedTestCase) -> No
 
 # @pytest.mark.parametrize("test_case", write_response_test_case)
 # def test_parse_write_response(test_case: WriteResponseTestCase) -> None:
-#     assert parse_write_response(bytes_response=test_case.bytes_response, items=test_case.items) == test_case.parsed_values
+#     assert parse_write_response(bytes_response=test_case.bytes_response, tags=test_case.tags) == test_case.parsed_values

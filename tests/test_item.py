@@ -3,57 +3,57 @@ from typing import Union
 import pytest
 
 from pyS7.constants import DataType, DataTypeSize, MemoryArea
-from pyS7.item import Item
+from pyS7.tag import S7Tag
 
 
-def test_item_creation() -> None:
-    item = Item(MemoryArea.DB, 1, DataType.INT, 10, 0, 1)
-    assert item.memory_area == MemoryArea.DB
-    assert item.db_number == 1
-    assert item.data_type == DataType.INT
-    assert item.start == 10
-    assert item.bit_offset == 0
-    assert item.length == 1
+def test_tag_creation() -> None:
+    tag = S7Tag(MemoryArea.DB, 1, DataType.INT, 10, 0, 1)
+    assert tag.memory_area == MemoryArea.DB
+    assert tag.db_number == 1
+    assert tag.data_type == DataType.INT
+    assert tag.start == 10
+    assert tag.bit_offset == 0
+    assert tag.length == 1
 
 
 def test_size_calculation() -> None:
-    item = Item(MemoryArea.MERKER, 0, DataType.REAL, 10, 0, 4)
-    assert item.size() == DataTypeSize[DataType.REAL] * 4
+    tag = S7Tag(MemoryArea.MERKER, 0, DataType.REAL, 10, 0, 4)
+    assert tag.size() == DataTypeSize[DataType.REAL] * 4
 
 
 @pytest.mark.parametrize(
-    "item1, item2, result",
+    "tag1, tag2, result",
     [
         (
-            Item(MemoryArea.DB, 1, DataType.REAL, 0, 0, 1),
-            Item(MemoryArea.DB, 1, DataType.INT, 0, 0, 1),
+            S7Tag(MemoryArea.DB, 1, DataType.REAL, 0, 0, 1),
+            S7Tag(MemoryArea.DB, 1, DataType.INT, 0, 0, 1),
             True,
         ),
         (
-            Item(MemoryArea.DB, 1, DataType.REAL, 0, 0, 1),
-            Item(MemoryArea.DB, 1, DataType.INT, 10, 0, 1),
+            S7Tag(MemoryArea.DB, 1, DataType.REAL, 0, 0, 1),
+            S7Tag(MemoryArea.DB, 1, DataType.INT, 10, 0, 1),
             False,
         ),
         (
-            Item(MemoryArea.DB, 1, DataType.REAL, 0, 0, 1),
-            Item(MemoryArea.DB, 1, DataType.INT, 30, 0, 1),
+            S7Tag(MemoryArea.DB, 1, DataType.REAL, 0, 0, 1),
+            S7Tag(MemoryArea.DB, 1, DataType.INT, 30, 0, 1),
             False,
         ),
         (
-            Item(MemoryArea.DB, 1, DataType.REAL, 0, 0, 1),
-            Item(MemoryArea.MERKER, 0, DataType.BYTE, 0, 0, 1),
+            S7Tag(MemoryArea.DB, 1, DataType.REAL, 0, 0, 1),
+            S7Tag(MemoryArea.MERKER, 0, DataType.BYTE, 0, 0, 1),
             False,
         ),
     ],
 )
-def test_item_contains(item1: Item, item2: Item, result: bool) -> None:
-    assert item1.__contains__(item2) is result
+def test_tag_contains(tag1: S7Tag, tag2: S7Tag, result: bool) -> None:
+    assert tag1.__contains__(tag2) is result
 
 
-def test_item_not_contains() -> None:
-    item1 = Item(MemoryArea.DB, 1, DataType.REAL, 20, 0, 1)
-    item2 = Item(MemoryArea.DB, 1, DataType.INT, 0, 0, 1)
-    assert item1.__contains__(item2) is False
+def test_tag_not_contains() -> None:
+    tag1 = S7Tag(MemoryArea.DB, 1, DataType.REAL, 20, 0, 1)
+    tag2 = S7Tag(MemoryArea.DB, 1, DataType.INT, 0, 0, 1)
+    assert tag1.__contains__(tag2) is False
 
 
 @pytest.mark.parametrize(
@@ -113,7 +113,7 @@ def test_item_not_contains() -> None:
         (MemoryArea.MERKER, 0, DataType.BYTE, 0, 0, "length", TypeError),
     ],
 )
-def test_invalid_item_creation(
+def test_invalid_tag_creation(
     memory_area: MemoryArea,
     db_number: int,
     data_type: DataType,
@@ -123,4 +123,4 @@ def test_invalid_item_creation(
     exception: Union[TypeError, ValueError],
 ) -> None:
     with pytest.raises(exception):  # type: ignore
-        Item(memory_area, db_number, data_type, start, bit_offset, length)
+        S7Tag(memory_area, db_number, data_type, start, bit_offset, length)

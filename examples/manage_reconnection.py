@@ -7,26 +7,27 @@
 """
 
 import time
-from pyS7 import Client, S7ConnectionError, S7CommunicationError
+from pyS7 import S7Client, S7ConnectionError, S7CommunicationError
 
-def attempt_connection(client: Client) -> None:
+
+def attempt_connection(client: S7Client) -> None:
     """Recursively tries to connect to the PLC client in case of an error."""
-    
+
     try:
         client.connect()
     except S7ConnectionError as e:
         print(e)
         time.sleep(5)
-        attempt_connection(client)    
+        attempt_connection(client)
+
 
 if __name__ == "__main__":
-
-    # Create a new Client object to connect to S7-300/400/1200/1500 PLC.
+    # Create a new S7Client object to connect to S7-300/400/1200/1500 PLC.
     # Provide the PLC's IP address and slot/rack information
-    client = Client(address="192.168.5.100", rack=0, slot=1)
-    
+    client = S7Client(address="192.168.5.100", rack=0, slot=1)
+
     # Define area tags to read
-    items = ['DB1,X0.0', 'DB1,X0.1', 'DB2,I2']
+    tags = ["DB1,X0.0", "DB1,X0.1", "DB2,I2"]
 
     # Attempt to establish a connection to the PLC client.
     attempt_connection(client)
@@ -34,7 +35,7 @@ if __name__ == "__main__":
     # Start an infinite loop to continuously read from the PLC client.
     while True:
         try:
-            print(client.read(items))
+            print(client.read(tags))
             time.sleep(1)
         except S7CommunicationError as e:
             print(e)

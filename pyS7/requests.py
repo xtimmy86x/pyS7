@@ -4,16 +4,16 @@ from typing import Dict, List, Protocol, Sequence, Tuple, Union, runtime_checkab
 from pyS7.errors import S7AddressError
 
 from .constants import (
-    MAX_READ_ITEMS,
-    MAX_WRITE_ITEMS,
+    MAX_READ_TAGS,
+    MAX_WRITE_TAGS,
     READ_REQ_HEADER_SIZE,
     READ_REQ_OVERHEAD,
-    READ_REQ_PARAM_SIZE_ITEM,
-    READ_REQ_PARAM_SIZE_NO_ITEMS,
+    READ_REQ_PARAM_SIZE_NO_TAGS,
+    READ_REQ_PARAM_SIZE_TAG,
     READ_RES_OVERHEAD,
-    READ_RES_PARAM_SIZE_ITEM,
+    READ_RES_PARAM_SIZE_TAG,
     WRITE_REQ_OVERHEAD,
-    WRITE_REQ_PARAM_SIZE_ITEM,
+    WRITE_REQ_PARAM_SIZE_TAG,
     WRITE_RES_OVERHEAD,
     ConnectionType,
     DataType,
@@ -21,9 +21,9 @@ from .constants import (
     DataTypeSize,
     Function,
 )
-from .item import Item
+from .tag import S7Tag
 
-ItemsMap = Dict[Item, List[Tuple[int, Item]]]
+TagsMap = Dict[S7Tag, List[Tuple[int, S7Tag]]]
 Value = Union[bool, int, float, str, Tuple[Union[bool, int, float], ...]]
 
 
@@ -122,11 +122,11 @@ class PDUNegotiationRequest(Request):
 class ReadRequest(Request):
     """Request for reading data from an S7 device."""
 
-    def __init__(self, items: Sequence[Item]) -> None:
-        self.items = items
-        self.request = self.__prepare_packet(items=items)
+    def __init__(self, tags: Sequence[S7Tag]) -> None:
+        self.tags = tags
+        self.request = self.__prepare_packet(tags=tags)
 
-    def __prepare_packet(self, items: Sequence[Item]) -> bytearray:
+    def __prepare_packet(self, tags: Sequence[S7Tag]) -> bytearray:
         packet = bytearray()
 
         # TPKT
@@ -149,36 +149,36 @@ class ReadRequest(Request):
 
         # S7: PARAMETER
         packet.extend(b"\x04")  # Function 4 Read Var
-        packet.extend(b"\x01")  # Item count
+        packet.extend(b"\x01")  # tag count
 
-        # Item specification
-        for item in items:
+        # S7Tag specification
+        for tag in tags:
             packet.extend(b"\x12")  # Variable specification
             packet.extend(b"\x0a")  # Length of following address specification
             packet.extend(b"\x10")  # Syntax ID: S7ANY (0x10)
             packet.extend(
-                item.data_type.value.to_bytes(1, byteorder="big")
+                tag.data_type.value.to_bytes(1, byteorder="big")
             )  # Transport size
-            packet.extend(item.length.to_bytes(2, byteorder="big"))  # Length
-            packet.extend(item.db_number.to_bytes(2, byteorder="big"))  # DB Number
+            packet.extend(tag.length.to_bytes(2, byteorder="big"))  # Length
+            packet.extend(tag.db_number.to_bytes(2, byteorder="big"))  # DB Number
             packet.extend(
-                item.memory_area.value.to_bytes(1, byteorder="big")
+                tag.memory_area.value.to_bytes(1, byteorder="big")
             )  # Area Code (0x84 for DB)
-            if item.data_type == DataType.BIT:
+            if tag.data_type == DataType.BIT:
                 # Address (start * 8 + bit offset)
                 packet.extend(
-                    (item.start * 8 + 7 - item.bit_offset).to_bytes(3, byteorder="big")
+                    (tag.start * 8 + 7 - tag.bit_offset).to_bytes(3, byteorder="big")
                 )
             else:
                 packet.extend(
-                    (item.start * 8 + item.bit_offset).to_bytes(3, byteorder="big")
+                    (tag.start * 8 + tag.bit_offset).to_bytes(3, byteorder="big")
                 )
 
         # Update parameter length
         packet[13:15] = (len(packet) - 17).to_bytes(2, byteorder="big")
 
-        # Update item count
-        packet[18] = len(items)
+        # Update tag count
+        packet[18] = len(tags)
 
         # Update length
         packet[2:4] = len(packet).to_bytes(2, byteorder="big")
@@ -189,14 +189,14 @@ class ReadRequest(Request):
 class WriteRequest(Request):
     """Request for writing data to an S7 device."""
 
-    def __init__(self, items: Sequence[Item], values: Sequence[Value]) -> None:
-        self.items = items
+    def __init__(self, tags: Sequence[S7Tag], values: Sequence[Value]) -> None:
+        self.tags = tags
         self.values = values
 
-        self.request = self.__prepare_packet(items=items, values=values)
+        self.request = self.__prepare_packet(tags=tags, values=values)
 
     def __prepare_packet(
-        self, items: Sequence[Item], values: Sequence[Value]
+        self, tags: Sequence[S7Tag], values: Sequence[Value]
     ) -> bytearray:
         packet = bytearray()
 
@@ -224,15 +224,15 @@ class WriteRequest(Request):
         packet.extend(
             Function.WRITE_VAR.value.to_bytes(1, byteorder="big")
         )  # Function Write Var
-        packet.extend(b"\x01")  # Item count
+        packet.extend(b"\x01")  # tag count
 
-        # Item specification
-        for item in items:
+        # S7Tag specification
+        for tag in tags:
             packet.extend(b"\x12")  # Variable specification
             packet.extend(b"\x0a")  # Length of following address specification
             packet.extend(b"\x10")  # Syntax ID: S7ANY (0x10)
 
-            if item.data_type == DataType.BIT:
+            if tag.data_type == DataType.BIT:
                 packet.extend(
                     DataType.BIT.value.to_bytes(1, byteorder="big")
                 )  # Transport size
@@ -240,106 +240,106 @@ class WriteRequest(Request):
                 # Transport size, write everything as bytes
                 packet.extend(DataType.BYTE.value.to_bytes(1, byteorder="big"))
 
-            # Length (item length * size of data type)
+            # Length (tag length * size of data type)
             packet.extend(
-                (item.length * DataTypeSize[item.data_type]).to_bytes(
-                    2, byteorder="big"
-                )
+                (tag.length * DataTypeSize[tag.data_type]).to_bytes(2, byteorder="big")
             )
-            packet.extend(item.db_number.to_bytes(2, byteorder="big"))  # DB Number
+            packet.extend(tag.db_number.to_bytes(2, byteorder="big"))  # DB Number
             packet.extend(
-                item.memory_area.value.to_bytes(1, byteorder="big")
+                tag.memory_area.value.to_bytes(1, byteorder="big")
             )  # Area Code (0x84 for DB)
 
-            if item.data_type == DataType.BIT:
+            if tag.data_type == DataType.BIT:
                 # Address (start * 8 + bit offset)
                 packet.extend(
-                    (item.start * 8 + 7 - item.bit_offset).to_bytes(3, byteorder="big")
+                    (tag.start * 8 + 7 - tag.bit_offset).to_bytes(3, byteorder="big")
                 )
             else:
                 packet.extend(
-                    (item.start * 8 + item.bit_offset).to_bytes(3, byteorder="big")
+                    (tag.start * 8 + tag.bit_offset).to_bytes(3, byteorder="big")
                 )
 
         parameter_length = len(packet) - tpkt_cotp_header_length
 
         # S7 : DATA
-        for i, item in enumerate(items):
+        for i, tag in enumerate(tags):
             packet.extend(b"\x00")  # Reserved (0x00)
 
             data = values[i]
 
-            if item.data_type == DataType.BIT:
+            if tag.data_type == DataType.BIT:
                 transport_size = DataTypeData.BIT
-                new_length = item.length * DataTypeSize[item.data_type]
+                new_length = tag.length * DataTypeSize[tag.data_type]
                 packed_data = struct.pack(">?", data)
 
-            elif item.data_type == DataType.BYTE:
+            elif tag.data_type == DataType.BYTE:
                 transport_size = DataTypeData.BYTE_WORD_DWORD
-                new_length = item.length * DataTypeSize[item.data_type] * 8
+                new_length = tag.length * DataTypeSize[tag.data_type] * 8
                 if isinstance(data, tuple):
-                    packed_data = struct.pack(f">{item.length * 'B'}", *data)
+                    packed_data = struct.pack(f">{tag.length * 'B'}", *data)
                 else:
                     packed_data = struct.pack(">B", data)
 
-            elif item.data_type == DataType.CHAR:
+            elif tag.data_type == DataType.CHAR:
                 transport_size = DataTypeData.BYTE_WORD_DWORD
-                new_length = item.length * DataTypeSize[item.data_type] * 8
+                new_length = tag.length * DataTypeSize[tag.data_type] * 8
                 assert isinstance(data, str)
                 packed_data = data.encode(encoding="ascii")
 
-            elif item.data_type == DataType.INT:
+            elif tag.data_type == DataType.INT:
                 transport_size = DataTypeData.BYTE_WORD_DWORD
-                new_length = item.length * DataTypeSize[item.data_type] * 8
+                new_length = tag.length * DataTypeSize[tag.data_type] * 8
                 if isinstance(data, tuple):
-                    packed_data = struct.pack(f">{item.length * 'h'}", *data)
+                    packed_data = struct.pack(f">{tag.length * 'h'}", *data)
                 else:
                     packed_data = struct.pack(">h", data)
 
-            elif item.data_type == DataType.WORD:
+            elif tag.data_type == DataType.WORD:
                 transport_size = DataTypeData.BYTE_WORD_DWORD
-                new_length = item.length * DataTypeSize[item.data_type] * 8
+                new_length = tag.length * DataTypeSize[tag.data_type] * 8
                 if isinstance(data, tuple):
-                    packed_data = struct.pack(f">{item.length * 'H'}", *data)
+                    packed_data = struct.pack(f">{tag.length * 'H'}", *data)
                 else:
                     packed_data = struct.pack(">H", data)
 
-            elif item.data_type == DataType.DWORD:
+            elif tag.data_type == DataType.DWORD:
                 transport_size = DataTypeData.BYTE_WORD_DWORD
-                new_length = item.length * DataTypeSize[item.data_type] * 8
+                new_length = tag.length * DataTypeSize[tag.data_type] * 8
                 if isinstance(data, tuple):
-                    packed_data = struct.pack(f">{item.length * 'I'}", *data)
+                    packed_data = struct.pack(f">{tag.length * 'I'}", *data)
                 else:
                     packed_data = struct.pack(">I", data)
 
-            elif item.data_type == DataType.DINT:
+            elif tag.data_type == DataType.DINT:
                 transport_size = DataTypeData.BYTE_WORD_DWORD
-                new_length = item.length * DataTypeSize[item.data_type] * 8
+                new_length = tag.length * DataTypeSize[tag.data_type] * 8
                 if isinstance(data, tuple):
-                    packed_data = struct.pack(f">{item.length * 'l'}", *data)
+                    packed_data = struct.pack(f">{tag.length * 'l'}", *data)
                 else:
                     packed_data = struct.pack(">l", data)
 
-            elif item.data_type == DataType.REAL:
+            elif tag.data_type == DataType.REAL:
                 transport_size = DataTypeData.BYTE_WORD_DWORD
-                new_length = item.length * DataTypeSize[item.data_type] * 8
+                new_length = tag.length * DataTypeSize[tag.data_type] * 8
                 if isinstance(data, tuple):
-                    packed_data = struct.pack(f">{item.length * 'f'}", *data)
+                    packed_data = struct.pack(f">{tag.length * 'f'}", *data)
                 else:
                     packed_data = struct.pack(">f", data)
+            else:
+                assert False, "Unreachable"
 
             # Data transport size - This is not the DataType
             packet.extend(transport_size.value.to_bytes(1, byteorder="big"))
             packet.extend(new_length.to_bytes(2, byteorder="big"))
             packet.extend(packed_data)
 
-            data_item_length = 1 + 1 + 2 + item.length * DataTypeSize[item.data_type]
+            data_tag_length = 1 + 1 + 2 + tag.length * DataTypeSize[tag.data_type]
 
-            if item.data_type == DataType.BIT and i < len(items) - 1:
+            if tag.data_type == DataType.BIT and i < len(tags) - 1:
                 packet.extend(b"\x00")
 
-            if len(packet) % 2 == 0 and i < len(items) - 1:
-                data_item_length += 1
+            if len(packet) % 2 == 0 and i < len(tags) - 1:
+                data_tag_length += 1
                 packet.extend(b"\x00")
 
         data_length = len(packet) - parameter_length - tpkt_cotp_header_length
@@ -350,8 +350,8 @@ class WriteRequest(Request):
         # Update data length
         packet[15:17] = (data_length).to_bytes(2, byteorder="big")
 
-        # Update item count
-        packet[18] = len(items)
+        # Update tag count
+        packet[18] = len(tags)
 
         # Update packet length
         packet[2:4] = len(packet).to_bytes(2, byteorder="big")
@@ -359,149 +359,147 @@ class WriteRequest(Request):
         return packet
 
 
-# TODO: we should now handle the case where an item size is > pdu size by splitting it in multiple chunks
-def group_items(items: List[Item], pdu_size: int) -> ItemsMap:
-    """Group the given items based on memory area, db number, and starting address."""
+# TODO: we should now handle the case where an tag size is > pdu size by splitting it in multiple chunks
+def group_tags(tags: List[S7Tag], pdu_size: int) -> TagsMap:
+    """Group the given tags based on memory area, db number, and starting address."""
 
-    sorted_items = sorted(
-        enumerate(items),
+    sorted_tags = sorted(
+        enumerate(tags),
         key=lambda elem: (elem[1].memory_area.value, elem[1].db_number, elem[1].start),
     )
 
     groups = {}
 
-    for i, (idx, item) in enumerate(sorted_items):
+    for i, (idx, tag) in enumerate(sorted_tags):
         if i == 0:
-            groups[item] = [(idx, item)]
-            previous_item = item
+            groups[tag] = [(idx, tag)]
+            previous_tag = tag
         else:
             if (
-                previous_item.memory_area == item.memory_area
-                and previous_item.db_number == item.db_number
-                and item.start - (previous_item.start + previous_item.size())
-                < READ_REQ_PARAM_SIZE_ITEM
-                and item.size()
+                previous_tag.memory_area == tag.memory_area
+                and previous_tag.db_number == tag.db_number
+                and tag.start - (previous_tag.start + previous_tag.size())
+                < READ_REQ_PARAM_SIZE_TAG
+                and tag.size()
                 + READ_REQ_HEADER_SIZE
-                + READ_REQ_PARAM_SIZE_NO_ITEMS
-                + READ_REQ_PARAM_SIZE_ITEM
+                + READ_REQ_PARAM_SIZE_NO_TAGS
+                + READ_REQ_PARAM_SIZE_TAG
                 < pdu_size
             ):
-                new_start = previous_item.start
+                new_start = previous_tag.start
                 new_length = (
                     max(
-                        previous_item.start + previous_item.size(),
-                        item.start + item.size(),
+                        previous_tag.start + previous_tag.size(),
+                        tag.start + tag.size(),
                     )
-                    - previous_item.start
+                    - previous_tag.start
                 )
 
-                new_item = Item(
-                    memory_area=previous_item.memory_area,
-                    db_number=previous_item.db_number,
+                new_tag = S7Tag(
+                    memory_area=previous_tag.memory_area,
+                    db_number=previous_tag.db_number,
                     data_type=DataType.BYTE,
                     start=new_start,
                     bit_offset=0,
                     length=new_length,
                 )
 
-                tracked_items = groups.pop(previous_item)
-                # Update items_map to point to new item
-                groups[new_item] = tracked_items + [(idx, item)]
-                previous_item = new_item
+                tracked_tags = groups.pop(previous_tag)
+                # Update tags_map to point to new tag
+                groups[new_tag] = tracked_tags + [(idx, tag)]
+                previous_tag = new_tag
 
             else:
-                groups[item] = [(idx, item)]
-                previous_item = item
+                groups[tag] = [(idx, tag)]
+                previous_tag = tag
 
     return groups
 
 
-def ungroup(items_map: ItemsMap) -> List[Item]:  # pragma: no cover
-    original_items = []
+def ungroup(tags_map: TagsMap) -> List[S7Tag]:  # pragma: no cover
+    original_tags = []
 
-    for original_items in items_map.values():
-        original_items.extend(original_items)
+    for original_tags in tags_map.values():
+        original_tags.extend(original_tags)
 
-    original_items.sort(key=lambda elem: elem[0])
-    return [item for (_, item) in original_items]
+    original_tags.sort(key=lambda elem: elem[0])
+    return [tag for (_, tag) in original_tags]
 
 
-def prepare_requests(items: List[Item], max_pdu: int) -> List[List[Item]]:
-    requests: List[List[Item]] = [[]]
+def prepare_requests(tags: List[S7Tag], max_pdu: int) -> List[List[S7Tag]]:
+    requests: List[List[S7Tag]] = [[]]
 
     request_size = READ_REQ_OVERHEAD
     response_size = READ_RES_OVERHEAD
 
-    for item in items:
+    for tag in tags:
         if (
-            READ_REQ_OVERHEAD + READ_REQ_PARAM_SIZE_ITEM + item.size() >= max_pdu
-            or READ_RES_OVERHEAD + READ_RES_PARAM_SIZE_ITEM + item.size() > max_pdu
+            READ_REQ_OVERHEAD + READ_REQ_PARAM_SIZE_TAG + tag.size() >= max_pdu
+            or READ_RES_OVERHEAD + READ_RES_PARAM_SIZE_TAG + tag.size() > max_pdu
         ):
-            # TODO: Improve error message by adding current item size
+            # TODO: Improve error message by adding current tag size
             raise S7AddressError(
-                f"{item} too big -> it cannot fit the size of the negotiated PDU ({max_pdu})"
+                f"{tag} too big -> it cannot fit the size of the negotiated PDU ({max_pdu})"
             )
 
         elif (
-            request_size + READ_REQ_PARAM_SIZE_ITEM < max_pdu
-            and response_size + READ_RES_PARAM_SIZE_ITEM + item.size() < max_pdu
-            and len(requests[-1]) < MAX_READ_ITEMS
+            request_size + READ_REQ_PARAM_SIZE_TAG < max_pdu
+            and response_size + READ_RES_PARAM_SIZE_TAG + tag.size() < max_pdu
+            and len(requests[-1]) < MAX_READ_TAGS
         ):
-            requests[-1].append(item)
+            requests[-1].append(tag)
 
-            request_size += READ_REQ_PARAM_SIZE_ITEM
-            response_size += READ_RES_PARAM_SIZE_ITEM + item.size()
+            request_size += READ_REQ_PARAM_SIZE_TAG
+            response_size += READ_RES_PARAM_SIZE_TAG + tag.size()
 
         else:
-            requests.append([item])
-            request_size = READ_REQ_OVERHEAD + READ_REQ_PARAM_SIZE_ITEM
-            response_size = READ_RES_OVERHEAD + READ_RES_PARAM_SIZE_ITEM + item.size()
+            requests.append([tag])
+            request_size = READ_REQ_OVERHEAD + READ_REQ_PARAM_SIZE_TAG
+            response_size = READ_RES_OVERHEAD + READ_RES_PARAM_SIZE_TAG + tag.size()
 
     return requests
 
 
 def prepare_write_requests_and_values(
-    items: Sequence[Item], values: Sequence[Value], max_pdu: int
-) -> Tuple[List[List[Item]], List[List[Value]]]:
-    requests: List[List[Item]] = [[]]
+    tags: Sequence[S7Tag], values: Sequence[Value], max_pdu: int
+) -> Tuple[List[List[S7Tag]], List[List[Value]]]:
+    requests: List[List[S7Tag]] = [[]]
     requests_values: List[List[Value]] = [[]]
 
     request_size = WRITE_REQ_OVERHEAD
     response_size = WRITE_RES_OVERHEAD
 
-    for i, item in enumerate(items):
+    for i, tag in enumerate(tags):
         if (
-            WRITE_REQ_OVERHEAD + WRITE_REQ_PARAM_SIZE_ITEM + item.size() >= max_pdu
-            or WRITE_RES_OVERHEAD + item.size() + 1 >= max_pdu
+            WRITE_REQ_OVERHEAD + WRITE_REQ_PARAM_SIZE_TAG + tag.size() >= max_pdu
+            or WRITE_RES_OVERHEAD + tag.size() + 1 >= max_pdu
         ):
             raise S7AddressError(
-                f"{item} too big -> it cannot fit the size of the negotiated PDU ({max_pdu})"
+                f"{tag} too big -> it cannot fit the size of the negotiated PDU ({max_pdu})"
             )
 
         elif (
-            request_size + WRITE_REQ_PARAM_SIZE_ITEM + 4 + item.size() + item.length % 2
+            request_size + WRITE_REQ_PARAM_SIZE_TAG + 4 + tag.size() + tag.length % 2
             < max_pdu
             and response_size + 1 < max_pdu
-            and len(requests[-1]) < MAX_WRITE_ITEMS
+            and len(requests[-1]) < MAX_WRITE_TAGS
         ):
-            requests[-1].append(item)
+            requests[-1].append(tag)
             requests_values[-1].append(values[i])
 
-            request_size += (
-                WRITE_REQ_PARAM_SIZE_ITEM + 4 + item.size() + item.length % 2
-            )
+            request_size += WRITE_REQ_PARAM_SIZE_TAG + 4 + tag.size() + tag.length % 2
             response_size += 1
 
         else:
-            requests.append([item])
+            requests.append([tag])
             requests_values.append([values[i]])
 
             request_size = (
                 WRITE_REQ_OVERHEAD
-                + WRITE_REQ_PARAM_SIZE_ITEM
+                + WRITE_REQ_PARAM_SIZE_TAG
                 + 4
-                + item.size()
-                + item.length % 2
+                + tag.size()
+                + tag.length % 2
             )
             response_size = WRITE_RES_OVERHEAD + 1
 

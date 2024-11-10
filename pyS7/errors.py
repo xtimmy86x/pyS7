@@ -11,7 +11,7 @@ class S7CommunicationError(Exception):
 
 
 class S7AddressError(Exception):
-    """Raised when a string address cannot be parsed in an Item."""
+    """Raised when a string address cannot be parsed in a S7Tag."""
 
     ...
 
