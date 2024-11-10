@@ -2,7 +2,7 @@ import pytest
 
 from pyS7.address_parser import map_address_to_item
 from pyS7.constants import DataType, MemoryArea
-from pyS7.errors import AddressError
+from pyS7.errors import S7AddressError
 from pyS7.item import Item
 
 
@@ -33,32 +33,32 @@ def test_map_address_to_item(test_input: str, expected: Item) -> None:
 @pytest.mark.parametrize(
     "test_input, exception",
     [
-        ("DB12,X10", AddressError),  # Missing bit offset
-        ("DB12,X10.8", AddressError),  # Invalid bit offset
-        ("DB12,W22.6", AddressError),  # Invalid bit offset
-        ("DB12,DI40.1", AddressError),  # Invalid bit offset
-        ("DB53,DW5.5", AddressError),  # Invalid bit offset
-        ("DB24,R102.4", AddressError),  # Invalid bit offset
-        ("I10.11", AddressError),  # Invalid bit offset
-        ("A1.17", AddressError),  # Invalid bit offset
-        ("M3.9", AddressError),  # Invalid bit offset
-        ("DB12,S102", AddressError),  # Missing length
-        ("DT23", AddressError),  # Invalid address
-        ("DB1,FLOAT10", AddressError),  # FLOAT not good, use REAL instead
-        ("DB56,B11.5", AddressError),  # Unsupported bit offset for type BYTE
-        ("DB1,CHAR11.5", AddressError),  # Unsupported bit offset for type CHAR
-        ("DB30,I0.5", AddressError),  # Unsupported bit offset for type INT
-        ("DBX50.1", AddressError),  # Wrong format
-        ("DB50.DBX50.1", AddressError),  # Wrong format
-        ("DB16,DC5", AddressError),  # Wrong format
-        ("I1,10", AddressError),  # Wrong format
-        ("M1?10", AddressError),  # Wrong format
-        ("Q25?10,9", AddressError),  # Wrong format
-        ("IEU,90", AddressError),  # Wrong format
-        ("QZ,21", AddressError),  # Wrong format
-        ("MUN21", AddressError),  # Wrong format
+        ("DB12,X10", S7AddressError),  # Missing bit offset
+        ("DB12,X10.8", S7AddressError),  # Invalid bit offset
+        ("DB12,W22.6", S7AddressError),  # Invalid bit offset
+        ("DB12,DI40.1", S7AddressError),  # Invalid bit offset
+        ("DB53,DW5.5", S7AddressError),  # Invalid bit offset
+        ("DB24,R102.4", S7AddressError),  # Invalid bit offset
+        ("I10.11", S7AddressError),  # Invalid bit offset
+        ("A1.17", S7AddressError),  # Invalid bit offset
+        ("M3.9", S7AddressError),  # Invalid bit offset
+        ("DB12,S102", S7AddressError),  # Missing length
+        ("DT23", S7AddressError),  # Invalid address
+        ("DB1,FLOAT10", S7AddressError),  # FLOAT not good, use REAL instead
+        ("DB56,B11.5", S7AddressError),  # Unsupported bit offset for type BYTE
+        ("DB1,CHAR11.5", S7AddressError),  # Unsupported bit offset for type CHAR
+        ("DB30,I0.5", S7AddressError),  # Unsupported bit offset for type INT
+        ("DBX50.1", S7AddressError),  # Wrong format
+        ("DB50.DBX50.1", S7AddressError),  # Wrong format
+        ("DB16,DC5", S7AddressError),  # Wrong format
+        ("I1,10", S7AddressError),  # Wrong format
+        ("M1?10", S7AddressError),  # Wrong format
+        ("Q25?10,9", S7AddressError),  # Wrong format
+        ("IEU,90", S7AddressError),  # Wrong format
+        ("QZ,21", S7AddressError),  # Wrong format
+        ("MUN21", S7AddressError),  # Wrong format
     ],
 )
-def test_invalid_address(test_input: str, exception: AddressError) -> None:
+def test_invalid_address(test_input: str, exception: S7AddressError) -> None:
     with pytest.raises(exception):  # type: ignore
         map_address_to_item(test_input)

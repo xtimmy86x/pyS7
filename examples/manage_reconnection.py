@@ -6,17 +6,15 @@
 #######################################################################
 """
 
-import socket
 import time
-import pyS7
-from pyS7 import Client
+from pyS7 import Client, S7ConnectionError, S7CommunicationError
 
 def attempt_connection(client: Client) -> None:
-    """Recursively tries to connect to the PLC client in case of a socket error."""
+    """Recursively tries to connect to the PLC client in case of an error."""
     
     try:
         client.connect()
-    except socket.error as e:
+    except S7ConnectionError as e:
         print(e)
         time.sleep(5)
         attempt_connection(client)    
@@ -38,9 +36,7 @@ if __name__ == "__main__":
         try:
             print(client.read(items))
             time.sleep(1)
-        except pyS7.errors.ConnectionClosed:
-            # If the connection is unexpectedly closed, attempt to reconnect.
-            attempt_connection(client)
-        except socket.error as e:
-            # If any other socket error occurs, attempt to reconnect.
+        except S7CommunicationError as e:
+            print(e)
+            # If the connection is unexpectedly closed, or any other error, attempt to reconnect.
             attempt_connection(client)

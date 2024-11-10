@@ -2,7 +2,7 @@ import struct
 from typing import Any, List, Protocol, Tuple, Union, runtime_checkable
 
 from .constants import READ_RES_OVERHEAD, WRITE_RES_OVERHEAD, DataType, ReturnCode
-from .errors import ReadResponseError, WriteResponseError
+from .errors import S7ReadResponseError, S7WriteResponseError
 from .item import Item
 from .requests import ItemsMap, Value
 
@@ -137,7 +137,7 @@ def parse_read_response(bytes_response: bytes, items: List[Item]) -> List[Value]
             parsed_data.append(data)
 
         else:
-            raise ReadResponseError(f"{item}: {ReturnCode(return_code).name}")
+            raise S7ReadResponseError(f"{item}: {ReturnCode(return_code).name}")
 
     processed_data: List[Value] = [
         data[0] if isinstance(data, tuple) and len(data) == 1 else data
@@ -231,7 +231,7 @@ def parse_optimized_read_response(
                 offset += 1 if packed_item.length % 2 != 0 else 0
 
             else:
-                raise ReadResponseError(
+                raise S7ReadResponseError    (
                     f"{packed_item}: {ReturnCode(return_code).name}"
                 )
 
@@ -255,6 +255,6 @@ def parse_write_response(bytes_response: bytes, items: List[Item]) -> None:
             offset += 1
 
         else:
-            raise WriteResponseError(
+            raise S7WriteResponseError(
                 f"Impossible to write item {item} - {ReturnCode(return_code).name} "
             )

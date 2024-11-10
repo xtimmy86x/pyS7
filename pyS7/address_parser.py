@@ -2,7 +2,7 @@ import re
 from typing import Dict, Optional
 
 from .constants import DataType, MemoryArea
-from .errors import AddressError
+from .errors import S7AddressError
 from .item import Item
 
 """
@@ -72,7 +72,7 @@ def map_address_to_item(address: str) -> Item:
         match = re.match(r"DB(\d+),([a-zA-Z]+)(\d+)(?:\.(\d+))?", address)
 
         if match is None:
-            raise AddressError(f"Impossible to parse address '{address}'")
+            raise S7AddressError(f"Impossible to parse address '{address}'")
 
         db_number, str_data_type, start, bit_offset = match.groups()
 
@@ -82,11 +82,11 @@ def map_address_to_item(address: str) -> Item:
             start = int(start)
 
             if bit_offset is None:
-                raise AddressError("Missing bit_offset value")
+                raise S7AddressError("Missing bit_offset value")
 
             bit_offset = int(bit_offset)
             if not 0 <= bit_offset <= 7:
-                raise AddressError(
+                raise S7AddressError(
                     "The bit offset must be a value between 0 and 7 included"
                 )
 
@@ -99,7 +99,9 @@ def map_address_to_item(address: str) -> Item:
             length = 1
 
             if bit_offset is not None:
-                raise AddressError(f"Bit offset non supported for address '{address}'")
+                raise S7AddressError(
+                    f"Bit offset non supported for address '{address}'"
+                )
 
             bit_offset = 0
 
@@ -110,7 +112,9 @@ def map_address_to_item(address: str) -> Item:
             length = 1
 
             if bit_offset is not None:
-                raise AddressError(f"Bit offset non supported for address '{address}'")
+                raise S7AddressError(
+                    f"Bit offset non supported for address '{address}'"
+                )
 
             bit_offset = 0
 
@@ -121,7 +125,9 @@ def map_address_to_item(address: str) -> Item:
             length = 1
 
             if bit_offset is not None:
-                raise AddressError(f"Bit offset non supported for address '{address}'")
+                raise S7AddressError(
+                    f"Bit offset non supported for address '{address}'"
+                )
 
             bit_offset = 0
 
@@ -132,7 +138,9 @@ def map_address_to_item(address: str) -> Item:
             length = 1
 
             if bit_offset is not None:
-                raise AddressError(f"Bit offset non supported for address '{address}'")
+                raise S7AddressError(
+                    f"Bit offset non supported for address '{address}'"
+                )
 
             bit_offset = 0
 
@@ -143,7 +151,9 @@ def map_address_to_item(address: str) -> Item:
             length = 1
 
             if bit_offset is not None:
-                raise AddressError(f"Bit offset non supported for address '{address}'")
+                raise S7AddressError(
+                    f"Bit offset non supported for address '{address}'"
+                )
 
             bit_offset = 0
 
@@ -154,7 +164,9 @@ def map_address_to_item(address: str) -> Item:
             length = 1
 
             if bit_offset is not None:
-                raise AddressError(f"Bit offset non supported for address '{address}'")
+                raise S7AddressError(
+                    f"Bit offset non supported for address '{address}'"
+                )
 
             bit_offset = 0
 
@@ -165,7 +177,9 @@ def map_address_to_item(address: str) -> Item:
             length = 1
 
             if bit_offset is not None:
-                raise AddressError(f"Bit offset non supported for address '{address}'")
+                raise S7AddressError(
+                    f"Bit offset non supported for address '{address}'"
+                )
 
             bit_offset = 0
 
@@ -176,13 +190,13 @@ def map_address_to_item(address: str) -> Item:
 
             # For String addresses the bit offset corresponds to the length
             if bit_offset is None:
-                raise AddressError(f"{address}")
+                raise S7AddressError(f"{address}")
 
             length = int(bit_offset)
             bit_offset = 0
 
         else:
-            raise AddressError(f"Impossible to parse address: '{address}")
+            raise S7AddressError(f"Impossible to parse address: '{address}")
 
         return Item(
             memory_area=MemoryArea.DB,
@@ -197,12 +211,12 @@ def map_address_to_item(address: str) -> Item:
         match = re.match(r"^[I,E]([B,C,I,W,DI,D,R])?(\d+)(?:\.(\d+))?", address)
 
         if match is None:
-            raise AddressError(f"{address}")
+            raise S7AddressError(f"{address}")
 
         str_data_type, start, bit_offset = match.groups()
 
         if str_data_type is None and bit_offset is None:
-            raise AddressError(f"{address}")
+            raise S7AddressError(f"{address}")
 
         memory_area = MemoryArea.INPUT
         db_number = 0
@@ -213,7 +227,7 @@ def map_address_to_item(address: str) -> Item:
         bit_offset = int(bit_offset) if bit_offset is not None else 0
 
         if not 0 <= bit_offset <= 7:
-            raise AddressError(
+            raise S7AddressError(
                 "The bit offset must be a value between 0 and 7 included"
             )
 
@@ -232,12 +246,12 @@ def map_address_to_item(address: str) -> Item:
         match = re.match(r"[Q,A]([B,C,I,W,DI,D,R])?(\d+)(?:\.(\d+))?", address)
 
         if match is None:
-            raise AddressError(f"{address}")
+            raise S7AddressError(f"{address}")
 
         str_data_type, start, bit_offset = match.groups()
 
         if str_data_type is None and bit_offset is None:
-            raise AddressError(f"{address}")
+            raise S7AddressError(f"{address}")
 
         memory_area = MemoryArea.OUTPUT
         db_number = 0
@@ -248,7 +262,7 @@ def map_address_to_item(address: str) -> Item:
         bit_offset = int(bit_offset) if bit_offset is not None else 0
 
         if not 0 <= bit_offset <= 7:
-            raise AddressError(
+            raise S7AddressError(
                 "The bit offset must be a value between 0 and 7 included"
             )
 
@@ -267,12 +281,12 @@ def map_address_to_item(address: str) -> Item:
         match = re.match(r"M([B,C,I,W,DI,D,R])?(\d+)(?:\.(\d+))?", address)
 
         if match is None:
-            raise AddressError(f"{address}")
+            raise S7AddressError(f"{address}")
 
         str_data_type, start, bit_offset = match.groups()
 
         if str_data_type is None and bit_offset is None:
-            raise AddressError(f"{address}")
+            raise S7AddressError(f"{address}")
 
         memory_area = MemoryArea.MERKER
         db_number = 0
@@ -283,7 +297,7 @@ def map_address_to_item(address: str) -> Item:
         bit_offset = int(bit_offset) if bit_offset is not None else 0
 
         if not 0 <= bit_offset <= 7:
-            raise AddressError(
+            raise S7AddressError(
                 "The bit offset must be a value between 0 and 7 included"
             )
 
@@ -299,4 +313,4 @@ def map_address_to_item(address: str) -> Item:
         )
 
     else:
-        raise AddressError(f"Unsupported address '{address}'")
+        raise S7AddressError(f"Unsupported address '{address}'")

@@ -1,3 +1,4 @@
+import socket
 from typing import Any
 
 import pytest
@@ -18,9 +19,9 @@ def test_client_init(client: Client) -> None:
     assert client.slot == 1
     assert client.connection_type == ConnectionType.S7Basic
     assert client.port == 102
+    assert client.timeout == 5
 
-    assert client.socket is not None
-    assert client.socket.gettimeout() == 5
+    assert client.socket is None
 
     assert client.max_jobs_called == MAX_JOB_CALLED
     assert client.max_jobs_calling == MAX_JOB_CALLING
@@ -43,12 +44,17 @@ def test_client_connect(client: Client, monkeypatch: pytest.MonkeyPatch) -> None
 
     client.connect()
 
+    assert client.socket is not None
+    assert client.socket.gettimeout() == 5
+
 
 def test_client_disconnect(client: Client, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("socket.socket.shutdown", lambda *args, **kwargs: None)
     monkeypatch.setattr("socket.socket.close", lambda *args, **kwargs: None)
 
     client.disconnect()
+
+    assert client.socket is None
 
 
 def test_read(client: Client, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -60,6 +66,9 @@ def test_read(client: Client, monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr("socket.socket.send", mock_send)
     monkeypatch.setattr("socket.socket.recv", mock_recv)
+
+    # Ensure socket is initialized
+    client.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
     items = ["DB1,X0.0", "DB1,X0.1", "DB2,I2"]
     result = client.read(items, optimize=False)
@@ -76,6 +85,9 @@ def test_read_optimized(client: Client, monkeypatch: pytest.MonkeyPatch) -> None
     monkeypatch.setattr("socket.socket.send", mock_send)
     monkeypatch.setattr("socket.socket.recv", mock_recv)
 
+    # Ensure socket is initialized
+    client.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+
     items = ["DB1,X0.1", "DB2,I2"]
     result = client.read(items, optimize=True)
     assert result == [True, 0]
@@ -90,6 +102,9 @@ def test_write(client: Client, monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr("socket.socket.send", mock_send)
     monkeypatch.setattr("socket.socket.recv", mock_recv)
+
+    # Ensure socket is initialized
+    client.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
     items = ["DB1,X0.0", "DB1,X0.1", "DB2,I2"]
     values = [False, True, 69]

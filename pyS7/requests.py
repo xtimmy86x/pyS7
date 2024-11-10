@@ -1,7 +1,7 @@
 import struct
 from typing import Dict, List, Protocol, Sequence, Tuple, Union, runtime_checkable
 
-from pyS7.errors import AddressError
+from pyS7.errors import S7AddressError
 
 from .constants import (
     MAX_READ_ITEMS,
@@ -359,6 +359,7 @@ class WriteRequest(Request):
         return packet
 
 
+# TODO: we should now handle the case where an item size is > pdu size by splitting it in multiple chunks
 def group_items(items: List[Item], pdu_size: int) -> ItemsMap:
     """Group the given items based on memory area, db number, and starting address."""
 
@@ -436,7 +437,8 @@ def prepare_requests(items: List[Item], max_pdu: int) -> List[List[Item]]:
             READ_REQ_OVERHEAD + READ_REQ_PARAM_SIZE_ITEM + item.size() >= max_pdu
             or READ_RES_OVERHEAD + READ_RES_PARAM_SIZE_ITEM + item.size() > max_pdu
         ):
-            raise AddressError(
+            # TODO: Improve error message by adding current item size
+            raise S7AddressError(
                 f"{item} too big -> it cannot fit the size of the negotiated PDU ({max_pdu})"
             )
 
@@ -472,7 +474,7 @@ def prepare_write_requests_and_values(
             WRITE_REQ_OVERHEAD + WRITE_REQ_PARAM_SIZE_ITEM + item.size() >= max_pdu
             or WRITE_RES_OVERHEAD + item.size() + 1 >= max_pdu
         ):
-            raise AddressError(
+            raise S7AddressError(
                 f"{item} too big -> it cannot fit the size of the negotiated PDU ({max_pdu})"
             )
 

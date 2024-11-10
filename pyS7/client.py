@@ -1,9 +1,9 @@
 import socket
-from typing import List, Sequence, Union
+from typing import List, Optional, Sequence, Union
 
 from .address_parser import map_address_to_item
 from .constants import MAX_JOB_CALLED, MAX_JOB_CALLING, MAX_PDU, ConnectionType
-from .errors import ConnectionClosed
+from .errors import S7CommunicationError, S7ConnectionError
 from .item import Item
 from .requests import (
     ConnectionRequest,
@@ -46,16 +46,16 @@ class Client:
         slot: int,
         connection_type: ConnectionType = ConnectionType.S7Basic,
         port: int = 102,
-        timeout: float = 5,
+        timeout: float = 5.0,
     ) -> None:
         self.address = address
         self.rack = rack
         self.slot = slot
         self.connection_type = connection_type
         self.port = port
+        self.timeout = timeout
 
-        self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.socket.settimeout(timeout)
+        self.socket: Optional[socket.socket] = None
 
         self.pdu_size: int = MAX_PDU
         self.max_jobs_calling: int = MAX_JOB_CALLING
@@ -64,33 +64,53 @@ class Client:
     def connect(self) -> None:
         """Establishes a TCP connection to the S7 PLC and sets up initial communication parameters."""
 
-        # Establish TCP connection
-        self.socket.connect((self.address, self.port))
+        try:
+            # Initialize the socket
+            self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self.socket.settimeout(self.timeout)
 
-        connection_request = ConnectionRequest(
-            connection_type=self.connection_type, rack=self.rack, slot=self.slot
-        )
-        connection_bytes_response: bytes = self.__send(connection_request)
-        ConnectionResponse(response=connection_bytes_response)
+            # Establish TCP connection
+            self.socket.connect((self.address, self.port))
+        except (socket.timeout, socket.error) as e:
+            self.socket = None
+            raise S7ConnectionError(
+                f"Failed to connect to {self.address}:{self.port}: {e}"
+            ) from e
 
-        # Communication Setup
-        pdu_negotation_request = PDUNegotiationRequest(max_pdu=self.pdu_size)
-        pdu_negotation_bytes_response: bytes = self.__send(pdu_negotation_request)
-        pdu_negotiation_response = PDUNegotiationResponse(
-            response=pdu_negotation_bytes_response
-        )
+        try:
+            connection_request = ConnectionRequest(
+                connection_type=self.connection_type, rack=self.rack, slot=self.slot
+            )
+            connection_bytes_response: bytes = self.__send(connection_request)
+            ConnectionResponse(response=connection_bytes_response)
 
-        (
-            self.max_jobs_calling,
-            self.max_jobs_called,
-            self.pdu_size,
-        ) = pdu_negotiation_response.parse()
+            # Communication Setup
+            pdu_negotation_request = PDUNegotiationRequest(max_pdu=self.pdu_size)
+            pdu_negotation_bytes_response: bytes = self.__send(pdu_negotation_request)
+            pdu_negotiation_response = PDUNegotiationResponse(
+                response=pdu_negotation_bytes_response
+            )
+
+            (
+                self.max_jobs_calling,
+                self.max_jobs_called,
+                self.pdu_size,
+            ) = pdu_negotiation_response.parse()
+        except Exception as e:
+            self.disconnect()
+            raise S7ConnectionError(f"Failed to complete connection setup: {e}") from e
 
     def disconnect(self) -> None:
         """Closes the TCP connection with the S7 PLC."""
 
-        self.socket.shutdown(socket.SHUT_RDWR)
-        self.socket.close()
+        if self.socket:
+            try:
+                self.socket.shutdown(socket.SHUT_RDWR)
+                self.socket.close()
+            except socket.error:
+                ...
+            finally:
+                self.socket = None
 
     def read(
         self, items: Sequence[Union[str, Item]], optimize: bool = True
@@ -116,6 +136,11 @@ class Client:
             >>> print(result)
             [True, 300, 20.5] # these values corresponds to the PLC data at specified addresses
         """
+
+        if not self.socket:
+            raise S7CommunicationError(
+                "Not connected to PLC. Call 'connect' before performing read operations."
+            )
 
         list_items: List[Item] = [
             map_address_to_item(address=item) if isinstance(item, str) else item
@@ -177,6 +202,11 @@ class Client:
             >>> client.write(items, values)  # writes these values to the PLC at specified addresses
         """
 
+        if not self.socket:
+            raise S7CommunicationError(
+                "Not connected to PLC. Call 'connect' before performing write operations."
+            )
+
         if len(items) != len(values):
             raise ValueError(
                 "The number of items should be equal to the number of values."
@@ -202,10 +232,18 @@ class Client:
         if not isinstance(request, Request):
             raise ValueError(f"Request type {type(request).__name__} not supported")
 
-        self.socket.send(request.serialize())
+        assert self.socket, "Unreachable"
+        try:
+            self.socket.send(request.serialize())
 
-        bytes_response = self.socket.recv(self.pdu_size)
-        if len(bytes_response) == 0:
-            raise ConnectionClosed("The connection has been closed by the peer")
+            bytes_response = self.socket.recv(self.pdu_size)
+            if len(bytes_response) == 0:
+                raise S7CommunicationError(
+                    "The connection has been closed by the peer."
+                )
 
-        return bytes_response
+            return bytes_response
+        except socket.error as e:
+            raise S7CommunicationError(
+                f"Socket error during communication: {e}."
+            ) from e
