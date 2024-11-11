@@ -11,7 +11,7 @@ from .requests import (
     Request,
     Value,
     WriteRequest,
-    group_tags,
+    prepare_optimized_requests,
     prepare_requests,
     prepare_write_requests_and_values,
 )
@@ -150,11 +150,8 @@ class S7Client:
         data: List[Value] = []
 
         if optimize:
-            tags_map = group_tags(tags=list_tags, pdu_size=self.pdu_size)
-            grouped_tags = list(tags_map.keys())
-
-            requests: List[List[S7Tag]] = prepare_requests(
-                tags=grouped_tags, max_pdu=self.pdu_size
+            requests, tags_map = prepare_optimized_requests(
+                tags=list_tags, max_pdu=self.pdu_size
             )
 
             bytes_reponse = self.__send(ReadRequest(tags=requests[0]))

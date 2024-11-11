@@ -26,8 +26,8 @@ from pyS7.requests import (
     ReadRequest,
     Value,
     WriteRequest,
-    group_tags,
     prepare_requests,
+    prepare_optimized_requests,
     prepare_write_requests_and_values,
 )
 
@@ -330,7 +330,7 @@ def test_write_request() -> None:
             offset += 1
 
 
-def test_group_tags() -> None:
+def test_prepare_optimized_request() -> None:
     # Mock up tags for testing
     tags: List[S7Tag] = [
         S7Tag(MemoryArea.DB, 1, DataType.BIT, 2, 5, 1),
@@ -371,10 +371,20 @@ def test_group_tags() -> None:
             (9, S7Tag(MemoryArea.INPUT, 0, DataType.BYTE, 20, 0, 2)),
         ],
     }
+    
+    expected_requests: List[List[S7Tag]] = [[
+        S7Tag(MemoryArea.INPUT, 0, DataType.BYTE, 16, 0, 6),
+        S7Tag(MemoryArea.MERKER, 0, DataType.REAL, 40, 0, 1),
+        S7Tag(MemoryArea.MERKER, 0, DataType.REAL, 60, 0, 1),
+        S7Tag(MemoryArea.DB, 1, DataType.BYTE, 1, 0, 2),
+        S7Tag(MemoryArea.DB, 2, DataType.BYTE, 10, 0, 1),
+        S7Tag(MemoryArea.DB, 23, DataType.BYTE, 4, 0, 8),
+    ]]
 
     # group_tags expect an ordered sequence of tag
-    groups = group_tags(tags=tags, pdu_size=240)
+    requests, groups = prepare_optimized_requests(tags=tags, max_pdu=240)
 
+    assert expected_requests == requests
     assert expected_groups == groups
 
 

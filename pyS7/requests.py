@@ -6,9 +6,7 @@ from pyS7.errors import S7AddressError
 from .constants import (
     MAX_READ_TAGS,
     MAX_WRITE_TAGS,
-    READ_REQ_HEADER_SIZE,
     READ_REQ_OVERHEAD,
-    READ_REQ_PARAM_SIZE_NO_TAGS,
     READ_REQ_PARAM_SIZE_TAG,
     READ_RES_OVERHEAD,
     READ_RES_PARAM_SIZE_TAG,
@@ -358,84 +356,19 @@ class WriteRequest(Request):
 
         return packet
 
-
-# TODO: we should now handle the case where an tag size is > pdu size by splitting it in multiple chunks
-def group_tags(tags: List[S7Tag], pdu_size: int) -> TagsMap:
-    """Group the given tags based on memory area, db number, and starting address."""
-
-    sorted_tags = sorted(
-        enumerate(tags),
-        key=lambda elem: (elem[1].memory_area.value, elem[1].db_number, elem[1].start),
-    )
-
-    groups = {}
-
-    for i, (idx, tag) in enumerate(sorted_tags):
-        if i == 0:
-            groups[tag] = [(idx, tag)]
-            previous_tag = tag
-        else:
-            if (
-                previous_tag.memory_area == tag.memory_area
-                and previous_tag.db_number == tag.db_number
-                and tag.start - (previous_tag.start + previous_tag.size())
-                < READ_REQ_PARAM_SIZE_TAG
-                and tag.size()
-                + READ_REQ_HEADER_SIZE
-                + READ_REQ_PARAM_SIZE_NO_TAGS
-                + READ_REQ_PARAM_SIZE_TAG
-                < pdu_size
-            ):
-                new_start = previous_tag.start
-                new_length = (
-                    max(
-                        previous_tag.start + previous_tag.size(),
-                        tag.start + tag.size(),
-                    )
-                    - previous_tag.start
-                )
-
-                new_tag = S7Tag(
-                    memory_area=previous_tag.memory_area,
-                    db_number=previous_tag.db_number,
-                    data_type=DataType.BYTE,
-                    start=new_start,
-                    bit_offset=0,
-                    length=new_length,
-                )
-
-                tracked_tags = groups.pop(previous_tag)
-                # Update tags_map to point to new tag
-                groups[new_tag] = tracked_tags + [(idx, tag)]
-                previous_tag = new_tag
-
-            else:
-                groups[tag] = [(idx, tag)]
-                previous_tag = tag
-
-    return groups
-
-
-def ungroup(tags_map: TagsMap) -> List[S7Tag]:  # pragma: no cover
-    original_tags = []
-
-    for original_tags in tags_map.values():
-        original_tags.extend(original_tags)
-
-    original_tags.sort(key=lambda elem: elem[0])
-    return [tag for (_, tag) in original_tags]
-
-
 def prepare_requests(tags: List[S7Tag], max_pdu: int) -> List[List[S7Tag]]:
     requests: List[List[S7Tag]] = [[]]
 
-    request_size = READ_REQ_OVERHEAD
-    response_size = READ_RES_OVERHEAD
+    cumulated_request_size = READ_REQ_OVERHEAD
+    cumulated_response_size = READ_RES_OVERHEAD
 
     for tag in tags:
+        tag_request_size = READ_REQ_PARAM_SIZE_TAG
+        tag_response_size = READ_RES_PARAM_SIZE_TAG + tag.size()
+
         if (
-            READ_REQ_OVERHEAD + READ_REQ_PARAM_SIZE_TAG + tag.size() >= max_pdu
-            or READ_RES_OVERHEAD + READ_RES_PARAM_SIZE_TAG + tag.size() > max_pdu
+            READ_REQ_OVERHEAD + tag_request_size >= max_pdu
+            or READ_RES_OVERHEAD + tag_response_size > max_pdu
         ):
             # TODO: Improve error message by adding current tag size
             raise S7AddressError(
@@ -443,21 +376,116 @@ def prepare_requests(tags: List[S7Tag], max_pdu: int) -> List[List[S7Tag]]:
             )
 
         elif (
-            request_size + READ_REQ_PARAM_SIZE_TAG < max_pdu
-            and response_size + READ_RES_PARAM_SIZE_TAG + tag.size() < max_pdu
+            cumulated_request_size + tag_request_size < max_pdu
+            and cumulated_response_size + tag_response_size < max_pdu
             and len(requests[-1]) < MAX_READ_TAGS
         ):
             requests[-1].append(tag)
 
-            request_size += READ_REQ_PARAM_SIZE_TAG
-            response_size += READ_RES_PARAM_SIZE_TAG + tag.size()
+            cumulated_request_size += READ_REQ_PARAM_SIZE_TAG
+            cumulated_response_size += READ_RES_PARAM_SIZE_TAG + tag.size()
 
         else:
             requests.append([tag])
-            request_size = READ_REQ_OVERHEAD + READ_REQ_PARAM_SIZE_TAG
-            response_size = READ_RES_OVERHEAD + READ_RES_PARAM_SIZE_TAG + tag.size()
+            cumulated_request_size = READ_REQ_OVERHEAD + READ_REQ_PARAM_SIZE_TAG
+            cumulated_response_size = (
+                READ_RES_OVERHEAD + READ_RES_PARAM_SIZE_TAG + tag.size()
+            )
 
     return requests
+
+
+def prepare_optimized_requests(
+    tags: List[S7Tag], max_pdu: int
+) -> Tuple[List[List[S7Tag]], TagsMap]:
+    requests: List[List[S7Tag]] = [[]]
+    groups: TagsMap = {}
+
+    cumulated_request_size = READ_REQ_OVERHEAD
+    cumulated_response_size = READ_RES_OVERHEAD
+
+    sorted_tags = sorted(
+        enumerate(tags),
+        key=lambda elem: (elem[1].memory_area.value, elem[1].db_number, elem[1].start),
+    )
+
+    for i, (idx, tag) in enumerate(sorted_tags):
+        tag_request_size = READ_REQ_PARAM_SIZE_TAG
+        tag_response_size = READ_RES_PARAM_SIZE_TAG + tag.size()
+
+        # Handle too big tags
+        if (
+            READ_REQ_OVERHEAD + tag_request_size >= max_pdu
+            or READ_RES_OVERHEAD + tag_response_size > max_pdu
+        ):
+            # TODO: Improve error message by adding current tag size
+            raise S7AddressError(
+                f"{tag} too big -> it cannot fit the size of the negotiated PDU ({max_pdu})"
+            )
+
+        if i == 0:
+            requests[-1].append(tag)
+            groups[tag] = [(idx, tag)]
+
+            cumulated_request_size += tag_request_size
+            cumulated_response_size += tag_response_size
+        else:
+            if (
+                cumulated_request_size + tag_request_size < max_pdu
+                and cumulated_response_size + tag_response_size < max_pdu
+                and len(requests[-1]) < MAX_READ_TAGS
+            ):
+                previous_tag = requests[-1][-1]
+
+                if (
+                    cumulated_request_size + tag_response_size <= max_pdu
+                    and cumulated_response_size + tag_response_size <= max_pdu
+                    and previous_tag.memory_area == tag.memory_area
+                    and previous_tag.db_number == tag.db_number
+                    and tag.start - (previous_tag.start + previous_tag.size())
+                    < READ_REQ_PARAM_SIZE_TAG
+                ):
+                    new_start = previous_tag.start
+                    new_length = (
+                        max(
+                            previous_tag.start + previous_tag.size(),
+                            tag.start + tag.size(),
+                        )
+                        - previous_tag.start
+                    )
+
+                    new_tag = S7Tag(
+                        memory_area=previous_tag.memory_area,
+                        db_number=previous_tag.db_number,
+                        data_type=DataType.BYTE,
+                        start=new_start,
+                        bit_offset=0,
+                        length=new_length,
+                    )
+
+                    tracked_tags = groups.pop(previous_tag)
+                    # Update tags_map to point to new tag
+                    groups[new_tag] = tracked_tags + [(idx, tag)]
+                    requests[-1][-1] = new_tag
+
+                    cumulated_request_size += 0
+                    cumulated_response_size += new_tag.size() - previous_tag.size()
+
+                else:
+                    requests[-1].append(tag)
+                    groups[tag] = [(idx, tag)]
+
+                    cumulated_request_size += tag_request_size
+                    cumulated_response_size += tag_response_size
+
+            else:
+                requests.append([tag])
+                groups[tag] = [(idx, tag)]
+
+                cumulated_request_size = READ_REQ_OVERHEAD + tag_request_size
+                cumulated_response_size = READ_RES_OVERHEAD + tag_response_size
+
+    return requests, groups
 
 
 def prepare_write_requests_and_values(
