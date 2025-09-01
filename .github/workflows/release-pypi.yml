@@ -6,18 +6,23 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Tag (es. v0.1.0) per verifica opzionale."
-        required: false
-        default: ""
+        description: "Tag (es. v0.2.0) usato per il check versione quando eseguito a mano"
+        required: true
+        default: "v0.2.0"
 
 jobs:
   publish:
-    if: github.event_name == 'workflow_dispatch' || github.event.release.prerelease == false
+    # Consenti:
+    # - Release normali (non prerelease)
+    # - Esecuzione manuale con tag fornito negli inputs
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'release' && github.event.release.prerelease == false)
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
         with:
-          fetch-tags: true
+          fetch-depth: 1   # niente fetch dei tag
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -30,23 +35,41 @@ jobs:
           python -m pip install build twine tomli
 
       - name: Verify version matches tag
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          INPUT_TAG: ${{ github.event.inputs.tag }}
         run: |
-          TAG="${{ github.event.release.tag_name || inputs.tag }}"
-          if [ -z "$TAG" ]; then
-            TAG=$(git describe --tags --abbrev=0 || true)
+          set -euo pipefail
+
+          # Determina il tag in base al tipo di evento (niente git describe)
+          if [ "$EVENT_NAME" = "release" ]; then
+            TAG="$RELEASE_TAG"
+          else
+            TAG="$INPUT_TAG"
           fi
-          echo "Tag: $TAG"
-          if [ -n "$TAG" ]; then
-            PYPROJECT_VERSION=$(python - <<'PY'
-            import tomli
-            with open("pyproject.toml", "rb") as f:
-                print(tomli.load(f)["project"]["version"])
-            PY
-            )
-            CLEAN_TAG="${TAG#v}"
-            echo "pyproject version: $PYPROJECT_VERSION"
-            echo "clean tag       : $CLEAN_TAG"
-            test "$PYPROJECT_VERSION" = "$CLEAN_TAG"
+
+          echo "Tag evento: $TAG"
+          if [ -z "$TAG" ]; then
+            echo "::error::Tag mancante. Su workflow_dispatch devi passare 'inputs.tag'."
+            exit 1
+          fi
+
+          # Leggi la versione da pyproject.toml
+          PYPROJECT_VERSION=$(python - <<'PY'
+          import tomli
+          with open("pyproject.toml", "rb") as f:
+              print(tomli.load(f)["project"]["version"])
+          PY
+          )
+          CLEAN_TAG="${TAG#v}"
+
+          echo "pyproject version: $PYPROJECT_VERSION"
+          echo "release tag      : $CLEAN_TAG"
+
+          if [ "$PYPROJECT_VERSION" != "$CLEAN_TAG" ]; then
+            echo "::error::Versione in pyproject.toml ($PYPROJECT_VERSION) diversa dal tag ($CLEAN_TAG)"
+            exit 1
           fi
 
       - name: Build sdist+wheel
@@ -59,4 +82,5 @@ jobs:
         env:
           TWINE_USERNAME: __token__
           TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
-        run: python -m twine upload dist/*
+        run: |
+          python -m twine upload --verbose dist/*
