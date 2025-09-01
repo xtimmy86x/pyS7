@@ -25,8 +25,12 @@ jobs:
       - name: Twine check
         run: python -m twine check dist/*
 
-      - name: Upload to TestPyPI
+      - name: Upload to TestPyPI (verbose)
         env:
           TWINE_USERNAME: __token__
           TWINE_PASSWORD: ${{ secrets.TEST_PYPI_API_TOKEN }}
-        run: python -m twine upload --repository-url https://test.pypi.org/legacy/ dist/*
+        run: |
+          python -m twine upload --verbose --repository-url https://test.pypi.org/legacy/ dist/* || {
+            echo "---- Twine upload failed with above server response ----"
+            exit 1
+          }
