@@ -1,17 +1,18 @@
 [build-system]
-requires = ["setuptools>=61.0.0", "wheel"]
+requires = ["setuptools>=61", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "pyS7"
+name = "pys7"
 version = "0.2.0"
-description = ""
-readme = "Readme.md"
+description = "Lightweight Python library for Siemens S7 over ISO-on-TCP (RFC1006)."
+readme = { file = "README.md", content-type = "text/markdown" }
 requires-python = ">=3.8"
-keywords = ["plc", "s7", "siemens"]
-license = {file = "LICENCE"}
+keywords = ["s7", "siemens", "plc", "industrial", "automation", "rfc1006", "iso-on-tcp"]
+license = { text = "MIT" }
 authors = [
     { name = "Filippo Cara", email = "fili.cara@gmail.com" },
+    { name = "Alessandro", email = "xtimmy86x@gmail.com" }
 ]
 classifiers = [
     "Topic :: System :: Hardware",
@@ -28,6 +29,10 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
 ]
+
+[project.urls]
+Homepage = "https://github.com/xtimmy86x/pyS7"
+Issues = "https://github.com/xtimmy86x/pyS7/issues"
 
 [project.optional-dependencies]
 # development dependency groups

@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.8", "3.9", "3.10", "3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install build deps
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install build twine
+
+      - name: Build sdist+wheel
+        run: python -m build
+
+      - name: Twine check
+        run: python -m twine check dist/*
+
+      - name: Smoke test import
+        run: |
+          python - << 'PY'
+          import subprocess, sys, glob
+          wheel = sorted(glob.glob("dist/*.whl"))[-1]
+          subprocess.check_call([sys.executable, "-m", "pip", "install", wheel])
+          import pyS7
+          print("Imported:", pyS7.__name__)
+          PY

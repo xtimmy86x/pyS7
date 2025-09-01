@@ -1,5 +1,6 @@
 # pyS7
 
+Forked from original repository: FiloCara/pyS7
 
 pyS7 is a lightweight python library for data communication with Siemens PLCs. It partially implements the Siemens S7 Communication protocol over ISO-on-TCP (RFC1006), allowing for both data reading and data writing.
 
