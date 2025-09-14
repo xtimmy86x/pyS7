@@ -20,7 +20,6 @@ from .responses import (
     PDUNegotiationResponse,
     ReadOptimizedResponse,
     ReadResponse,
-    Response,
     WriteResponse,
 )
 from .tag import S7Tag
@@ -155,7 +154,7 @@ class S7Client:
             )
 
             bytes_reponse = self.__send(ReadRequest(tags=requests[0]))
-            response: Response = ReadOptimizedResponse(
+            response = ReadOptimizedResponse(
                 response=bytes_reponse,
                 tag_map={key: tags_map[key] for key in requests[0]},
             )
@@ -174,9 +173,9 @@ class S7Client:
 
             for request in requests:
                 bytes_reponse = self.__send(ReadRequest(tags=request))
-                response = ReadResponse(response=bytes_reponse, tags=request)
+                read_response = ReadResponse(response=bytes_reponse, tags=request)
 
-                data.extend(response.parse())
+                data.extend(read_response.parse())
 
         return data
 
