@@ -1,4 +1,5 @@
 import re
+from dataclasses import dataclass
 from typing import Dict, Optional
 
 from .constants import DataType, MemoryArea
@@ -45,272 +46,130 @@ from .tag import S7Tag
 | `MR84`                        | `MR84`                | Number        | Floating point 32-bit number at byte 84 of memory area |
 """
 
-DataTypeMap: Dict[str, DataType] = {
-    "X": DataType.BIT,
-    "B": DataType.BYTE,
-    "BYTE": DataType.BYTE,
-    "C": DataType.CHAR,
-    "CHAR": DataType.CHAR,
-    "I": DataType.INT,
-    "INT": DataType.INT,
-    "W": DataType.WORD,
-    "WORD": DataType.WORD,
-    "DI": DataType.DINT,
-    "DINT": DataType.DINT,
-    "D": DataType.DWORD,
-    "R": DataType.REAL,
-    "REAL": DataType.REAL,
+@dataclass(frozen=True)
+class _TokenInfo:
+    data_type: DataType
+    length: int = 1
+    bit_offset_required: bool = False
+    bit_offset_is_length: bool = False
+
+
+TOKEN_TABLE: Dict[str, _TokenInfo] = {
+    "X": _TokenInfo(DataType.BIT, bit_offset_required=True),
+    "B": _TokenInfo(DataType.BYTE),
+    "BYTE": _TokenInfo(DataType.BYTE),
+    "C": _TokenInfo(DataType.CHAR),
+    "CHAR": _TokenInfo(DataType.CHAR),
+    "I": _TokenInfo(DataType.INT),
+    "INT": _TokenInfo(DataType.INT),
+    "W": _TokenInfo(DataType.WORD),
+    "WORD": _TokenInfo(DataType.WORD),
+    "DI": _TokenInfo(DataType.DINT),
+    "DINT": _TokenInfo(DataType.DINT),
+    "DW": _TokenInfo(DataType.DWORD),
+    "DWORD": _TokenInfo(DataType.DWORD),
+    "D": _TokenInfo(DataType.DWORD),
+    "R": _TokenInfo(DataType.REAL),
+    "REAL": _TokenInfo(DataType.REAL),
+    "S": _TokenInfo(DataType.CHAR, bit_offset_required=True, bit_offset_is_length=True),
 }
 
 
+def build_tag(
+    memory_area: MemoryArea,
+    db_number: int,
+    data_type: DataType,
+    start: int,
+    bit_offset: int,
+    length: int,
+) -> S7Tag:
+    return S7Tag(
+        memory_area=memory_area,
+        db_number=db_number,
+        data_type=data_type,
+        start=start,
+        bit_offset=bit_offset,
+        length=length,
+    )
+
+
+def _token_to_tag(
+    token: str,
+    memory_area: MemoryArea,
+    db_number: int,
+    start: int,
+    bit_offset: Optional[str],
+    address: str,
+) -> S7Tag:
+    info = TOKEN_TABLE.get(token)
+    if info is None:
+        raise S7AddressError(f"Impossible to parse address: '{address}'")
+
+    if info.bit_offset_is_length:
+        if bit_offset is None:
+            raise S7AddressError(f"{address}")
+        length = int(bit_offset)
+        bit_offset_int = 0
+    elif info.bit_offset_required:
+        if bit_offset is None:
+            raise S7AddressError("Missing bit_offset value")
+        bit_offset_int = int(bit_offset)
+        if not 0 <= bit_offset_int <= 7:
+            raise S7AddressError("The bit offset must be a value between 0 and 7 included")
+        length = info.length
+    else:
+        if bit_offset is not None:
+            raise S7AddressError(f"Bit offset non supported for address '{address}'")
+        bit_offset_int = 0
+        length = info.length
+
+    return build_tag(memory_area, db_number, info.data_type, start, bit_offset_int, length)
+
 def map_address_to_tag(address: str) -> S7Tag:
     address = address.upper()
-
     match: Optional[re.Match[str]]
 
     if address.startswith("DB"):
-        match = re.match(r"DB(\d+),([a-zA-Z]+)(\d+)(?:\.(\d+))?", address)
+        match = re.match(r"DB(\d+),([A-Z]+)(\d+)(?:\.(\d+))?", address)
 
         if match is None:
             raise S7AddressError(f"Impossible to parse address '{address}'")
+        db_number_s, token, start_s, bit_offset = match.groups()
+        db_number = int(db_number_s)
+        start = int(start_s)
+        return _token_to_tag(token, MemoryArea.DB, db_number, start, bit_offset, address)
 
-        db_number, str_data_type, start, bit_offset = match.groups()
-
-        if str_data_type == "X":
-            db_number = int(db_number)
-            data_type = DataType.BIT
-            start = int(start)
-
-            if bit_offset is None:
-                raise S7AddressError("Missing bit_offset value")
-
-            bit_offset = int(bit_offset)
-            if not 0 <= bit_offset <= 7:
-                raise S7AddressError(
-                    "The bit offset must be a value between 0 and 7 included"
-                )
-
-            length = 1
-
-        elif str_data_type == "B" or str_data_type == "BYTE":
-            db_number = int(db_number)
-            data_type = DataType.BYTE
-            start = int(start)
-            length = 1
-
-            if bit_offset is not None:
-                raise S7AddressError(
-                    f"Bit offset non supported for address '{address}'"
-                )
-
-            bit_offset = 0
-
-        elif str_data_type == "C" or str_data_type == "CHAR":
-            db_number = int(db_number)
-            data_type = DataType.CHAR
-            start = int(start)
-            length = 1
-
-            if bit_offset is not None:
-                raise S7AddressError(
-                    f"Bit offset non supported for address '{address}'"
-                )
-
-            bit_offset = 0
-
-        elif str_data_type == "I" or str_data_type == "INT":
-            db_number = int(db_number)
-            data_type = DataType.INT
-            start = int(start)
-            length = 1
-
-            if bit_offset is not None:
-                raise S7AddressError(
-                    f"Bit offset non supported for address '{address}'"
-                )
-
-            bit_offset = 0
-
-        elif str_data_type == "W" or str_data_type == "WORD":
-            db_number = int(db_number)
-            data_type = DataType.WORD
-            start = int(start)
-            length = 1
-
-            if bit_offset is not None:
-                raise S7AddressError(
-                    f"Bit offset non supported for address '{address}'"
-                )
-
-            bit_offset = 0
-
-        elif str_data_type == "DI" or str_data_type == "DINT":
-            db_number = int(db_number)
-            data_type = DataType.DINT
-            start = int(start)
-            length = 1
-
-            if bit_offset is not None:
-                raise S7AddressError(
-                    f"Bit offset non supported for address '{address}'"
-                )
-
-            bit_offset = 0
-
-        elif str_data_type == "DW" or str_data_type == "DWORD":
-            db_number = int(db_number)
-            data_type = DataType.DWORD
-            start = int(start)
-            length = 1
-
-            if bit_offset is not None:
-                raise S7AddressError(
-                    f"Bit offset non supported for address '{address}'"
-                )
-
-            bit_offset = 0
-
-        elif str_data_type == "R" or str_data_type == "REAL":
-            db_number = int(db_number)
-            data_type = DataType.REAL
-            start = int(start)
-            length = 1
-
-            if bit_offset is not None:
-                raise S7AddressError(
-                    f"Bit offset non supported for address '{address}'"
-                )
-
-            bit_offset = 0
-
-        elif str_data_type == "S":
-            db_number = int(db_number)
-            data_type = DataType.CHAR
-            start = int(start)
-
-            # For String addresses the bit offset corresponds to the length
-            if bit_offset is None:
-                raise S7AddressError(f"{address}")
-
-            length = int(bit_offset)
-            bit_offset = 0
-
-        else:
-            raise S7AddressError(f"Impossible to parse address: '{address}")
-
-        return S7Tag(
-            memory_area=MemoryArea.DB,
-            db_number=db_number,
-            data_type=data_type,
-            start=start,
-            bit_offset=bit_offset,
-            length=length,
-        )
-
-    elif address.startswith("I") or address.startswith("E"):
-        match = re.match(r"^[I,E]([B,C,I,W,DI,D,R])?(\d+)(?:\.(\d+))?", address)
-
+    if address.startswith("I") or address.startswith("E"):
+        match = re.match(r"[IE]([A-Z]+)?(\d+)(?:\.(\d+))?", address)
         if match is None:
             raise S7AddressError(f"{address}")
-
-        str_data_type, start, bit_offset = match.groups()
-
-        if str_data_type is None and bit_offset is None:
+        token, start_s, bit_offset = match.groups()
+        if token is None and bit_offset is None:
             raise S7AddressError(f"{address}")
-
-        memory_area = MemoryArea.INPUT
-        db_number = 0
-        data_type = (
-            DataTypeMap[str_data_type] if str_data_type is not None else DataType.BIT
-        )
-        start = int(start)
-        bit_offset = int(bit_offset) if bit_offset is not None else 0
-
-        if not 0 <= bit_offset <= 7:
-            raise S7AddressError(
-                "The bit offset must be a value between 0 and 7 included"
-            )
-
-        length = 1
-
-        return S7Tag(
-            memory_area=memory_area,
-            db_number=db_number,
-            data_type=data_type,
-            start=start,
-            bit_offset=bit_offset,
-            length=length,
-        )
-
-    elif address.startswith("Q") or address.startswith("A"):
-        match = re.match(r"[Q,A]([B,C,I,W,DI,D,R])?(\d+)(?:\.(\d+))?", address)
-
+        start = int(start_s)
+        token = token if token is not None else "X"
+        return _token_to_tag(token, MemoryArea.INPUT, 0, start, bit_offset, address)
+    
+    if address.startswith("Q") or address.startswith("A"):
+        match = re.match(r"[QA]([A-Z]+)?(\d+)(?:\.(\d+))?", address)
         if match is None:
             raise S7AddressError(f"{address}")
-
-        str_data_type, start, bit_offset = match.groups()
-
-        if str_data_type is None and bit_offset is None:
+        token, start_s, bit_offset = match.groups()
+        if token is None and bit_offset is None:
             raise S7AddressError(f"{address}")
-
-        memory_area = MemoryArea.OUTPUT
-        db_number = 0
-        data_type = (
-            DataTypeMap[str_data_type] if str_data_type is not None else DataType.BIT
-        )
-        start = int(start)
-        bit_offset = int(bit_offset) if bit_offset is not None else 0
-
-        if not 0 <= bit_offset <= 7:
-            raise S7AddressError(
-                "The bit offset must be a value between 0 and 7 included"
-            )
-
-        length = 1
-
-        return S7Tag(
-            memory_area=memory_area,
-            db_number=db_number,
-            data_type=data_type,
-            start=start,
-            bit_offset=bit_offset,
-            length=length,
-        )
-
-    elif address.startswith("M"):
-        match = re.match(r"M([B,C,I,W,DI,D,R])?(\d+)(?:\.(\d+))?", address)
-
+        start = int(start_s)
+        token = token if token is not None else "X"
+        return _token_to_tag(token, MemoryArea.OUTPUT, 0, start, bit_offset, address)
+    
+    if address.startswith("M"):
+        match = re.match(r"M([A-Z]+)?(\d+)(?:\.(\d+))?", address)
         if match is None:
             raise S7AddressError(f"{address}")
-
-        str_data_type, start, bit_offset = match.groups()
-
-        if str_data_type is None and bit_offset is None:
+        token, start_s, bit_offset = match.groups()
+        if token is None and bit_offset is None:
             raise S7AddressError(f"{address}")
-
-        memory_area = MemoryArea.MERKER
-        db_number = 0
-        data_type = (
-            DataTypeMap[str_data_type] if str_data_type is not None else DataType.BIT
-        )
-        start = int(start)
-        bit_offset = int(bit_offset) if bit_offset is not None else 0
-
-        if not 0 <= bit_offset <= 7:
-            raise S7AddressError(
-                "The bit offset must be a value between 0 and 7 included"
-            )
-
-        length = 1
-
-        return S7Tag(
-            memory_area=memory_area,
-            db_number=db_number,
-            data_type=data_type,
-            start=start,
-            bit_offset=bit_offset,
-            length=length,
-        )
-
-    else:
-        raise S7AddressError(f"Unsupported address '{address}'")
+        start = int(start_s)
+        token = token if token is not None else "X"
+        return _token_to_tag(token, MemoryArea.MERKER, 0, start, bit_offset, address)
+    
+    raise S7AddressError(f"Unsupported address '{address}'")

@@ -17,10 +17,12 @@ from pyS7.tag import S7Tag
         ("DB57,WORD4", S7Tag(MemoryArea.DB, 57, DataType.WORD, 4, 0, 1)),
         ("DB13,DI5", S7Tag(MemoryArea.DB, 13, DataType.DINT, 5, 0, 1)),
         ("DB19,DW6", S7Tag(MemoryArea.DB, 19, DataType.DWORD, 6, 0, 1)),
+        ("DB19,DWORD6", S7Tag(MemoryArea.DB, 19, DataType.DWORD, 6, 0, 1)),
         ("DB21,R7", S7Tag(MemoryArea.DB, 21, DataType.REAL, 7, 0, 1)),
         ("DB2,S7.10", S7Tag(MemoryArea.DB, 2, DataType.CHAR, 7, 0, 10)),
         ("M10.7", S7Tag(MemoryArea.MERKER, 0, DataType.BIT, 10, 7, 1)),
         ("I0.2", S7Tag(MemoryArea.INPUT, 0, DataType.BIT, 0, 2, 1)),
+        ("IC3", S7Tag(MemoryArea.INPUT, 0, DataType.CHAR, 3, 0, 1)),
         ("Q300.1", S7Tag(MemoryArea.OUTPUT, 0, DataType.BIT, 300, 1, 1)),
         ("QB20", S7Tag(MemoryArea.OUTPUT, 0, DataType.BYTE, 20, 0, 1)),
         ("MW320", S7Tag(MemoryArea.MERKER, 0, DataType.WORD, 320, 0, 1)),
@@ -47,6 +49,7 @@ def test_map_address_to_tag(test_input: str, expected: S7Tag) -> None:
         ("DB1,FLOAT10", S7AddressError),  # FLOAT not good, use REAL instead
         ("DB56,B11.5", S7AddressError),  # Unsupported bit offset for type BYTE
         ("DB1,CHAR11.5", S7AddressError),  # Unsupported bit offset for type CHAR
+        ("IC3.1", S7AddressError),  # Unsupported bit offset for type CHAR in input area
         ("DB30,I0.5", S7AddressError),  # Unsupported bit offset for type INT
         ("DBX50.1", S7AddressError),  # Wrong format
         ("DB50.DBX50.1", S7AddressError),  # Wrong format
