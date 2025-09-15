@@ -13,65 +13,68 @@ class S7Tag:
     length: int
 
     def __post_init__(self) -> None:
+        self._validate_memory_area()
+        self._validate_db_number()
+        self._validate_data_type()
+        self._validate_start()
+        self._validate_bit_offset()
+        self._validate_length()
+
+    def _validate_memory_area(self) -> None:
         if not isinstance(self.memory_area, MemoryArea):
             raise TypeError(
-                f"Invalid 'memory_area': Expected type MemoryArea, \
-                got {type(self.memory_area)}."
+                f"Invalid 'memory_area': Expected type MemoryArea, got {type(self.memory_area)}."
             )
 
+    def _validate_db_number(self) -> None:
         if not isinstance(self.db_number, int):
             raise TypeError(
                 f"Invalid 'db_number': Expected type int, got {type(self.db_number)}."
             )
-
         if self.memory_area != MemoryArea.DB and self.db_number > 0:
             raise ValueError(
-                f"Invalid 'db_number': Must be 0 when memory_area is {self.memory_area}, \
-                  but got {self.db_number}."
+                f"Invalid 'db_number': Must be 0 when memory_area is {self.memory_area}, but got {self.db_number}."
             )
-
         if self.db_number < 0:
             raise ValueError(
                 f"Invalid 'db_number': Expected non-negative value, got {self.db_number}."
             )
 
+    def _validate_data_type(self) -> None:
         if not isinstance(self.data_type, DataType):
             raise TypeError(
                 f"Invalid 'data_type': Expected type DataType, got {type(self.data_type)}."
             )
 
+    def _validate_start(self) -> None:
         if not isinstance(self.start, int):
             raise TypeError(
                 f"Invalid 'start': Expected type int, got {type(self.start)}."
             )
-
         if self.start < 0:
             raise ValueError(
                 f"Invalid 'start': Expected non-negative value, got {self.start}."
             )
 
+    def _validate_bit_offset(self) -> None:
         if not isinstance(self.bit_offset, int):
             raise TypeError(
                 f"Invalid 'bit_offset': Expected type int, got {type(self.bit_offset)}."
             )
-
         if self.data_type != DataType.BIT and self.bit_offset > 0:
             raise ValueError(
-                f"Invalid 'bit_offset': Must be 0 when data_type is not DataType.BIT, \
-                but got {self.bit_offset}."
+                f"Invalid 'bit_offset': Must be 0 when data_type is not DataType.BIT, but got {self.bit_offset}."
             )
-
         if self.bit_offset < 0 or self.bit_offset > 7:
             raise ValueError(
-                f"Invalid 'bit_offset': Expected value between 0 and 7, \
-                  got {self.bit_offset}."
+                f"Invalid 'bit_offset': Expected value between 0 and 7, got {self.bit_offset}."
             )
 
+    def _validate_length(self) -> None:
         if not isinstance(self.length, int):
             raise TypeError(
                 f"Invalid 'length': Expected type int, got {type(self.length)}."
             )
-
         if self.length <= 0:
             raise ValueError(
                 f"Invalid 'length': Expected positive value, got {self.length}."

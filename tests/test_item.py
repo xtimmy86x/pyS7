@@ -110,6 +110,7 @@ def test_tag_not_contains() -> None:
         (MemoryArea.DB, 10, DataType.WORD, "Not int", 0, 1, TypeError),
         (MemoryArea.DB, 2, DataType.BIT, 0, 6.5, 1, TypeError),
         (MemoryArea.DB, 2, DataType.BIT, 0, 8, 1, ValueError),
+        (MemoryArea.DB, 2, DataType.BIT, 0, -1, 1, ValueError),
         (MemoryArea.MERKER, 0, DataType.BYTE, 0, 0, "length", TypeError),
     ],
 )
