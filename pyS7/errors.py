@@ -2,10 +2,13 @@
 """Custom exceptions for the pyS7 package."""
 
 
+from typing import Optional
+
+
 class S7Error(Exception):
     """Base class for all pyS7 specific exceptions."""
 
-    def __init__(self, message: str | None = None) -> None:  # noqa: D401
+    def __init__(self, message: Optional[str] = None) -> None:  # noqa: D401
         """Initialize the exception with an optional *message*."""
         super().__init__(message)
 
