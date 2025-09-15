@@ -5,6 +5,7 @@ from .errors import (
     S7AddressError,
     S7CommunicationError,
     S7ConnectionError,
+    S7Error,
     S7ReadResponseError,
     S7WriteResponseError,
 )
