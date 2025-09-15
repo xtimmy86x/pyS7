@@ -1,15 +1,17 @@
 import struct
 from typing import Dict, List, Protocol, Sequence, Tuple, Union, runtime_checkable
 
-from pyS7.errors import S7AddressError
+from .errors import S7AddressError
 
 from .constants import (
+    COTP_SIZE,
     MAX_READ_TAGS,
     MAX_WRITE_TAGS,
     READ_REQ_OVERHEAD,
     READ_REQ_PARAM_SIZE_TAG,
     READ_RES_OVERHEAD,
     READ_RES_PARAM_SIZE_TAG,
+    TPKT_SIZE,
     WRITE_REQ_OVERHEAD,
     WRITE_REQ_PARAM_SIZE_TAG,
     WRITE_RES_OVERHEAD,
@@ -18,11 +20,42 @@ from .constants import (
     DataTypeData,
     DataTypeSize,
     Function,
+    MessageType
 )
 from .tag import S7Tag
 
 TagsMap = Dict[S7Tag, List[Tuple[int, S7Tag]]]
 Value = Union[bool, int, float, str, Tuple[Union[bool, int, float], ...]]
+
+
+S7_HEADER_SIZE = 10
+TPKT_LENGTH_SLICE = slice(2, 4)
+PARAMETER_LENGTH_SLICE = slice(TPKT_SIZE + COTP_SIZE + 6, TPKT_SIZE + COTP_SIZE + 8)
+DATA_LENGTH_SLICE = slice(TPKT_SIZE + COTP_SIZE + 8, TPKT_SIZE + COTP_SIZE + 10)
+HEADER_SIZE = TPKT_SIZE + COTP_SIZE + S7_HEADER_SIZE
+
+
+def _init_s7_packet(message_type: MessageType) -> Tuple[bytearray, int]:
+    packet = bytearray()
+    packet.extend(b"\x03\x00\x00\x00")  # TPKT header with placeholder length
+    packet.extend(b"\x02\xf0\x80")  # COTP header
+    packet.extend(b"\x32")  # S7 protocol id
+    packet.extend(message_type.value.to_bytes(1, byteorder="big"))
+    packet.extend(b"\x00\x00")  # Redundancy identification (reserved)
+    packet.extend(b"\x00\x00")  # PDU reference
+    packet.extend(b"\x00\x00")  # Parameter length placeholder
+    packet.extend(b"\x00\x00")  # Data length placeholder
+
+    return packet, HEADER_SIZE
+
+
+def _finalize_packet(packet: bytearray, parameter_start: int, data_start: int) -> None:
+    parameter_length = data_start - parameter_start
+    data_length = len(packet) - data_start
+
+    packet[PARAMETER_LENGTH_SLICE] = parameter_length.to_bytes(2, byteorder="big")
+    packet[DATA_LENGTH_SLICE] = data_length.to_bytes(2, byteorder="big")
+    packet[TPKT_LENGTH_SLICE] = len(packet).to_bytes(2, byteorder="big")
 
 
 @runtime_checkable
@@ -85,34 +118,19 @@ class PDUNegotiationRequest(Request):
         self.request = self.__prepare_packet(max_pdu=max_pdu)
 
     def __prepare_packet(self, max_pdu: int) -> bytearray:
-        packet = bytearray()
-
-        # TPKT
-        packet.extend(b"\x03")
-        packet.extend(b"\x00")
-        packet.extend(b"\x00\x19")
-
-        # COTP (see RFC 2126)
-        packet.extend(b"\x02")
-        packet.extend(b"\xf0")
-        packet.extend(b"\x80")
-
-        # S7: HEADER
-        packet.extend(b"\x32")  # S7 Protocol Id (0x32)
-        packet.extend(b"\x01")
-        packet.extend(b"\x00\x00")  # Redundancy Identification (Reserved)
-        packet.extend(b"\x00\x00")  # Protocol Data Unit Reference
-        packet.extend(b"\x00\x08")  # Parameter length
-        packet.extend(b"\x00\x00")  # Data length
+        packet, parameter_start = _init_s7_packet(MessageType.REQUEST)
 
         # S7: PARAMETER
-        packet.extend(b"\xf0")
+        packet.extend(Function.COMM_SETUP.value.to_bytes(1, byteorder="big"))
         packet.extend(b"\x00")
         packet.extend(b"\x00")
         packet.extend(b"\x08")
         packet.extend(b"\x00")
         packet.extend(b"\x08")
         packet.extend(max_pdu.to_bytes(2, byteorder="big"))
+
+        data_start = len(packet)
+        _finalize_packet(packet, parameter_start, data_start)
 
         return packet
 
@@ -125,29 +143,12 @@ class ReadRequest(Request):
         self.request = self.__prepare_packet(tags=tags)
 
     def __prepare_packet(self, tags: Sequence[S7Tag]) -> bytearray:
-        packet = bytearray()
-
-        # TPKT
-        packet.extend(b"\x03")  # TPKT (version)
-        packet.extend(b"\x00")  # Reserved (0x00)
-        packet.extend(b"\x00\x1f")  # Length (will be filled later)
-
-        # COTP (see RFC 2126)
-        packet.extend(b"\x02")
-        packet.extend(b"\xf0")
-        packet.extend(b"\x80")
-
-        # S7: HEADER
-        packet.extend(b"\x32")  # S7 Protocol Id (0x32)
-        packet.extend(b"\x01")  # Job (1)
-        packet.extend(b"\x00\x00")  # Redundancy Identification (Reserved)
-        packet.extend(b"\x00\x00")  # Protocol Data Unit Reference
-        packet.extend(b"\x00\x0e")  # Parameter length
-        packet.extend(b"\x00\x00")  # Data length
+        packet, parameter_start = _init_s7_packet(MessageType.REQUEST)
 
         # S7: PARAMETER
-        packet.extend(b"\x04")  # Function 4 Read Var
-        packet.extend(b"\x01")  # tag count
+        packet.extend(Function.READ_VAR.value.to_bytes(1, byteorder="big"))
+        tag_count_index = len(packet)
+        packet.extend(b"\x00")  # placeholder for tag count
 
         # S7Tag specification
         for tag in tags:
@@ -172,14 +173,10 @@ class ReadRequest(Request):
                     (tag.start * 8 + tag.bit_offset).to_bytes(3, byteorder="big")
                 )
 
-        # Update parameter length
-        packet[13:15] = (len(packet) - 17).to_bytes(2, byteorder="big")
+        packet[tag_count_index] = len(tags)
 
-        # Update tag count
-        packet[18] = len(tags)
-
-        # Update length
-        packet[2:4] = len(packet).to_bytes(2, byteorder="big")
+        data_start = len(packet)
+        _finalize_packet(packet, parameter_start, data_start)
 
         return packet
 
@@ -196,33 +193,14 @@ class WriteRequest(Request):
     def __prepare_packet(
         self, tags: Sequence[S7Tag], values: Sequence[Value]
     ) -> bytearray:
-        packet = bytearray()
-
-        # TPKT
-        packet.extend(b"\x03")  # TPKT (version)
-        packet.extend(b"\x00")  # Reserved (0x00)
-        packet.extend(b"\x00\x1f")  # Length (will be filled later)
-
-        # COTP (see RFC 2126)
-        packet.extend(b"\x02")
-        packet.extend(b"\xf0")
-        packet.extend(b"\x80")
-
-        # S7: HEADER
-        packet.extend(b"\x32")  # S7 Protocol Id (0x32)
-        packet.extend(b"\x01")  # Job (1)
-        packet.extend(b"\x00\x00")  # Redundancy Identification (Reserved)
-        packet.extend(b"\x00\x00")  # Protocol Data Unit Reference
-        packet.extend(b"\x00\x0e")  # Parameter length
-        packet.extend(b"\x00\x00")  # Data length
-
-        tpkt_cotp_header_length = len(packet)  # 17
+        packet, parameter_start = _init_s7_packet(MessageType.REQUEST)
 
         # S7: PARAMETER
         packet.extend(
             Function.WRITE_VAR.value.to_bytes(1, byteorder="big")
         )  # Function Write Var
-        packet.extend(b"\x01")  # tag count
+        tag_count_index = len(packet)
+        packet.extend(b"\x00")  # placeholder for tag count
 
         # S7Tag specification
         for tag in tags:
@@ -257,7 +235,9 @@ class WriteRequest(Request):
                     (tag.start * 8 + tag.bit_offset).to_bytes(3, byteorder="big")
                 )
 
-        parameter_length = len(packet) - tpkt_cotp_header_length
+        packet[tag_count_index] = len(tags)
+
+        data_start = len(packet)
 
         # S7 : DATA
         for i, tag in enumerate(tags):
@@ -324,35 +304,22 @@ class WriteRequest(Request):
                 else:
                     packed_data = struct.pack(">f", data)
             else:
-                assert False, "Unreachable"
+                raise RuntimeError(
+                    f"DataType {tag.data_type} not supported for write operations"
+                )
 
             # Data transport size - This is not the DataType
             packet.extend(transport_size.value.to_bytes(1, byteorder="big"))
             packet.extend(new_length.to_bytes(2, byteorder="big"))
             packet.extend(packed_data)
 
-            data_tag_length = 1 + 1 + 2 + tag.length * DataTypeSize[tag.data_type]
-
             if tag.data_type == DataType.BIT and i < len(tags) - 1:
                 packet.extend(b"\x00")
 
             if len(packet) % 2 == 0 and i < len(tags) - 1:
-                data_tag_length += 1
                 packet.extend(b"\x00")
 
-        data_length = len(packet) - parameter_length - tpkt_cotp_header_length
-
-        # Update parameter length
-        packet[13:15] = (parameter_length).to_bytes(2, byteorder="big")
-
-        # Update data length
-        packet[15:17] = (data_length).to_bytes(2, byteorder="big")
-
-        # Update tag count
-        packet[18] = len(tags)
-
-        # Update packet length
-        packet[2:4] = len(packet).to_bytes(2, byteorder="big")
+        _finalize_packet(packet, parameter_start, data_start)
 
         return packet
 
@@ -370,9 +337,10 @@ def prepare_requests(tags: List[S7Tag], max_pdu: int) -> List[List[S7Tag]]:
             READ_REQ_OVERHEAD + tag_request_size >= max_pdu
             or READ_RES_OVERHEAD + tag_response_size > max_pdu
         ):
-            # TODO: Improve error message by adding current tag size
+            tag_size = tag.size()
             raise S7AddressError(
-                f"{tag} too big -> it cannot fit the size of the negotiated PDU ({max_pdu})"
+                f"{tag} too big -> it cannot fit the size of the negotiated PDU ({max_pdu})."
+                f" Tag size: {tag_size} bytes."
             )
 
         elif (
@@ -418,9 +386,10 @@ def prepare_optimized_requests(
             READ_REQ_OVERHEAD + tag_request_size >= max_pdu
             or READ_RES_OVERHEAD + tag_response_size > max_pdu
         ):
-            # TODO: Improve error message by adding current tag size
+            tag_size = tag.size()
             raise S7AddressError(
-                f"{tag} too big -> it cannot fit the size of the negotiated PDU ({max_pdu})"
+                f"{tag} too big -> it cannot fit the size of the negotiated PDU ({max_pdu})."
+                f" Tag size: {tag_size} bytes."
             )
 
         if i == 0:
