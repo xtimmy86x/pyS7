@@ -38,7 +38,7 @@ if __name__ == "__main__":
 
     # Setup Communication -> request
     negotiation_request = PDUNegotiationRequest(max_pdu=960)
-    socket.send(negotiation_request.serialize())
+    socket.sendall(negotiation_request.serialize())
 
     # Setup Communication -> ack
     negotiation_bytes_response: bytes = socket.recv(980)
@@ -56,7 +56,7 @@ if __name__ == "__main__":
 
     # Read
     read_request = ReadRequest(tags=tags)
-    socket.send(read_request.serialize())
+    socket.sendall(read_request.serialize())
 
     # Read -> ack
     read_bytes_response: bytes = socket.recv(pdu_size)

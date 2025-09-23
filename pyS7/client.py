@@ -1,4 +1,5 @@
 import socket
+import threading
 from typing import List, Optional, Sequence, Union
 
 from .address_parser import map_address_to_tag
@@ -55,6 +56,7 @@ class S7Client:
         self.timeout = timeout
 
         self.socket: Optional[socket.socket] = None
+        self._io_lock = threading.Lock()
 
         self.pdu_size: int = MAX_PDU
         self.max_jobs_calling: int = MAX_JOB_CALLING
@@ -230,16 +232,46 @@ class S7Client:
 
         assert self.socket, "Unreachable"
         try:
-            self.socket.send(request.serialize())
+            with self._io_lock:
+                self.socket.sendall(request.serialize())
 
-            bytes_response = self.socket.recv(self.pdu_size)
-            if len(bytes_response) == 0:
+                header = self._recv_exact(4)
+            if len(header) < 4:
                 raise S7CommunicationError(
-                    "The connection has been closed by the peer."
+                    "Incomplete TPKT header received from the PLC."
                 )
 
-            return bytes_response
+            tpkt_length = int.from_bytes(header[2:4], byteorder="big")
+            if tpkt_length < 4:
+                raise S7CommunicationError("Invalid TPKT length received from the PLC.")
+
+            body = self._recv_exact(tpkt_length - 4)
+
+            return header + body
+        except socket.timeout as e:
+            raise S7CommunicationError(
+                "Socket timeout during communication."
+            ) from e
         except socket.error as e:
             raise S7CommunicationError(
                 f"Socket error during communication: {e}."
             ) from e
+
+    def _recv_exact(self, expected_length: int) -> bytes:
+        assert self.socket, "Unreachable"
+
+        if expected_length == 0:
+            return b""
+
+        data = bytearray()
+
+        while len(data) < expected_length:
+            chunk = self.socket.recv(expected_length - len(data))
+            if len(chunk) == 0:
+                raise S7CommunicationError(
+                    "The connection has been closed by the peer."
+                )
+
+            data.extend(chunk)
+
+        return bytes(data)
