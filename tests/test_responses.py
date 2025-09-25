@@ -303,14 +303,14 @@ read_response_optimized_test_case: List[ReadResponseOptimizedTestCase] = [
             }
         ],
         [
-            True,
-            True,
-            True,
             False,
             True,
             False,
             True,
             False,
+            True,
+            True,
+            True,
             0,
             255,
             -32768,

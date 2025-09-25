@@ -163,15 +163,9 @@ class ReadRequest(Request):
             packet.extend(
                 tag.memory_area.value.to_bytes(1, byteorder="big")
             )  # Area Code (0x84 for DB)
-            if tag.data_type == DataType.BIT:
-                # Address (start * 8 + bit offset)
-                packet.extend(
-                    (tag.start * 8 + 7 - tag.bit_offset).to_bytes(3, byteorder="big")
-                )
-            else:
-                packet.extend(
-                    (tag.start * 8 + tag.bit_offset).to_bytes(3, byteorder="big")
-                )
+            packet.extend(
+                (tag.start * 8 + tag.bit_offset).to_bytes(3, byteorder="big")
+            )  # Address
 
         packet[tag_count_index] = len(tags)
 
@@ -225,15 +219,9 @@ class WriteRequest(Request):
                 tag.memory_area.value.to_bytes(1, byteorder="big")
             )  # Area Code (0x84 for DB)
 
-            if tag.data_type == DataType.BIT:
-                # Address (start * 8 + bit offset)
-                packet.extend(
-                    (tag.start * 8 + 7 - tag.bit_offset).to_bytes(3, byteorder="big")
-                )
-            else:
-                packet.extend(
-                    (tag.start * 8 + tag.bit_offset).to_bytes(3, byteorder="big")
-                )
+            packet.extend(
+                (tag.start * 8 + tag.bit_offset).to_bytes(3, byteorder="big")
+            )  # Address
 
         packet[tag_count_index] = len(tags)
 

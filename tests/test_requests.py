@@ -134,14 +134,9 @@ def assert_read_tag(packet: bytearray, offset: int, tag: S7Tag) -> None:
         2, byteorder="big"
     )
     assert packet[offset + 8] == tag.memory_area.value
-    if tag.data_type == DataType.BIT:
-        assert packet[offset + 9 : offset + 12] == (
-            tag.start * 8 + 7 - tag.bit_offset
-        ).to_bytes(3, byteorder="big")
-    else:
-        assert packet[offset + 9 : offset + 12] == (
-            tag.start * 8 + tag.bit_offset
-        ).to_bytes(3, byteorder="big")
+    assert packet[offset + 9 : offset + 12] == (
+        tag.start * 8 + tag.bit_offset
+    ).to_bytes(3, byteorder="big")
 
 
 def test_read_request() -> None:
@@ -204,14 +199,9 @@ def assert_write_tag(packet: bytearray, offset: int, tag: S7Tag) -> None:
         2, byteorder="big"
     )
     assert packet[offset + 8] == tag.memory_area.value.to_bytes(1, byteorder="big")[0]
-    if tag.data_type == DataType.BIT:
-        assert packet[offset + 9 : offset + 12] == (
-            tag.start * 8 + 7 - tag.bit_offset
-        ).to_bytes(3, byteorder="big")
-    else:
-        assert packet[offset + 9 : offset + 12] == (
-            tag.start * 8 + tag.bit_offset
-        ).to_bytes(3, byteorder="big")
+    assert packet[offset + 9 : offset + 12] == (
+        tag.start * 8 + tag.bit_offset
+    ).to_bytes(3, byteorder="big")
 
 
 # TODO
