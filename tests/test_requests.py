@@ -541,7 +541,7 @@ def test_prepare_write_request() -> None:
             WRITE_REQ_OVERHEAD
             + sum(
                 [
-                    WRITE_REQ_PARAM_SIZE_TAG + 4 + elem.size() + elem.length % 2
+                    WRITE_REQ_PARAM_SIZE_TAG + 4 + elem.size() + elem.size() % 2
                     for elem in requests[i]
                 ]
             )

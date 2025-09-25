@@ -395,7 +395,7 @@ def prepare_optimized_requests(
                 previous_tag = requests[-1][-1]
 
                 if (
-                    cumulated_request_size + tag_response_size <= max_pdu
+                    cumulated_request_size + tag_request_size <= max_pdu
                     and cumulated_response_size + tag_response_size <= max_pdu
                     and previous_tag.memory_area == tag.memory_area
                     and previous_tag.db_number == tag.db_number
@@ -455,16 +455,19 @@ def prepare_write_requests_and_values(
     response_size = WRITE_RES_OVERHEAD
 
     for i, tag in enumerate(tags):
+        tag_size = tag.size()
+        tag_padding = tag_size % 2
+
         if (
-            WRITE_REQ_OVERHEAD + WRITE_REQ_PARAM_SIZE_TAG + tag.size() >= max_pdu
-            or WRITE_RES_OVERHEAD + tag.size() + 1 >= max_pdu
+            WRITE_REQ_OVERHEAD + WRITE_REQ_PARAM_SIZE_TAG + tag_size >= max_pdu
+            or WRITE_RES_OVERHEAD + tag_size + 1 >= max_pdu
         ):
             raise S7AddressError(
                 f"{tag} too big -> it cannot fit the size of the negotiated PDU ({max_pdu})"
             )
 
         elif (
-            request_size + WRITE_REQ_PARAM_SIZE_TAG + 4 + tag.size() + tag.length % 2
+            request_size + WRITE_REQ_PARAM_SIZE_TAG + 4 + tag_size + tag_padding
             < max_pdu
             and response_size + 1 < max_pdu
             and len(requests[-1]) < MAX_WRITE_TAGS
@@ -472,7 +475,7 @@ def prepare_write_requests_and_values(
             requests[-1].append(tag)
             requests_values[-1].append(values[i])
 
-            request_size += WRITE_REQ_PARAM_SIZE_TAG + 4 + tag.size() + tag.length % 2
+            request_size += WRITE_REQ_PARAM_SIZE_TAG + 4 + tag_size + tag_padding
             response_size += 1
 
         else:
@@ -483,8 +486,8 @@ def prepare_write_requests_and_values(
                 WRITE_REQ_OVERHEAD
                 + WRITE_REQ_PARAM_SIZE_TAG
                 + 4
-                + tag.size()
-                + tag.length % 2
+                + tag_size
+                + tag_padding
             )
             response_size = WRITE_RES_OVERHEAD + 1
 
