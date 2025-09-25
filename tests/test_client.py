@@ -111,6 +111,21 @@ def test_read(client: S7Client, monkeypatch: pytest.MonkeyPatch) -> None:
     assert result == [True, True, 0]
 
 
+def test_read_returns_empty_list_for_no_tags(
+    client: S7Client, monkeypatch: pytest.MonkeyPatch) -> None:
+    def unexpected(*_: Any, **__: Any) -> Any:
+        raise AssertionError("read should not prepare requests when no tags are provided")
+
+    client.socket = cast(socket.socket, object())
+
+    monkeypatch.setattr("pyS7.client.prepare_optimized_requests", unexpected)
+    monkeypatch.setattr("pyS7.client.S7Client._S7Client__send", unexpected)
+
+    result = client.read(())
+
+    assert result == []
+
+
 def test_read_optimized(client: S7Client, monkeypatch: pytest.MonkeyPatch) -> None:
     def mock_sendall(self: Any, bytes_request: bytes) -> None:
         return None

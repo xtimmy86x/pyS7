@@ -148,6 +148,9 @@ class S7Client:
             for tag in tags
         ]
 
+        if not list_tags:
+            return []
+        
         data: List[Value] = []
 
         if optimize:
@@ -215,6 +218,9 @@ class S7Client:
             for tag in tags
         ]
 
+        if not tags_list:
+            return None
+        
         requests, requests_values = prepare_write_requests_and_values(
             tags=tags_list, values=values, max_pdu=self.pdu_size
         )
