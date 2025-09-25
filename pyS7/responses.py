@@ -152,96 +152,70 @@ def parse_optimized_read_response(
 ) -> List[Value]:
     parsed_data: List[Tuple[int, Value]] = []
 
+    unpack_from = struct.unpack_from  # micro-binding for performance
+    ReturnCodeSuccess = ReturnCode.SUCCESS
+
+    # Map DataType -> struct format char (always big-endian with '>')
+    fmt_map = {
+        DataType.BYTE: "B",
+        DataType.INT: "h",
+        DataType.WORD: "H",
+        DataType.DWORD: "I",
+        DataType.DINT: "l",
+        DataType.REAL: "f",
+    }
+
     for i, bytes_response in enumerate(bytes_responses):
-        offset: int = READ_RES_OVERHEAD  # Response offset where data starts
+        mv = memoryview(bytes_response)  # zero-copy access to bytes
+        offset = READ_RES_OVERHEAD
 
-        for packed_tag in tags_map[i].keys():
-            return_code = struct.unpack_from(">B", bytes_response, offset)[0]
+        # Iterate over packed tags inside this response
+        for packed_tag, tags in tags_map[i].items():
+            # 1 byte return code (just read directly from memoryview)
+            return_code = mv[offset]
+            if ReturnCode(return_code) != ReturnCodeSuccess:
+                raise S7ReadResponseError(f"{packed_tag}: {ReturnCode(return_code).name}")
 
-            if ReturnCode(return_code) == ReturnCode.SUCCESS:
-                offset += 4
+            # Response header is 4 bytes (status + 3 length bytes)
+            offset += 4
+            base_off = offset  # start of actual data
 
-                tags: List[Tuple[int, S7Tag]] = tags_map[i][packed_tag]
-                for idx, tag in tags:
-                    if tag.data_type == DataType.BIT:
-                        byte_offset = offset + (tag.start - packed_tag.start)
-                        data_byte = bytes_response[byte_offset]
-                        value: Value = bool((data_byte >> tag.bit_offset) & 0b1)
+            # Iterate through the unpacked tags inside this packed block
+            for idx, tag in tags:
+                rel = tag.start - packed_tag.start
+                abs_off = base_off + rel
+                dt = tag.data_type
 
-                    elif tag.data_type == DataType.BYTE:
-                        unpacked = struct.unpack_from(
-                            f">{(tag.start - packed_tag.start) * 'x'}{tag.length * 'B'}",
-                            bytes_response,
-                            offset,
-                        )
-                        value = unpacked if tag.length > 1 else unpacked[0]
+                if dt == DataType.BIT:
+                    data_byte = mv[abs_off]
+                    value: Value = bool((data_byte >> tag.bit_offset) & 0b1)
 
-                    elif tag.data_type == DataType.CHAR:
-                        str_start = offset + (tag.start - packed_tag.start)
-                        str_end = offset + (tag.start - packed_tag.start) + tag.length
-                        value = bytes_response[str_start:str_end].decode(encoding="ascii")
+                elif dt == DataType.CHAR:
+                    # Slice without copy until decoding
+                    str_end = abs_off + tag.length
+                    value = mv[abs_off:str_end].tobytes().decode("ascii")
 
-                    elif tag.data_type == DataType.INT:
-                        unpacked = struct.unpack_from(
-                            f">{(tag.start - packed_tag.start) * 'x'}{tag.length * 'h'}",
-                            bytes_response,
-                            offset,
-                        )
-                        value = unpacked if tag.length > 1 else unpacked[0]
+                else:
+                    # Numeric scalar/array types
+                    fmt_char = fmt_map.get(dt)
+                    if fmt_char is None:
+                        raise ValueError(f"DataType: {dt} not supported")
 
-                    elif tag.data_type == DataType.WORD:
-                        unpacked = struct.unpack_from(
-                            f">{(tag.start - packed_tag.start) * 'x'}{tag.length * 'H'}",
-                            bytes_response,
-                            offset,
-                        )
-                        value = unpacked if tag.length > 1 else unpacked[0]
-
-                    elif tag.data_type == DataType.DWORD:
-                        unpacked = struct.unpack_from(
-                            f">{(tag.start - packed_tag.start) * 'x'}{tag.length * 'I'}",
-                            bytes_response,
-                            offset,
-                        )
-                        value = unpacked if tag.length > 1 else unpacked[0]
-
-                    elif tag.data_type == DataType.DINT:
-                        unpacked = struct.unpack_from(
-                            f">{(tag.start - packed_tag.start) * 'x'}{tag.length * 'l'}",
-                            bytes_response,
-                            offset,
-                        )
-                        value = unpacked if tag.length > 1 else unpacked[0]
-
-                    elif tag.data_type == DataType.REAL:
-                        unpacked = struct.unpack_from(
-                            f">{(tag.start - packed_tag.start) * 'x'}{tag.length * 'f'}",
-                            bytes_response,
-                            offset,
-                        )
-                        value = unpacked if tag.length > 1 else unpacked[0]
-
+                    if tag.length > 1:
+                        fmt = f">{tag.length}{fmt_char}"
+                        value = unpack_from(fmt, mv, abs_off)
                     else:
-                        raise ValueError(f"DataType: {tag.data_type} not supported")
+                        fmt = f">{fmt_char}"
+                        value = unpack_from(fmt, mv, abs_off)[0]
 
-                    parsed_data.append((idx, value))
+                parsed_data.append((idx, value))
 
-                offset += packed_tag.length
-                offset += 1 if packed_tag.length % 2 != 0 else 0
+            # Advance to the end of this packed block, align to 2 bytes
+            offset += packed_tag.length + (packed_tag.length & 1)
 
-            else:
-                raise S7ReadResponseError(
-                    f"{packed_tag}: {ReturnCode(return_code).name}"
-                )
-
-    parsed_data.sort(key=lambda elem: elem[0])
-
-    processed_data: List[Value] = [
-        data[0] if isinstance(data, tuple) and len(data) == 1 else data
-        for (_, data) in parsed_data
-    ]
-
-    return processed_data
+    # Sort values by original tag index and return only the values
+    parsed_data.sort(key=lambda t: t[0])
+    return [v for _, v in parsed_data]
 
 
 def parse_write_response(bytes_response: bytes, tags: List[S7Tag]) -> None:
