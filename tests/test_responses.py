@@ -22,6 +22,44 @@ def test_conenction_response() -> None:
     assert connection_response.response == bytes_response
 
 
+def test_connection_response_parse_success() -> None:
+    bytes_response = bytes.fromhex(
+        "03 00 00 16 11 D0 00 02 00 00 00 C0 01 0A C1 02 03 02 C2 02 01 00"
+    )
+
+    parsed_response = ConnectionResponse(response=bytes_response).parse()
+
+    assert parsed_response["success"] is True
+    assert parsed_response["tpkt"] == {"version": 0x03, "reserved": 0x00, "length": 0x16}
+
+    cotp = parsed_response["cotp"]
+    assert cotp["pdu_type"] == 0xD0
+    assert cotp["destination_reference"] == 0x0002
+    assert cotp["source_reference"] == 0x0000
+    assert cotp["class_options"] == 0x00
+    assert cotp["parameters"] == [
+        {"code": 0xC0, "length": 1, "value": b"\x0a"},
+        {"code": 0xC1, "length": 2, "value": b"\x03\x02"},
+        {"code": 0xC2, "length": 2, "value": b"\x01\x00"},
+    ]
+
+
+def test_connection_response_parse_failure() -> None:
+    bytes_response = bytes.fromhex("03 00 00 0b 06 80 00 00 00 00 05")
+
+    parsed_response = ConnectionResponse(response=bytes_response).parse()
+
+    assert parsed_response["success"] is False
+    assert parsed_response["tpkt"] == {"version": 0x03, "reserved": 0x00, "length": 0x0B}
+
+    cotp = parsed_response["cotp"]
+    assert cotp["pdu_type"] == 0x80
+    assert cotp["destination_reference"] == 0x0000
+    assert cotp["source_reference"] == 0x0000
+    assert cotp["reason"] == 0x05
+    assert cotp["parameters"] == []
+
+
 @pytest.mark.parametrize(
     "bytes_response, max_jobs_calling, max_jobs_called, pdu_size",
     [

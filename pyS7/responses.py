@@ -1,10 +1,25 @@
 import struct
-from typing import Any, List, Protocol, Tuple, Union, runtime_checkable
+from typing import Any, Dict, List, Optional, Protocol, Tuple, Union, runtime_checkable
 
 from .constants import READ_RES_OVERHEAD, WRITE_RES_OVERHEAD, DataType, ReturnCode
 from .errors import S7ReadResponseError, S7WriteResponseError
 from .requests import TagsMap, Value
 from .tag import S7Tag
+
+COTP_CONNECTION_CONFIRM = 0xD0
+
+COTP_DISCONNECT_REASONS: Dict[int, str] = {
+    0x00: "Reason not specified",
+    0x01: "Congestion at the destination transport endpoint",
+    0x02: "Session entity congestion",
+    0x03: "Address unknown",
+    0x05: "Connection refused by remote transport endpoint",
+    0x06: "Connection rejected due to remote transport endpoint being unavailable",
+    0x07: "Connection rejected due to protocol error",
+    0x09: "User initiated disconnect",
+    0x0A: "Protocol error detected by the peer",
+    0x0B: "Duplicate source reference",
+}
 
 
 @runtime_checkable
@@ -17,8 +32,87 @@ class ConnectionResponse:
     def __init__(self, response: bytes) -> None:
         self.response = response
 
-    def parse(self) -> Any:
-        ...
+    def parse(self) -> Dict[str, Any]:
+        if len(self.response) < 11:
+            raise ValueError("Connection response too short")
+
+        version, reserved, tpkt_length = struct.unpack_from(">BBH", self.response, offset=0
+        )
+        if version != 0x03:
+            raise ValueError("Unsupported TPKT version in connection response")
+
+        if tpkt_length != len(self.response):
+            raise ValueError("TPKT length mismatch in connection response")
+
+        cotp_length = self.response[4]
+        if cotp_length != len(self.response) - 5:
+            raise ValueError("COTP length mismatch in connection response")
+
+        pdu_type = self.response[5]
+        destination_reference = struct.unpack_from(">H", self.response, offset=6)[0]
+        source_reference = struct.unpack_from(">H", self.response, offset=8)[0]
+
+        header_field = self.response[10]
+
+        parameters: List[Dict[str, Any]] = []
+        offset = 11
+        while offset + 1 < len(self.response):
+            parameter_code = self.response[offset]
+            parameter_length = self.response[offset + 1]
+            value_start = offset + 2
+            value_end = value_start + parameter_length
+
+            if value_end > len(self.response):
+                raise ValueError("Malformed COTP parameter in connection response")
+
+            parameter_value = self.response[value_start:value_end]
+            parameters.append(
+                {
+                    "code": parameter_code,
+                    "length": parameter_length,
+                    "value": parameter_value,
+                }
+            )
+
+            offset = value_end
+
+        is_success = pdu_type == COTP_CONNECTION_CONFIRM
+
+        class_options: Optional[int] = None
+        reason: Optional[int] = None
+        reason_description: Optional[str] = None
+
+        if is_success:
+            class_options = header_field
+        else:
+            reason = header_field
+            reason_description = COTP_DISCONNECT_REASONS.get(reason)
+
+        cotp_info: Dict[str, Any] = {
+            "length": cotp_length,
+            "pdu_type": pdu_type,
+            "destination_reference": destination_reference,
+            "source_reference": source_reference,
+            "parameters": parameters,
+        }
+
+        if class_options is not None:
+            cotp_info["class_options"] = class_options
+
+        if reason is not None:
+            cotp_info["reason"] = reason
+            if reason_description:
+                cotp_info["reason_description"] = reason_description
+
+        return {
+            "tpkt": {
+                "version": version,
+                "reserved": reserved,
+                "length": tpkt_length,
+            },
+            "cotp": cotp_info,
+            "success": is_success,
+        }
 
 
 class PDUNegotiationResponse:
@@ -89,6 +183,8 @@ def parse_read_response(bytes_response: bytes, tags: List[S7Tag]) -> List[Value]
             offset += 4
 
             if tag.data_type == DataType.BIT:
+                # For BIT data type, PLC returns the bit value directly (0 or 1)
+                # not the full byte, so we don't need to extract specific bits
                 data: Any = bool(bytes_response[offset])
                 offset += tag.size()
                 # Skip fill byte
@@ -150,7 +246,18 @@ def parse_read_response(bytes_response: bytes, tags: List[S7Tag]) -> List[Value]
             parsed_data.append(data)
 
         else:
-            raise S7ReadResponseError(f"{tag}: {_return_code_name(return_code)}")
+            # Special handling for BIT data type with INVALID_DATA_SIZE error
+            if (tag.data_type == DataType.BIT and 
+                return_code == ReturnCode.INVALID_DATA_SIZE.value):
+                raise S7ReadResponseError(
+                    f"{tag}: {_return_code_name(return_code)}. "
+                    f"Some S7 PLCs do not support reading individual bits. "
+                    f"Workaround: Read the entire byte using 'DB{tag.db_number},B{tag.start}' "
+                    f"and extract bit {tag.bit_offset} using extract_bit_from_byte() function "
+                    f"from pyS7.responses, or use optimized read operations."
+                )
+            else:
+                raise S7ReadResponseError(f"{tag}: {_return_code_name(return_code)}")
 
     processed_data: List[Value] = [
         data[0] if isinstance(data, tuple) and len(data) == 1 else data
@@ -203,8 +310,15 @@ def parse_optimized_read_response(
                 dt = tag.data_type
 
                 if dt == DataType.BIT:
+                    # For optimized reads with BIT data, PLC may return the bit directly
+                    # Check if we need bit extraction or direct value
                     data_byte = mv[abs_off]
-                    value: Value = bool((data_byte >> tag.bit_offset) & 0b1)
+                    # If this is a single bit request, PLC likely returns 0/1 directly
+                    if tag.length == 1:
+                        value: Value = bool(data_byte)
+                    else:
+                        # For multiple bits, extract from byte
+                        value = bool((data_byte >> tag.bit_offset) & 0b1)
 
                 elif dt == DataType.CHAR:
                     # Slice without copy until decoding
@@ -247,3 +361,27 @@ def parse_write_response(bytes_response: bytes, tags: List[S7Tag]) -> None:
             raise S7WriteResponseError(
                 f"Impossible to write tag {tag} - {_return_code_name(return_code)} "
             )
+
+
+def extract_bit_from_byte(byte_value: int, bit_offset: int) -> bool:
+    """
+    Extract a specific bit from a byte value.
+    
+    Args:
+        byte_value: The byte value (0-255) to extract the bit from
+        bit_offset: The bit position (0-7, where 0 is the least significant bit)
+        
+    Returns:
+        bool: True if the bit is set, False otherwise
+        
+    Example:
+        # To read bit 2 from DB1.DBB0 when individual bit reads fail:
+        # 1. Read the byte: client.read(["DB1,B0"])  # Returns [byte_value]
+        # 2. Extract the bit: extract_bit_from_byte(byte_value, 2)
+    """
+    if not 0 <= bit_offset <= 7:
+        raise ValueError("bit_offset must be between 0 and 7")
+    if not 0 <= byte_value <= 255:
+        raise ValueError("byte_value must be between 0 and 255")
+    
+    return bool((byte_value >> bit_offset) & 1)

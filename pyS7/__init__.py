@@ -9,4 +9,5 @@ from .errors import (
     S7ReadResponseError,
     S7WriteResponseError,
 )
+from .responses import extract_bit_from_byte
 from .tag import S7Tag
