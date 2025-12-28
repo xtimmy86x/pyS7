@@ -155,10 +155,14 @@ class ReadRequest(Request):
             packet.extend(b"\x12")  # Variable specification
             packet.extend(b"\x0a")  # Length of following address specification
             packet.extend(b"\x10")  # Syntax ID: S7ANY (0x10)
-            packet.extend(
-                tag.data_type.value.to_bytes(1, byteorder="big")
-            )  # Transport size
-            packet.extend(tag.length.to_bytes(2, byteorder="big"))  # Length
+            if tag.data_type == DataType.LREAL:
+                transport_size = DataTypeData.BYTE_WORD_DWORD.value
+                length = tag.length * DataTypeSize[tag.data_type]
+            else:
+                transport_size = tag.data_type.value
+                length = tag.length
+            packet.extend(transport_size.to_bytes(1, byteorder="big"))  # Transport size
+            packet.extend(length.to_bytes(2, byteorder="big"))  # Length
             packet.extend(tag.db_number.to_bytes(2, byteorder="big"))  # DB Number
             packet.extend(
                 tag.memory_area.value.to_bytes(1, byteorder="big")
@@ -291,6 +295,13 @@ class WriteRequest(Request):
                     packed_data = struct.pack(f">{tag.length * 'f'}", *data)
                 else:
                     packed_data = struct.pack(">f", data)
+            elif tag.data_type == DataType.LREAL:
+                transport_size = DataTypeData.BYTE_WORD_DWORD
+                new_length = tag.length * DataTypeSize[tag.data_type] * 8
+                if isinstance(data, tuple):
+                    packed_data = struct.pack(f">{tag.length * 'd'}", *data)
+                else:
+                    packed_data = struct.pack(">d", data)         
             else:
                 raise RuntimeError(
                     f"DataType {tag.data_type} not supported for write operations"

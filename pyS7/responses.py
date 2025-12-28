@@ -71,6 +71,13 @@ class WriteResponse:
         parse_write_response(bytes_response=self.response, tags=self.tags)
 
 
+def _return_code_name(return_code: int) -> str:
+    try:
+        return ReturnCode(return_code).name
+    except ValueError:
+        return f"UNKNOWN_RETURN_CODE_0x{return_code:02X}"
+    
+
 def parse_read_response(bytes_response: bytes, tags: List[S7Tag]) -> List[Value]:
     parsed_data: List[Tuple[Union[bool, int, float], ...]] = []
     offset = READ_RES_OVERHEAD  # Response offset where data starts
@@ -78,7 +85,7 @@ def parse_read_response(bytes_response: bytes, tags: List[S7Tag]) -> List[Value]
     for i, tag in enumerate(tags):
         return_code = struct.unpack_from(">B", bytes_response, offset)[0]
 
-        if ReturnCode(return_code) == ReturnCode.SUCCESS:
+        if return_code == ReturnCode.SUCCESS.value:
             offset += 4
 
             if tag.data_type == DataType.BIT:
@@ -131,13 +138,19 @@ def parse_read_response(bytes_response: bytes, tags: List[S7Tag]) -> List[Value]
                 )
                 offset += tag.size()
 
+            elif tag.data_type == DataType.LREAL:
+                data = struct.unpack_from(
+                    f">{tag.length * 'd'}", bytes_response, offset
+                )
+                offset += tag.size()
+                
             else:
                 raise ValueError(f"DataType: {tag.data_type} not supported")
 
             parsed_data.append(data)
 
         else:
-            raise S7ReadResponseError(f"{tag}: {ReturnCode(return_code).name}")
+            raise S7ReadResponseError(f"{tag}: {_return_code_name(return_code)}")
 
     processed_data: List[Value] = [
         data[0] if isinstance(data, tuple) and len(data) == 1 else data
@@ -153,7 +166,7 @@ def parse_optimized_read_response(
     parsed_data: List[Tuple[int, Value]] = []
 
     unpack_from = struct.unpack_from  # micro-binding for performance
-    ReturnCodeSuccess = ReturnCode.SUCCESS
+    ReturnCodeSuccess = ReturnCode.SUCCESS.value
 
     # Map DataType -> struct format char (always big-endian with '>')
     fmt_map = {
@@ -163,6 +176,7 @@ def parse_optimized_read_response(
         DataType.DWORD: "I",
         DataType.DINT: "l",
         DataType.REAL: "f",
+        DataType.LREAL: "d",
     }
 
     for i, bytes_response in enumerate(bytes_responses):
@@ -173,8 +187,10 @@ def parse_optimized_read_response(
         for packed_tag, tags in tags_map[i].items():
             # 1 byte return code (just read directly from memoryview)
             return_code = mv[offset]
-            if ReturnCode(return_code) != ReturnCodeSuccess:
-                raise S7ReadResponseError(f"{packed_tag}: {ReturnCode(return_code).name}")
+            if return_code != ReturnCodeSuccess:
+                raise S7ReadResponseError(
+                    f"{packed_tag}: {_return_code_name(return_code)}"
+                )
 
             # Response header is 4 bytes (status + 3 length bytes)
             offset += 4
@@ -224,10 +240,10 @@ def parse_write_response(bytes_response: bytes, tags: List[S7Tag]) -> None:
     for tag in tags:
         return_code = struct.unpack_from(">B", bytes_response, offset)[0]
 
-        if ReturnCode(return_code) == ReturnCode.SUCCESS:
+        if return_code == ReturnCode.SUCCESS.value:
             offset += 1
 
         else:
             raise S7WriteResponseError(
-                f"Impossible to write tag {tag} - {ReturnCode(return_code).name} "
+                f"Impossible to write tag {tag} - {_return_code_name(return_code)} "
             )

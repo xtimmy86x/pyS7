@@ -76,6 +76,7 @@ class DataType(Enum):
     DWORD = 6  # unsigned INT 32 bit
     DINT = 7  # signed INT 32 bit
     REAL = 8  # FLOAT 32 bit
+    LREAL = 0x1F  # FLOAT 64 bit
 
 
 DataTypeSize: Dict[DataType, int] = {
@@ -87,6 +88,7 @@ DataTypeSize: Dict[DataType, int] = {
     DataType.DWORD: 4,
     DataType.DINT: 4,
     DataType.REAL: 4,
+    DataType.LREAL: 8,
 }
 
 

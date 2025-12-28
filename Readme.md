@@ -123,6 +123,7 @@ pyS7 adopts a PLC addressing convention inspired by [nodeS7](https://github.com/
 | `DB103,DI3`                   | `DB103.DBD13`         | Number        | Signed 32-bit number at byte 3 of DB 103 |
 | `DB51,DW6`                    | `DB51.DBD6`           | Number        | Unsigned 32-bit number at byte 6 of DB 51 |
 | `DB21,R14`                    | `DB21.DBD14`          | Number        | Floating point 32-bit number at byte 14 of DB 21 |
+| `DB21,LR14`                   | `DB21.DBD14`          | Number        | Floating point 64-bit number at byte 14 of DB 21 |
 | `DB102,S10.15`                | -                     | String        | String of length 15 starting at byte 10 of DB 102 |
 | `I3.0` or `E3.0`              | `I3.0` or `E3.0`      | Boolean       | Bit 0 of byte 3 of input area |
 | `Q2.6` or `A2.6`              | `Q2.6` or `A2.6`      | Boolean       | Bit 6 of byte 2 of output area |
@@ -148,6 +149,9 @@ pyS7 adopts a PLC addressing convention inspired by [nodeS7](https://github.com/
 | `IR34` or `ER34`              | `IR34` or `ER34`      | Number        | Floating point 32-bit number at byte 34 of input area |
 | `QR36` or `AR36`              | `QR36` or `AR36`      | Number        | Floating point 32-bit number at byte 36 of output area |
 | `MR84`                        | `MR84`                | Number        | Floating point 32-bit number at byte 84 of memory area |
+| `ILR34` or `ELR34`            | `ILR34` or `ELR34`    | Number        | Floating point 64-bit number at byte 34 of input area |
+| `QLR36` or `ALR36`            | `QLR36` or `ALR36`    | Number        | Floating point 64-bit number at byte 36 of output area |
+| `MLR84`                       | `MLR84`               | Number        | Floating point 64-bit number at byte 84 of memory area |
 
 ## License
 This project is distributed under the MIT License. See the [LICENSE](LICENSE) file for more details.
