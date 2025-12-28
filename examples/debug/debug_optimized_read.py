@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+import sys
+sys.path.insert(0, '/home/ale/pys7')
 
 import socket
 from unittest.mock import Mock, patch

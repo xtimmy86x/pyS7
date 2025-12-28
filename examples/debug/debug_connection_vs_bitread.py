@@ -1,6 +1,8 @@
 """
 Debug script to test bit ordering and identify the correct bit mapping
 """
+import sys
+sys.path.insert(0, '/home/ale/pys7/pyS7')
 
 from pyS7 import S7Client
 
