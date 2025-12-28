@@ -138,11 +138,6 @@ class S7Client:
             [True, 300, 20.5] # these values corresponds to the PLC data at specified addresses
         """
 
-        if not self.socket:
-            raise S7CommunicationError(
-                "Not connected to PLC. Call 'connect' before performing read operations."
-            )
-
         list_tags: List[S7Tag] = [
             map_address_to_tag(address=tag) if isinstance(tag, str) else tag
             for tag in tags
@@ -150,6 +145,11 @@ class S7Client:
 
         if not list_tags:
             return []
+
+        if not self.socket:
+            raise S7CommunicationError(
+                "Not connected to PLC. Call 'connect' before performing read operations."
+            )
         
         data: List[Value] = []
 
@@ -203,11 +203,6 @@ class S7Client:
             >>> client.write(tags, values)  # writes these values to the PLC at specified addresses
         """
 
-        if not self.socket:
-            raise S7CommunicationError(
-                "Not connected to PLC. Call 'connect' before performing write operations."
-            )
-
         if len(tags) != len(values):
             raise ValueError(
                 "The number of tags should be equal to the number of values."
@@ -219,7 +214,12 @@ class S7Client:
         ]
 
         if not tags_list:
-            return None
+            return
+
+        if not self.socket:
+            raise S7CommunicationError(
+                "Not connected to PLC. Call 'connect' before performing write operations."
+            )
         
         requests, requests_values = prepare_write_requests_and_values(
             tags=tags_list, values=values, max_pdu=self.pdu_size

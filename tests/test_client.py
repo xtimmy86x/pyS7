@@ -7,6 +7,8 @@ import pytest
 
 from pyS7.client import S7Client
 from pyS7.constants import MAX_JOB_CALLED, MAX_JOB_CALLING, MAX_PDU, ConnectionType
+from pyS7.errors import S7ConnectionError
+from pyS7.requests import ReadRequest, Request, WriteRequest
 
 
 @pytest.fixture
@@ -81,6 +83,59 @@ def test_client_connect(client: S7Client, monkeypatch: pytest.MonkeyPatch) -> No
 
     assert client.socket is not None
     assert client.socket.gettimeout() == 5
+
+
+def test_client_connect_handshake_failure(
+    client: S7Client, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def mock_connect(self: Any, *args: Any) -> None:
+        return None
+
+    def mock_sendall(self: Any, bytes_request: bytes) -> None:
+        return None
+
+    invalid_tpkt_header = b"\x03\x00\x00\x03"
+
+    monkeypatch.setattr("socket.socket.connect", mock_connect)
+    monkeypatch.setattr("socket.socket.sendall", mock_sendall)
+    monkeypatch.setattr("socket.socket.recv", _mock_recv_factory(invalid_tpkt_header))
+    monkeypatch.setattr("socket.socket.shutdown", lambda *args, **kwargs: None)
+    monkeypatch.setattr("socket.socket.close", lambda *args, **kwargs: None)
+
+    with pytest.raises(S7ConnectionError):
+        client.connect()
+
+    assert client.socket is None
+
+
+def test_client_connect_pdu_negotiation_limit(
+    client: S7Client, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def mock_connect(self: Any, *args: Any) -> None:
+        return None
+
+    def mock_sendall(self: Any, bytes_request: bytes) -> None:
+        return None
+
+    connection_response = (
+        b"\x03\x00\x00\x1b\x02\xf0\x802\x03\x00\x00\x00\x00\x00\x08\x00\x00\x00\x00\xf0\x00\x00\x08\x00\x08\x03\xc0"
+    )
+    tight_pdu_response = (
+        b"\x03\x00\x00\x1b\x02\xf0\x802\x07\x00\x00\x00\x00\x00\x08\x00\x00\x00\x00\xf0\x00\x00\x01\x00\x01\x00\xf0"
+    )
+
+    monkeypatch.setattr("socket.socket.connect", mock_connect)
+    monkeypatch.setattr("socket.socket.sendall", mock_sendall)
+    monkeypatch.setattr(
+        "socket.socket.recv",
+        _mock_recv_factory(connection_response, tight_pdu_response),
+    )
+
+    client.connect()
+
+    assert client.max_jobs_calling == 1
+    assert client.max_jobs_called == 1
+    assert client.pdu_size == 0x00F0
 
 
 def test_client_disconnect(client: S7Client, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -163,6 +218,100 @@ def test_write(client: S7Client, monkeypatch: pytest.MonkeyPatch) -> None:
     values = [False, True, 69]
 
     client.write(tags, values)
+
+
+@pytest.mark.parametrize("optimize", [True, False])
+def test_read_empty_tags(
+    client: S7Client, monkeypatch: pytest.MonkeyPatch, optimize: bool
+) -> None:
+    read_response = (
+        b"\x03\x00\x00'\x02\xf0\x802\x03\x00\x00\x00\x00\x00\x02\x00\x12\x00\x00\x04\x03\xff\x03\x00\x01\x01\x00\xff\x03\x00\x01\x01\x00\xff\x05\x00\x10\x00\x00"
+    )
+
+    sent_requests: list[Request] = []
+
+    def fake_send(self: S7Client, request: Request) -> bytes:
+        sent_requests.append(request)
+        raise AssertionError("Should not send requests for empty tags")
+
+    monkeypatch.setattr(S7Client, "_S7Client__send", fake_send)
+
+    client.socket = cast(socket.socket, object())
+
+    result = client.read([], optimize=optimize)
+
+    assert result == []
+    assert not sent_requests
+
+
+def test_read_bits_optimized_handles_bit_offsets(
+    client: S7Client, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    optimized_response = (
+        b"\x03\x00\x00\xcf\x02\xf0\x802\x03\x00\x00\x00\x00\x00\x02\x00\xba\x00\x00\x04\x04\xff\x04\x00\x08\xea\x00\xff\x04\x03\xf0\x00\xff\x00\x00\x00\x00\x00\x00\x00\x00\x80\x00\xfb.\x00\x00\x04\xd2\x7f\xff\x80\x00\x00\x00\xff\xff\x80\x00\x00\x00\x00\x00\x00\x00\x7f\xff\x7f\xff\xff\xff\xff\x7f\xff\xfd\xd4F\x12\x04\x8e\x0e`\xc0\xab\xa5o\xa6\x00\x00\x00\x00\x00\x80\x00\x00+\xa5o\xa6TF\x12\x05\x7f\x7f\xff\xff\x00\x00\x00\x00\xfe,the"
+        b" brown fox jumps over the lazy dog,"  # noqa: B950
+        b" hello\xff\x04\x00p\x00\x00\x00\x00\x124\x00\x00\xab\xcd\x00\x00\xff\xff\xff\x04\x00\xe0\x00\x00\x00\x00\x00\x00\x00\x00\x124Vx\x00\x00\x00\x00\x124\xab\xcd\x00\x00\x00\x00\xff\xff\xff\xff"
+    )
+
+    def fake_send(self: S7Client, request: Request) -> bytes:
+        assert isinstance(request, ReadRequest)
+        return optimized_response
+
+    monkeypatch.setattr(S7Client, "_S7Client__send", fake_send)
+
+    client.socket = cast(socket.socket, object())
+
+    result = client.read(["DB1,X0.0", "DB1,X0.7"], optimize=True)
+
+    assert result == [False, True]
+
+
+def test_write_empty_tags(client: S7Client, monkeypatch: pytest.MonkeyPatch) -> None:
+    write_response = (
+        b"\x03\x00\x00\x18\x02\xf0\x802\x03\x00\x00\x00\x00\x00\x02\x00\x03\x00\x00\x05\x03\xff\xff\xff"
+    )
+
+    sent_requests: list[WriteRequest] = []
+
+    def fake_send(self: S7Client, request: Request) -> bytes:
+        assert isinstance(request, WriteRequest)
+        sent_requests.append(request)
+        raise AssertionError("Should not send requests for empty tags")
+
+    monkeypatch.setattr(S7Client, "_S7Client__send", fake_send)
+
+    client.socket = cast(socket.socket, object())
+
+    client.write([], [])
+
+    assert not sent_requests
+
+
+def test_write_bit_values_pack_bits_correctly(
+    client: S7Client, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    write_response = (
+        b"\x03\x00\x00\x18\x02\xf0\x802\x03\x00\x00\x00\x00\x00\x02\x00\x03\x00\x00\x05\x03\xff\xff\xff"
+    )
+
+    serialized_payloads: list[bytes] = []
+
+    def fake_send(self: S7Client, request: Request) -> bytes:
+        assert isinstance(request, WriteRequest)
+        payload = request.serialize()
+        serialized_payloads.append(payload)
+        return write_response
+
+    monkeypatch.setattr(S7Client, "_S7Client__send", fake_send)
+
+    client.socket = cast(socket.socket, object())
+
+    client.write(["DB1,X0.0", "DB1,X0.7"], [True, False])
+
+    assert serialized_payloads
+    assert serialized_payloads[0].endswith(
+        b"\x03\x00\x01\x01\x00\x00\x03\x00\x01\x00"
+    )
 
 
 class _DummyRequest:
