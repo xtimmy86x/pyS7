@@ -221,7 +221,7 @@ def test_read_optimized(client: S7Client, monkeypatch: pytest.MonkeyPatch) -> No
 
     tags = ["DB1,X0.1", "DB2,I2"]
     result = client.read(tags, optimize=True)
-    assert result == [False, 0]
+    assert result == [True, 0]
 
 
 def test_write(client: S7Client, monkeypatch: pytest.MonkeyPatch) -> None:

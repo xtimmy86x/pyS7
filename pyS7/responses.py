@@ -183,8 +183,7 @@ def parse_read_response(bytes_response: bytes, tags: List[S7Tag]) -> List[Value]
             offset += 4
 
             if tag.data_type == DataType.BIT:
-                # For BIT data type, PLC returns the bit value directly (0 or 1)
-                # not the full byte, so we don't need to extract specific bits
+                # For non-optimized BIT reads, PLC returns the bit value directly (0 or 1)
                 data: Any = bool(bytes_response[offset])
                 offset += tag.size()
                 # Skip fill byte
@@ -310,15 +309,18 @@ def parse_optimized_read_response(
                 dt = tag.data_type
 
                 if dt == DataType.BIT:
-                    # For optimized reads with BIT data, PLC may return the bit directly
-                    # Check if we need bit extraction or direct value
-                    data_byte = mv[abs_off]
-                    # If this is a single bit request, PLC likely returns 0/1 directly
-                    if tag.length == 1:
-                        value: Value = bool(data_byte)
+                    # Check if this is a packed BIT tag (when the packed_tag is a BYTE)
+                    # or an individual BIT tag (when the packed_tag is also a BIT)
+                    if packed_tag.data_type == DataType.BYTE:
+                        # This BIT tag was packed into a BYTE read - extract specific bit
+                        data_byte = mv[abs_off]
+                        from . import extract_bit_from_byte
+                        value: Value = extract_bit_from_byte(data_byte, tag.bit_offset)
                     else:
-                        # For multiple bits, extract from byte
-                        value = bool((data_byte >> tag.bit_offset) & 0b1)
+                        # This is an individual BIT tag - PLC returns bit value directly
+                        # Process the same as non-optimized reads
+                        data_byte = mv[abs_off]
+                        value: Value = bool(data_byte)
 
                 elif dt == DataType.CHAR:
                     # Slice without copy until decoding
