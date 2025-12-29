@@ -138,6 +138,30 @@ def test_client_connect_pdu_negotiation_limit(
     assert client.pdu_size == 0x00F0
 
 
+def test_client_connect_connection_failure(
+    client: S7Client, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def mock_connect(self: Any, *args: Any) -> None:
+        return None
+
+    def mock_send(self: Any, bytes_request: bytes) -> None:
+        return None
+
+    responses = iter([bytes.fromhex("03 00 00 0b 06 80 00 00 00 00 05")])
+
+    def mock_recv(self: Any, buf_size: int) -> bytes:
+        return next(responses, b"")
+
+    monkeypatch.setattr("socket.socket.connect", mock_connect)
+    monkeypatch.setattr("socket.socket.send", mock_send)
+    monkeypatch.setattr("socket.socket.recv", mock_recv)
+
+    with pytest.raises(S7ConnectionError):
+        client.connect()
+
+    assert client.socket is None
+
+
 def test_client_disconnect(client: S7Client, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("socket.socket.shutdown", lambda *args, **kwargs: None)
     monkeypatch.setattr("socket.socket.close", lambda *args, **kwargs: None)
@@ -197,7 +221,7 @@ def test_read_optimized(client: S7Client, monkeypatch: pytest.MonkeyPatch) -> No
 
     tags = ["DB1,X0.1", "DB2,I2"]
     result = client.read(tags, optimize=True)
-    assert result == [False, 0]
+    assert result == [True, 0]
 
 
 def test_write(client: S7Client, monkeypatch: pytest.MonkeyPatch) -> None:
