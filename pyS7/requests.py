@@ -67,13 +67,13 @@ class Request(Protocol):
 
 
 class ConnectionRequest(Request):
-    def __init__(self, rack: int, slot: int, connection_type: ConnectionType) -> None:
+    def __init__(self, rack: int, slot: int, connection_type: ConnectionType, local_tsap: str, remote_tsap:str) -> None:
         self.request = self.__prepare_packet(
-            rack=rack, slot=slot, connection_type=connection_type
+            rack=rack, slot=slot, connection_type=connection_type, local_tsap=local_tsap, remote_tsap=remote_tsap
         )
 
     def __prepare_packet(
-        self, rack: int, slot: int, connection_type: ConnectionType
+        self, rack: int, slot: int, connection_type: ConnectionType, local_tsap: str, remote_tsap:str
     ) -> bytearray:
         packet = bytearray()
 
@@ -102,11 +102,19 @@ class ConnectionRequest(Request):
         packet.extend(b"\x01")
         packet.extend(b"\x02")
 
-        # Connection type
-        packet[20] = connection_type.value
+        # Configurate Rack/Slot or TSAP communication
+        if(local_tsap != None and remote_tsap != None) :
+            # Using TSAP configuration
+            packet[16] = int(local_tsap[:2], 16)
+            packet[17] = int(local_tsap[3:], 16)
+            packet[20] = int(remote_tsap[:2], 16)
+            packet[21] = int(remote_tsap[3:], 16)
+        else:
+            # Connection type
+            packet[20] = connection_type.value
 
-        # Rack and Slot
-        packet[21] = rack * 32 + slot
+            # Rack and Slot
+            packet[21] = rack * 32 + slot
 
         return packet
 
