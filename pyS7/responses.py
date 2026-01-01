@@ -291,6 +291,10 @@ def parse_optimized_read_response(
 
         # Iterate over packed tags inside this response
         for packed_tag, tags in tags_map[i].items():
+            if offset >= len(mv):
+                raise S7ReadResponseError(
+                    f"{packed_tag}: response too short while reading return code"
+                )
             # 1 byte return code (just read directly from memoryview)
             return_code = mv[offset]
             if return_code != ReturnCodeSuccess:
@@ -299,14 +303,27 @@ def parse_optimized_read_response(
                 )
 
             # Response header is 4 bytes (status + 3 length bytes)
+            if offset + 4 > len(mv):
+                raise S7ReadResponseError(
+                    f"{packed_tag}: response too short while reading header"
+                )
             offset += 4
             base_off = offset  # start of actual data
-
+            packed_size = packed_tag.size()
+            if base_off + packed_size > len(mv):
+                raise S7ReadResponseError(
+                    f"{packed_tag}: response too short for packed data"
+                )
+            
             # Iterate through the unpacked tags inside this packed block
             for idx, tag in tags:
                 rel = tag.start - packed_tag.start
                 abs_off = base_off + rel
                 dt = tag.data_type
+                if abs_off + tag.size() > len(mv):
+                    raise S7ReadResponseError(
+                        f"{tag}: response too short for tag data"
+                    )
 
                 if dt == DataType.BIT:
                     # Check if this is a packed BIT tag (when the packed_tag is a BYTE)
@@ -343,7 +360,8 @@ def parse_optimized_read_response(
                 parsed_data.append((idx, value))
 
             # Advance to the end of this packed block, align to 2 bytes
-            offset += packed_tag.length + (packed_tag.length & 1)
+            # packed_size = packed_tag.size()
+            offset += packed_size + (packed_size & 1)
 
     # Sort values by original tag index and return only the values
     parsed_data.sort(key=lambda t: t[0])
@@ -377,7 +395,7 @@ def extract_bit_from_byte(byte_value: int, bit_offset: int) -> bool:
         bool: True if the bit is set, False otherwise
         
     Example:
-        # To read bit 2 from DB1.DBB0 when individual bit reads fail:
+        # To read bit 2 from DB1,B0 when individual bit reads fail:
         # 1. Read the byte: client.read(["DB1,B0"])  # Returns [byte_value]
         # 2. Extract the bit: extract_bit_from_byte(byte_value, 2)
     """
