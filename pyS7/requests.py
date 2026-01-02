@@ -5,6 +5,7 @@ from .errors import S7AddressError
 
 from .constants import (
     COTP_SIZE,
+    MAX_GAP_BYTES,
     MAX_READ_TAGS,
     MAX_WRITE_TAGS,
     READ_REQ_OVERHEAD,
@@ -411,7 +412,7 @@ def prepare_optimized_requests(
                     and previous_tag.memory_area == tag.memory_area
                     and previous_tag.db_number == tag.db_number
                     and tag.start - (previous_tag.start + previous_tag.size())
-                    < READ_REQ_PARAM_SIZE_TAG
+                    <= MAX_GAP_BYTES
                 ):
                     new_start = previous_tag.start
                     new_length = (
