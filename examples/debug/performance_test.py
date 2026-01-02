@@ -6,9 +6,9 @@ Tests optimization performance, large batch reads, and various scenarios.
 import sys
 import os
 import time
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
+sys.path.insert(0, '/home/ale/pys7/pyS7')
 
-from pyS7.pyS7 import S7Client
+from pyS7 import S7Client
 
 def performance_test():
     """Test performance of optimized vs non-optimized reads"""

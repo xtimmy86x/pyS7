@@ -6,9 +6,9 @@ then creates accurate test expectations based on real data.
 
 import sys
 import os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
+sys.path.insert(0, '/home/ale/pys7/pyS7')
 
-from pyS7.pyS7 import S7Client
+from pyS7 import S7Client
 
 def discover_plc_values():
     """Read actual values from PLC and create test data"""

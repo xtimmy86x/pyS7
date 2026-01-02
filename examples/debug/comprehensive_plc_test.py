@@ -6,9 +6,9 @@ Tests all data types with proper error handling and realistic expectations.
 
 import sys
 import os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
+sys.path.insert(0, '/home/ale/pys7/pyS7')
 
-from pyS7.pyS7 import S7Client
+from pyS7 import S7Client
 
 def comprehensive_plc_test():
     """Complete test suite using actual current PLC values"""

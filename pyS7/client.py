@@ -242,18 +242,18 @@ class S7Client:
                 self.socket.sendall(request.serialize())
 
                 header = self._recv_exact(4)
-            if len(header) < 4:
-                raise S7CommunicationError(
-                    "Incomplete TPKT header received from the PLC."
-                )
+                if len(header) < 4:
+                    raise S7CommunicationError(
+                        "Incomplete TPKT header received from the PLC."
+                    )
 
-            tpkt_length = int.from_bytes(header[2:4], byteorder="big")
-            if tpkt_length < 4:
-                raise S7CommunicationError("Invalid TPKT length received from the PLC.")
+                tpkt_length = int.from_bytes(header[2:4], byteorder="big")
+                if tpkt_length < 4:
+                    raise S7CommunicationError("Invalid TPKT length received from the PLC.")
 
-            body = self._recv_exact(tpkt_length - 4)
+                body = self._recv_exact(tpkt_length - 4)
 
-            return header + body
+                return header + body
         except socket.timeout as e:
             raise S7CommunicationError(
                 "Socket timeout during communication."

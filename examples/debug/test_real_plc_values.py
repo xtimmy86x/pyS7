@@ -6,9 +6,9 @@ and verifies they match the expected values.
 
 import sys
 import os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
+sys.path.insert(0, '/home/ale/pys7/pyS7')
 
-from pyS7.pyS7 import S7Client
+from pyS7 import S7Client
 
 def test_real_plc_values():
     """Test reading all configured PLC values and verify they match expectations"""
