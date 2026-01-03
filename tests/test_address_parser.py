@@ -19,7 +19,7 @@ from pyS7.tag import S7Tag
         ("DB19,DW6", S7Tag(MemoryArea.DB, 19, DataType.DWORD, 6, 0, 1)),
         ("DB19,DWORD6", S7Tag(MemoryArea.DB, 19, DataType.DWORD, 6, 0, 1)),
         ("DB21,R7", S7Tag(MemoryArea.DB, 21, DataType.REAL, 7, 0, 1)),
-        ("DB2,S7.10", S7Tag(MemoryArea.DB, 2, DataType.CHAR, 7, 0, 10)),
+        ("DB2,S7.10", S7Tag(MemoryArea.DB, 2, DataType.STRING, 7, 0, 10)),
         ("M10.7", S7Tag(MemoryArea.MERKER, 0, DataType.BIT, 10, 7, 1)),
         ("I0.2", S7Tag(MemoryArea.INPUT, 0, DataType.BIT, 0, 2, 1)),
         ("IC3", S7Tag(MemoryArea.INPUT, 0, DataType.CHAR, 3, 0, 1)),

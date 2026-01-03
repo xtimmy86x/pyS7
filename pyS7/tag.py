@@ -81,6 +81,8 @@ class S7Tag:
 
     def size(self) -> int:
         """Return the S7Tag size in bytes"""
+        if self.data_type == DataType.STRING:
+            return self.length + 2
         return DataTypeSize[self.data_type] * self.length
 
     def __contains__(self, tag) -> bool:  # type: ignore
@@ -88,8 +90,7 @@ class S7Tag:
             self.memory_area == tag.memory_area
             and self.db_number == tag.db_number
             and self.start <= tag.start
-            and self.start + DataTypeSize[self.data_type] * self.length
-            >= tag.start + DataTypeSize[tag.data_type] * tag.length
+            and self.start + self.size() >= tag.start + tag.size()
         ):
             return True
         return False

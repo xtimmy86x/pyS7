@@ -177,6 +177,13 @@ def parse_read_response(bytes_response: bytes, tags: List[S7Tag]) -> List[Value]
     offset = READ_RES_OVERHEAD  # Response offset where data starts
 
     for i, tag in enumerate(tags):
+        # Check if we have enough data for the return code
+        if offset >= len(bytes_response):
+            raise S7ReadResponseError(
+                f"{tag}: response too short (got {len(bytes_response)} bytes, "
+                f"expected at least {offset + 1} bytes for return code)"
+            )
+        
         return_code = struct.unpack_from(">B", bytes_response, offset)[0]
 
         if return_code == ReturnCode.SUCCESS.value:
@@ -202,6 +209,25 @@ def parse_read_response(bytes_response: bytes, tags: List[S7Tag]) -> List[Value]
                 offset += tag.size()
                 # Skip byte if char length is odd
                 offset += 0 if tag.length % 2 == 0 else 1
+
+            elif tag.data_type == DataType.STRING:
+                max_length = bytes_response[offset]
+                current_length = bytes_response[offset + 1]
+
+                # S7 STRING structure: [max_length byte][current_length byte][string data...]
+                # Standard S7 STRING has max_length = 254 (0xFE)
+                # Validate header: max_length should be <= 254 and current_length <= max_length
+                if max_length <= 254 and 0 <= current_length <= max_length:
+                    string_start = offset + 2
+                    string_end = string_start + current_length
+                    data = bytes_response[string_start:string_end].decode("ascii")
+                    offset += tag.size()
+                    offset += 0 if tag.size() % 2 == 0 else 1
+                else:
+                    # Fallback: treat as raw character data without header
+                    data = bytes_response[offset: offset + tag.length].decode("ascii").rstrip("\x00")
+                    offset += tag.length
+                    offset += 0 if tag.length % 2 == 0 else 1
 
             elif tag.data_type == DataType.INT:
                 data = struct.unpack_from(
@@ -293,7 +319,8 @@ def parse_optimized_read_response(
         for packed_tag, tags in tags_map[i].items():
             if offset >= len(mv):
                 raise S7ReadResponseError(
-                    f"{packed_tag}: response too short while reading return code"
+                    f"{packed_tag}: response too short (got {len(mv)} bytes, "
+                    f"expected at least {offset + 1} bytes for return code). "
                 )
             # 1 byte return code (just read directly from memoryview)
             return_code = mv[offset]
@@ -343,6 +370,21 @@ def parse_optimized_read_response(
                     # Slice without copy until decoding
                     str_end = abs_off + tag.length
                     value = mv[abs_off:str_end].tobytes().decode("ascii")
+
+                elif dt == DataType.STRING:
+                    max_length = mv[abs_off]
+                    current_length = mv[abs_off + 1]
+
+                    # S7 STRING structure: [max_length byte][current_length byte][string data...]
+                    # Standard S7 STRING has max_length = 254 (0xFE)
+                    if max_length <= 254 and current_length <= max_length:
+                        str_start = abs_off + 2
+                        str_end = str_start + current_length
+                        value = mv[str_start:str_end].tobytes().decode("ascii")
+                    else:
+                        # fallback: treat as raw character data without header
+                        str_end = abs_off + tag.length
+                        value = mv[abs_off:str_end].tobytes().decode("ascii").rstrip("\x00")
 
                 else:
                     # Numeric scalar/array types

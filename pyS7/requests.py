@@ -159,6 +159,9 @@ class ReadRequest(Request):
             if tag.data_type == DataType.LREAL:
                 transport_size = DataTypeData.BYTE_WORD_DWORD.value
                 length = tag.length * DataTypeSize[tag.data_type]
+            elif tag.data_type == DataType.STRING:
+                transport_size = DataTypeData.BYTE_WORD_DWORD.value
+                length = tag.size()
             else:
                 transport_size = tag.data_type.value
                 length = tag.length
@@ -216,9 +219,8 @@ class WriteRequest(Request):
                 packet.extend(DataType.BYTE.value.to_bytes(1, byteorder="big"))
 
             # Length (tag length * size of data type)
-            packet.extend(
-                (tag.length * DataTypeSize[tag.data_type]).to_bytes(2, byteorder="big")
-            )
+            tag_size = tag.size() if tag.data_type == DataType.STRING else tag.length * DataTypeSize[tag.data_type]
+            packet.extend(tag_size.to_bytes(2, byteorder="big"))
             packet.extend(tag.db_number.to_bytes(2, byteorder="big"))  # DB Number
             packet.extend(
                 tag.memory_area.value.to_bytes(1, byteorder="big")
@@ -257,6 +259,20 @@ class WriteRequest(Request):
                 assert isinstance(data, str)
                 packed_data = data.encode(encoding="ascii")
 
+            elif tag.data_type == DataType.STRING:
+                transport_size = DataTypeData.BYTE_WORD_DWORD
+                max_length = tag.length
+                assert isinstance(data, str)
+                encoded = data.encode(encoding="ascii")
+                if len(encoded) > max_length:
+                    raise S7AddressError(
+                        f"STRING data too long for {tag}: max length is {max_length}, got {len(encoded)}"
+                    )
+                new_length = tag.size() * 8
+                header = bytes([max_length, len(encoded)])
+                padding = b"\x00" * (max_length - len(encoded))
+                packed_data = header + encoded + padding
+                
             elif tag.data_type == DataType.INT:
                 transport_size = DataTypeData.BYTE_WORD_DWORD
                 new_length = tag.length * DataTypeSize[tag.data_type] * 8
