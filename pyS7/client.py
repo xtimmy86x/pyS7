@@ -28,12 +28,15 @@ from .tag import S7Tag
 
 class S7Client:
     """The S7Client class provides a high-level interface for communicating with a Siemens S7 programmable logic controller (PLC) over a network connection.
+    Configure rack/slot or local/remote TSAP depending of your needs. (Siemens Logo! uses TSAP)
     It allows for reading from and writing to memory locations in the PLC, with support for a variety of data types.
 
     Attributes:
         address (str): The IP address of the PLC.
-        rack (int): The rack number of the PLC.
-        slot (int): The slot number of the PLC.
+        rack (int): The rack number of the PLC. Defaults to 0.
+        slot (int): The slot number of the PLC. Defaults to 2.
+        local_tsap(str): The local TSAP in "xx.xx" format. Defaults to None.
+        remote_tsap(str): The remote TSAP in "xx.xx" format. Defaults to None.
         connection_type (ConnectionType): The type of PLC connection (S7Basic, PG, OP). Default is ConnectionType.S7Basic.
         port (int): The port number for the network connection. Defaults to 102.
         timeout (int): The timeout in seconds for the network connection. Defaults to 5.
@@ -42,8 +45,10 @@ class S7Client:
     def __init__(
         self,
         address: str,
-        rack: int,
-        slot: int,
+        rack: int = 0,
+        slot: int = 2,
+        local_tsap: str = None,
+        remote_tsap: str = None,
         connection_type: ConnectionType = ConnectionType.S7Basic,
         port: int = 102,
         timeout: float = 5.0,
@@ -51,6 +56,8 @@ class S7Client:
         self.address = address
         self.rack = rack
         self.slot = slot
+        self.local_tsap = local_tsap
+        self.remote_tsap = remote_tsap
         self.connection_type = connection_type
         self.port = port
         self.timeout = timeout
@@ -80,7 +87,7 @@ class S7Client:
 
         try:
             connection_request = ConnectionRequest(
-                connection_type=self.connection_type, rack=self.rack, slot=self.slot
+                connection_type=self.connection_type, rack=self.rack, slot=self.slot, local_tsap=self.local_tsap, remote_tsap=self.remote_tsap
             )
             connection_bytes_response: bytes = self.__send(connection_request)
             ConnectionResponse(response=connection_bytes_response)
