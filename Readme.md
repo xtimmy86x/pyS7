@@ -11,6 +11,8 @@ pyS7 is a lightweight, pure Python library that implements the Siemens S7 commun
 - [Quick start](#quick-start)
   - [Reading data](#reading-data)
   - [Writing data](#writing-data)
+- [Advanced connection methods](#advanced-connection-methods)
+  - [TSAP connection](#tsap-connection)
 - [Additional examples](#additional-examples)
 - [Supported addresses](#supported-addresses)
 - [License](#license)
@@ -105,6 +107,118 @@ if __name__ == "__main__":
 
     client.write(tags=tags, values=values)
 
+```
+
+## Advanced connection methods
+
+### TSAP connection
+
+In addition to the traditional rack/slot connection method, pyS7 supports direct TSAP (Transport Service Access Point) specification. This is useful for:
+- Non-standard PLC configurations
+- Third-party S7-compatible devices
+- Custom communication setups where rack/slot values don't apply
+
+#### Using TIA Portal TSAP notation
+
+The easiest way to use TSAP is with Siemens TIA Portal notation (e.g., "03.00", "03.01"):
+
+```python
+from pyS7 import S7Client
+
+# Connect using TIA Portal TSAP format
+client = S7Client(
+    address="192.168.5.100",
+    local_tsap="03.00",   # PG/PC connection (standard)
+    remote_tsap="03.01"   # Rack 0, Slot 1
+)
+
+client.connect()
+```
+
+Common TIA Portal TSAP values:
+- **PG/PC connection**: local `"03.00"`, remote `"03.01"` (Rack 0, Slot 1)
+- **OP connection**: local `"22.00"`, remote `"03.01"`
+- **HMI connection**: local `"10.00"`, remote `"03.01"`
+
+#### Using hexadecimal TSAP values
+
+You can also use integer hex values directly:
+
+```python
+from pyS7 import S7Client
+
+# Connect using hex TSAP values
+client = S7Client(
+    address="192.168.5.100",
+    local_tsap=0x0300,   # Equivalent to "03.00"
+    remote_tsap=0x0301   # Equivalent to "03.01"
+)
+
+client.connect()
+```
+
+#### Converting between formats
+
+```python
+from pyS7 import S7Client
+
+# Convert TIA Portal string to integer
+local_tsap = S7Client.tsap_from_string("03.00")
+print(f"0x{local_tsap:04X}")  # Output: 0x0300
+
+# Convert integer to TIA Portal string
+tsap_str = S7Client.tsap_to_string(0x0301)
+print(tsap_str)  # Output: "03.01"
+```
+
+#### TSAP calculation helper
+
+If you know the rack and slot but want to use TSAP, use the `tsap_from_rack_slot()` helper:
+
+```python
+from pyS7 import S7Client
+
+# Calculate remote TSAP from rack and slot
+remote_tsap = S7Client.tsap_from_rack_slot(rack=0, slot=1)
+remote_tsap_str = S7Client.tsap_to_string(remote_tsap)
+print(f"Rack 0, Slot 1 -> {remote_tsap_str}")  # Output: "03.01"
+
+# Use the calculated TSAP
+client = S7Client(
+    address="192.168.5.100",
+    local_tsap="03.00",
+    remote_tsap=remote_tsap_str
+)
+
+client.connect()
+```
+
+#### TSAP formula
+
+The remote TSAP is calculated from rack and slot using:
+```
+remote_tsap = 0x0100 | (rack × 32 + slot)
+```
+
+Examples:
+- Rack 0, Slot 1: `0x0101` = `"01.01"`
+- Rack 0, Slot 2: `0x0102` = `"01.02"`
+- Rack 1, Slot 0: `0x0120` = `"01.32"`
+- Rack 1, Slot 1: `0x0121` = `"01.33"`
+
+#### TSAP validation
+
+The library automatically validates TSAP values:
+- Both `local_tsap` and `remote_tsap` must be provided together
+- Values must be in the range 0x0000 to 0xFFFF (0-65535)
+- Values must be integers
+
+```python
+# This will raise ValueError: both TSAP values required
+client = S7Client(address="192.168.5.100", local_tsap=0x0100)
+
+# This will raise ValueError: TSAP out of range
+client = S7Client(address="192.168.5.100", local_tsap=0x10000, remote_tsap=0x0101)
 ```
 
 ## Additional examples

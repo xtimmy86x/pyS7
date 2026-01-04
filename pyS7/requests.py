@@ -1,5 +1,5 @@
 import struct
-from typing import Dict, List, Protocol, Sequence, Tuple, Union, runtime_checkable
+from typing import Dict, List, Optional, Protocol, Sequence, Tuple, Union, runtime_checkable
 
 from .errors import S7AddressError
 
@@ -68,13 +68,29 @@ class Request(Protocol):
 
 
 class ConnectionRequest(Request):
-    def __init__(self, rack: int, slot: int, connection_type: ConnectionType) -> None:
+    def __init__(
+        self,
+        rack: int,
+        slot: int,
+        connection_type: ConnectionType,
+        local_tsap: Optional[int] = None,
+        remote_tsap: Optional[int] = None,
+    ) -> None:
         self.request = self.__prepare_packet(
-            rack=rack, slot=slot, connection_type=connection_type
+            rack=rack,
+            slot=slot,
+            connection_type=connection_type,
+            local_tsap=local_tsap,
+            remote_tsap=remote_tsap,
         )
 
     def __prepare_packet(
-        self, rack: int, slot: int, connection_type: ConnectionType
+        self,
+        rack: int,
+        slot: int,
+        connection_type: ConnectionType,
+        local_tsap: Optional[int] = None,
+        remote_tsap: Optional[int] = None,
     ) -> bytearray:
         packet = bytearray()
 
@@ -103,11 +119,23 @@ class ConnectionRequest(Request):
         packet.extend(b"\x01")
         packet.extend(b"\x02")
 
-        # Connection type
-        packet[20] = connection_type.value
+        # If TSAP values are provided, use them directly
+        # Otherwise, calculate from rack/slot and connection type
+        if local_tsap is not None:
+            packet[16] = (local_tsap >> 8) & 0xFF
+            packet[17] = local_tsap & 0xFF
+        else:
+            # Default local TSAP based on connection type
+            packet[16] = 0x01
+            packet[17] = 0x00
 
-        # Rack and Slot
-        packet[21] = rack * 32 + slot
+        if remote_tsap is not None:
+            packet[20] = (remote_tsap >> 8) & 0xFF
+            packet[21] = remote_tsap & 0xFF
+        else:
+            # Connection type and rack/slot
+            packet[20] = connection_type.value
+            packet[21] = rack * 32 + slot
 
         return packet
 

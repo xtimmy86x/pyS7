@@ -32,21 +32,27 @@ class S7Client:
 
     Attributes:
         address (str): The IP address of the PLC.
-        rack (int): The rack number of the PLC.
-        slot (int): The slot number of the PLC.
+        rack (int): The rack number of the PLC (ignored if local_tsap/remote_tsap are provided).
+        slot (int): The slot number of the PLC (ignored if local_tsap/remote_tsap are provided).
         connection_type (ConnectionType): The type of PLC connection (S7Basic, PG, OP). Default is ConnectionType.S7Basic.
         port (int): The port number for the network connection. Defaults to 102.
         timeout (int): The timeout in seconds for the network connection. Defaults to 5.
+        local_tsap (Optional[Union[int, str]]): Local TSAP value (overrides rack/slot if provided).
+            Can be an integer (0x0000-0xFFFF) or string in TIA Portal format (e.g., "03.00").
+        remote_tsap (Optional[Union[int, str]]): Remote TSAP value (overrides rack/slot if provided).
+            Can be an integer (0x0000-0xFFFF) or string in TIA Portal format (e.g., "03.01").
     """
 
     def __init__(
         self,
         address: str,
-        rack: int,
-        slot: int,
+        rack: int = 0,
+        slot: int = 0,
         connection_type: ConnectionType = ConnectionType.S7Basic,
         port: int = 102,
         timeout: float = 5.0,
+        local_tsap: Optional[Union[int, str]] = None,
+        remote_tsap: Optional[Union[int, str]] = None,
     ) -> None:
         self.address = address
         self.rack = rack
@@ -54,6 +60,15 @@ class S7Client:
         self.connection_type = connection_type
         self.port = port
         self.timeout = timeout
+        
+        # Convert string TSAP to integer if needed
+        if isinstance(local_tsap, str):
+            local_tsap = self.tsap_from_string(local_tsap)
+        if isinstance(remote_tsap, str):
+            remote_tsap = self.tsap_from_string(remote_tsap)
+        
+        self.local_tsap = local_tsap
+        self.remote_tsap = remote_tsap
 
         self.socket: Optional[socket.socket] = None
         self._io_lock = threading.Lock()
@@ -61,6 +76,151 @@ class S7Client:
         self.pdu_size: int = MAX_PDU
         self.max_jobs_calling: int = MAX_JOB_CALLING
         self.max_jobs_called: int = MAX_JOB_CALLED
+
+        # Validate TSAP values if provided
+        if local_tsap is not None or remote_tsap is not None:
+            self._validate_tsap(local_tsap, remote_tsap)
+
+    @staticmethod
+    def tsap_from_string(tsap_str: str) -> int:
+        """Convert Siemens TIA Portal TSAP notation to integer value.
+        
+        TIA Portal uses the format "XX.YY" where XX and YY are decimal bytes.
+        For example: "03.00" = 0x0300, "03.01" = 0x0301, "22.00" = 0x2200
+        
+        Args:
+            tsap_str: TSAP string in format "XX.YY" (e.g., "03.00", "22.00")
+            
+        Returns:
+            int: TSAP value as integer
+            
+        Raises:
+            ValueError: If format is invalid or values are out of range
+            
+        Example:
+            >>> local_tsap = S7Client.tsap_from_string("03.00")   # 0x0300
+            >>> remote_tsap = S7Client.tsap_from_string("03.01")  # 0x0301
+            >>> client = S7Client(address="192.168.0.1", local_tsap=local_tsap, remote_tsap=remote_tsap)
+        """
+        if not isinstance(tsap_str, str):
+            raise ValueError(f"tsap_str must be a string, got {type(tsap_str).__name__}")
+        
+        parts = tsap_str.split('.')
+        if len(parts) != 2:
+            raise ValueError(
+                f"TSAP string must be in format 'XX.YY' (e.g., '03.00', '22.00'), got '{tsap_str}'"
+            )
+        
+        try:
+            byte1 = int(parts[0])
+            byte2 = int(parts[1])
+        except ValueError:
+            raise ValueError(
+                f"TSAP string must contain decimal numbers (e.g., '03.00'), got '{tsap_str}'"
+            )
+        
+        if not 0 <= byte1 <= 255:
+            raise ValueError(f"First byte must be in range 0-255, got {byte1}")
+        if not 0 <= byte2 <= 255:
+            raise ValueError(f"Second byte must be in range 0-255, got {byte2}")
+        
+        return (byte1 << 8) | byte2
+
+    @staticmethod
+    def tsap_to_string(tsap: int) -> str:
+        """Convert TSAP integer value to Siemens TIA Portal notation.
+        
+        Converts an integer TSAP value to TIA Portal format "XX.YY".
+        For example: 0x0300 = "03.00", 0x0301 = "03.01", 0x2200 = "22.00"
+        
+        Args:
+            tsap: TSAP value as integer (0x0000 to 0xFFFF)
+            
+        Returns:
+            str: TSAP string in format "XX.YY"
+            
+        Raises:
+            ValueError: If TSAP value is out of range
+            
+        Example:
+            >>> tsap_str = S7Client.tsap_to_string(0x0301)
+            >>> print(tsap_str)  # "03.01"
+        """
+        if not isinstance(tsap, int):
+            raise ValueError(f"tsap must be an integer, got {type(tsap).__name__}")
+        if not 0x0000 <= tsap <= 0xFFFF:
+            raise ValueError(
+                f"tsap must be in range 0x0000-0xFFFF (0-65535), got 0x{tsap:04X} ({tsap})"
+            )
+        
+        byte1 = (tsap >> 8) & 0xFF
+        byte2 = tsap & 0xFF
+        return f"{byte1:02d}.{byte2:02d}"
+
+    @staticmethod
+    def tsap_from_rack_slot(rack: int, slot: int) -> int:
+        """Calculate remote TSAP value from rack and slot numbers.
+        
+        This is a helper method for users who want to use TSAP connection
+        but need to calculate the TSAP value from rack/slot.
+        
+        Args:
+            rack: Rack number (0-7)
+            slot: Slot number (0-31)
+            
+        Returns:
+            int: Remote TSAP value (0x0100 | (rack * 32 + slot))
+            
+        Raises:
+            ValueError: If rack or slot values are out of range
+            
+        Example:
+            >>> tsap = S7Client.tsap_from_rack_slot(0, 1)
+            >>> print(f"0x{tsap:04X}")  # 0x0101
+            >>> client = S7Client(address="192.168.0.1", local_tsap=0x0100, remote_tsap=tsap)
+        """
+        if not isinstance(rack, int) or not isinstance(slot, int):
+            raise ValueError("rack and slot must be integers")
+        if not 0 <= rack <= 7:
+            raise ValueError(f"rack must be in range 0-7, got {rack}")
+        if not 0 <= slot <= 31:
+            raise ValueError(f"slot must be in range 0-31, got {slot}")
+        
+        return 0x0100 | (rack * 32 + slot)
+
+    @staticmethod
+    def _validate_tsap(local_tsap: Optional[int], remote_tsap: Optional[int]) -> None:
+        """Validate TSAP values are within valid ranges.
+        
+        Args:
+            local_tsap: Local TSAP value (0x0000 to 0xFFFF)
+            remote_tsap: Remote TSAP value (0x0000 to 0xFFFF)
+            
+        Raises:
+            ValueError: If TSAP values are invalid
+        """
+        if local_tsap is not None:
+            if not isinstance(local_tsap, int):
+                raise ValueError(f"local_tsap must be an integer, got {type(local_tsap).__name__}")
+            if not 0x0000 <= local_tsap <= 0xFFFF:
+                raise ValueError(
+                    f"local_tsap must be in range 0x0000-0xFFFF (0-65535), got 0x{local_tsap:04X} ({local_tsap})"
+                )
+        
+        if remote_tsap is not None:
+            if not isinstance(remote_tsap, int):
+                raise ValueError(f"remote_tsap must be an integer, got {type(remote_tsap).__name__}")
+            if not 0x0000 <= remote_tsap <= 0xFFFF:
+                raise ValueError(
+                    f"remote_tsap must be in range 0x0000-0xFFFF (0-65535), got 0x{remote_tsap:04X} ({remote_tsap})"
+                )
+        
+        # If only one TSAP is provided, warn user
+        if (local_tsap is None) != (remote_tsap is None):
+            raise ValueError(
+                "Both local_tsap and remote_tsap must be provided together, or neither. "
+                f"Got local_tsap={local_tsap}, remote_tsap={remote_tsap}"
+            )
 
     def connect(self) -> None:
         """Establishes a TCP connection to the S7 PLC and sets up initial communication parameters."""
@@ -80,7 +240,11 @@ class S7Client:
 
         try:
             connection_request = ConnectionRequest(
-                connection_type=self.connection_type, rack=self.rack, slot=self.slot
+                connection_type=self.connection_type,
+                rack=self.rack,
+                slot=self.slot,
+                local_tsap=self.local_tsap,
+                remote_tsap=self.remote_tsap,
             )
             connection_bytes_response: bytes = self.__send(connection_request)
             ConnectionResponse(response=connection_bytes_response)
