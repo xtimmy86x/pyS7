@@ -114,6 +114,7 @@ class ReturnCode(Enum):
     UNSUPPORTED_DATA_TYPE = 0x06
     INCONSISTENT_DATA_TYPE = 0x07
     OBJECT_DOES_NOT_EXIST = 0x0A
+    INVALID_ADDRESS = 0x38  # Invalid address or address out of range
     INVALID_DATA_SIZE = 0xFE
     SUCCESS = 0xFF
 
