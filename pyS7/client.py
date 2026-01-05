@@ -3,13 +3,14 @@ import threading
 from typing import List, Optional, Sequence, Union
 
 from .address_parser import map_address_to_tag
-from .constants import MAX_JOB_CALLED, MAX_JOB_CALLING, MAX_PDU, ConnectionType
+from .constants import MAX_JOB_CALLED, MAX_JOB_CALLING, MAX_PDU, ConnectionType, SZLId
 from .errors import S7CommunicationError, S7ConnectionError
 from .requests import (
     ConnectionRequest,
     PDUNegotiationRequest,
     ReadRequest,
     Request,
+    SZLRequest,
     Value,
     WriteRequest,
     prepare_optimized_requests,
@@ -21,6 +22,7 @@ from .responses import (
     PDUNegotiationResponse,
     ReadOptimizedResponse,
     ReadResponse,
+    SZLResponse,
     WriteResponse,
 )
 from .tag import S7Tag
@@ -395,6 +397,37 @@ class S7Client:
             )
             response = WriteResponse(response=bytes_response, tags=request)
             response.parse()
+
+    def get_cpu_status(self) -> str:
+        """Get the current CPU operating status (RUN or STOP).
+        
+        Returns:
+            str: The CPU status. Possible values:
+                - "RUN": CPU is running
+                - "STOP": CPU is stopped
+        
+        Raises:
+            S7CommunicationError: If not connected to PLC or communication fails.
+            
+        Example:
+            >>> client = S7Client('192.168.100.10', 0, 1)
+            >>> client.connect()
+            >>> status = client.get_cpu_status()
+            >>> print(f"CPU is in {status} mode")
+            CPU is in RUN mode
+        """
+        if not self.socket:
+            raise S7CommunicationError(
+                "Not connected to PLC. Call 'connect' before getting CPU status."
+            )
+        
+        # Request SZL ID 0x0424 (CPU diagnostic status)
+        szl_request = SZLRequest(szl_id=SZLId.CPU_DIAGNOSTIC_STATUS, szl_index=0x0000)
+        bytes_response = self.__send(szl_request)
+        
+        # Parse the response and extract CPU status
+        szl_response = SZLResponse(response=bytes_response)
+        return szl_response.parse_cpu_status()
 
     def __send(self, request: Request) -> bytes:
         if not isinstance(request, Request):

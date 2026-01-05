@@ -1,7 +1,7 @@
 import struct
 from typing import Any, Dict, List, Optional, Protocol, Tuple, Union, runtime_checkable
 
-from .constants import READ_RES_OVERHEAD, WRITE_RES_OVERHEAD, DataType, ReturnCode
+from .constants import READ_RES_OVERHEAD, WRITE_RES_OVERHEAD, DataType, MessageType, ReturnCode
 from .errors import S7ReadResponseError, S7WriteResponseError
 from .requests import TagsMap, Value
 from .tag import S7Tag
@@ -493,3 +493,127 @@ def extract_bit_from_byte(byte_value: int, bit_offset: int) -> bool:
         raise ValueError("byte_value must be between 0 and 255")
     
     return bool((byte_value >> bit_offset) & 1)
+
+
+class SZLResponse:
+    """Response parser for System Status List (SZL) data from an S7 device."""
+
+    def __init__(self, response: bytes) -> None:
+        self.response = response
+
+    def parse(self) -> Dict[str, Any]:
+        """
+        Parse the SZL response and extract the data.
+        
+        Returns:
+            Dict containing the parsed SZL data with keys:
+                - szl_id: The SZL ID that was read
+                - szl_index: The SZL index
+                - length_dr: Length of data record
+                - n_dr: Number of data records
+                - data: Raw data bytes
+        """
+        if len(self.response) < 25:
+            raise ValueError(f"SZL response too short: {len(self.response)} bytes")
+
+        # Parse TPKT header
+        tpkt_version = self.response[0]
+        if tpkt_version != 0x03:
+            raise ValueError(f"Invalid TPKT version: {tpkt_version}")
+        
+        tpkt_length = struct.unpack_from(">H", self.response, 2)[0]
+        if tpkt_length != len(self.response):
+            raise ValueError(f"TPKT length mismatch: expected {tpkt_length}, got {len(self.response)}")
+
+        # Skip COTP (3 bytes at offset 4)
+        # S7 header starts at offset 7
+        offset = 7
+        
+        protocol_id = self.response[offset]
+        if protocol_id != 0x32:
+            raise ValueError(f"Invalid S7 protocol ID: {protocol_id:#x}")
+        
+        message_type = self.response[offset + 1]
+        if message_type != MessageType.USERDATA.value:
+            raise ValueError(f"Expected USERDATA message type, got {message_type:#x}")
+        
+        param_length = struct.unpack_from(">H", self.response, offset + 6)[0]
+        data_length = struct.unpack_from(">H", self.response, offset + 8)[0]
+        
+        # Parameter section starts after S7 header (10 bytes)
+        param_offset = offset + 10
+        
+        # Data section starts after parameter
+        data_offset = param_offset + param_length
+        
+        if data_offset + data_length > len(self.response):
+            raise ValueError("Invalid SZL response: data extends beyond packet")
+
+        # Parse data section
+        return_code = self.response[data_offset]
+        if return_code != 0xFF:
+            raise ValueError(f"SZL request failed with return code: {return_code:#x}")
+        
+        transport_size = self.response[data_offset + 1]
+        data_unit_length = struct.unpack_from(">H", self.response, data_offset + 2)[0]
+        
+        # SZL data structure
+        szl_id = struct.unpack_from(">H", self.response, data_offset + 4)[0]
+        szl_index = struct.unpack_from(">H", self.response, data_offset + 6)[0]
+        length_dr = struct.unpack_from(">H", self.response, data_offset + 8)[0]  # Length of one data record
+        n_dr = struct.unpack_from(">H", self.response, data_offset + 10)[0]  # Number of data records
+        
+        # Extract the actual data records
+        data_start = data_offset + 12
+        data_end = data_start + (length_dr * n_dr)
+        
+        if data_end > len(self.response):
+            raise ValueError("Invalid SZL response: data records extend beyond packet")
+        
+        data_bytes = self.response[data_start:data_end]
+        
+        return {
+            "szl_id": szl_id,
+            "szl_index": szl_index,
+            "length_dr": length_dr,
+            "n_dr": n_dr,
+            "data": data_bytes,
+        }
+    
+    def parse_cpu_status(self) -> str:
+        """
+        Parse the CPU status from SZL ID 0x0424 response.
+        
+        Returns:
+            str: CPU status ("RUN", "STOP", or other status string)
+        """
+        szl_data = self.parse()
+        
+        if szl_data["szl_id"] != 0x0424:
+            raise ValueError(f"Invalid SZL ID for CPU status: {szl_data['szl_id']:#x}, expected 0x0424")
+        
+        data = szl_data["data"]
+        
+        if len(data) < 5:
+            raise ValueError("Insufficient data for CPU status")
+        
+        # For SZL 0x0424 (W#16#xy424), the status information is structured as:
+        # Byte 0: Reserved (0x02 typically)
+        # Byte 1: Status bits (0x51 typically for both RUN and STOP)
+        # Byte 2: Event bits (0xFF typically)
+        # Byte 3: CPU operating mode
+        #   - 0x08: RUN mode
+        #   - 0x03: STOP mode
+        #   - Other values may indicate different states
+        # Byte 4+: Other diagnostic info
+        status_byte = data[3]
+        
+        # Check the operating mode byte
+        if status_byte == 0x08:
+            return "RUN"
+        elif status_byte == 0x03:
+            return "STOP"
+        else:
+            # Return descriptive status for other values
+            return f"UNKNOWN (0x{status_byte:02X})"
+

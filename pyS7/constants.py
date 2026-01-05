@@ -60,6 +60,29 @@ class Function(Enum):
     WRITE_VAR = 5
 
 
+class UserDataFunction(Enum):
+    CPU_FUNCTIONS = 0x04
+
+
+class UserDataSubfunction(Enum):
+    READ_SZL = 0x01
+    
+    
+class SZLId(Enum):
+    """SZL (System Status List) IDs for reading PLC information"""
+    MODULE_IDENTIFICATION = 0x0011
+    CPU_CHARACTERISTICS = 0x0131
+    USER_MEMORY_AREAS = 0x0132
+    SYSTEM_AREAS = 0x0174
+    BLOCK_TYPES = 0x0191
+    COMPONENT_IDENTIFICATION = 0x001C
+    INTERRUPT_STATUS = 0x0222
+    DIAGNOSTIC_BUFFER = 0x00A0
+    MODULE_DIAGNOSTIC = 0x00B1
+    CPU_LED_STATUS = 0x0119
+    CPU_DIAGNOSTIC_STATUS = 0x0424  # Operating status of the CPU
+
+
 class MemoryArea(Enum):
     MERKER = 0x83  # Flags (M) (Merker)
     DB = 0x84  # Data blocks (DB)
