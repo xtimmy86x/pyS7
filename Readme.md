@@ -109,6 +109,45 @@ if __name__ == "__main__":
 
 ```
 
+### String data types
+
+pyS7 supports two string types:
+
+#### STRING (ASCII)
+- **Encoding**: ASCII (1 byte per character)
+- **Max length**: 254 characters
+- **Size**: length + 2 bytes (header)
+- **Address format**: `DB<n>,S<offset>.<length>`
+- **Use for**: English text, simple data
+
+```python
+# Read ASCII string
+tags = ["DB1,S10.20"]  # STRING at byte 10, max 20 chars
+values = client.read(tags)
+print(values[0])  # "Hello World"
+
+# Write ASCII string
+client.write(["DB1,S10.20"], ["New text"])
+```
+
+#### WSTRING (Unicode)
+- **Encoding**: UTF-16 BE (2 bytes per character)
+- **Max length**: 254 characters
+- **Size**: (length × 2) + 2 bytes (header)
+- **Address format**: `DB<n>,WS<offset>.<length>`
+- **Use for**: International text, emojis, special characters
+- **Availability**: S7-1200/1500 (not available on S7-300/400)
+
+```python
+# Read Unicode string
+tags = ["DB1,WS100.30"]  # WSTRING at byte 100, max 30 chars
+values = client.read(tags)
+print(values[0])  # "Hello 世界! 🌍"
+
+# Write Unicode string  
+client.write(["DB1,WS100.30"], ["Café Müller 東京"])
+```
+
 ## Advanced connection methods
 
 ### TSAP connection
@@ -238,7 +277,8 @@ pyS7 adopts a PLC addressing convention inspired by [nodeS7](https://github.com/
 | `DB51,DW6`                    | `DB51.DBD6`           | Number        | Unsigned 32-bit number at byte 6 of DB 51 |
 | `DB21,R14`                    | `DB21.DBD14`          | Number        | Floating point 32-bit number at byte 14 of DB 21 |
 | `DB21,LR14`                   | `DB21.DBD14`          | Number        | Floating point 64-bit number at byte 14 of DB 21 |
-| `DB102,S10.15`                | -                     | String        | String of length 15 starting at byte 10 of DB 102 |
+| `DB102,S10.15`                | -                     | String        | String of length 15 starting at byte 10 of DB 102 (ASCII, 1 byte/char) |
+| `DB102,WS50.20`               | -                     | String        | Wide String of length 20 starting at byte 50 of DB 102 (UTF-16, 2 bytes/char) |
 | `I3.0` or `E3.0`              | `I3.0` or `E3.0`      | Boolean       | Bit 0 of byte 3 of input area |
 | `Q2.6` or `A2.6`              | `Q2.6` or `A2.6`      | Boolean       | Bit 6 of byte 2 of output area |
 | `M7.1`                        | `M7.1`                | Boolean       | Bit 1 of byte 7 of memory area |

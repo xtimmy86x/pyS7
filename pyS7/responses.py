@@ -229,6 +229,31 @@ def parse_read_response(bytes_response: bytes, tags: List[S7Tag]) -> List[Value]
                     offset += tag.length
                     offset += 0 if tag.length % 2 == 0 else 1
 
+            elif tag.data_type == DataType.WSTRING:
+                # WSTRING uses 2-byte headers (unlike STRING which uses 1-byte headers)
+                max_length = struct.unpack_from(">H", bytes_response, offset)[0]
+                current_length = struct.unpack_from(">H", bytes_response, offset + 2)[0]
+
+                # S7 WSTRING structure: [2 bytes max_length][2 bytes current_length][UTF-16 string data...]
+                # Note: current_length is the character count, but emojis use surrogate pairs (2 code units)
+                # So we need to read the full data area and let UTF-16 decoder handle it
+                if max_length <= 16383 and 0 <= current_length <= max_length:
+                    string_start = offset + 4
+                    # Read the full string data area (max_length * 2 bytes)
+                    string_bytes = bytes_response[string_start:string_start + (max_length * 2)]
+                    # Decode and find the actual string (stop at null terminator)
+                    decoded_full = string_bytes.decode("utf-16-be")
+                    # Find null terminator or use current_length as hint
+                    null_pos = decoded_full.find('\x00')
+                    data = decoded_full[:null_pos] if null_pos >= 0 else decoded_full[:current_length]
+                    offset += tag.size()
+                    offset += 0 if tag.size() % 2 == 0 else 1
+                else:
+                    # Fallback: treat as raw UTF-16 data without header
+                    data = bytes_response[offset: offset + (tag.length * 2)].decode("utf-16-be").rstrip("\x00")
+                    offset += tag.length * 2
+                    offset += 0 if (tag.length * 2) % 2 == 0 else 1
+
             elif tag.data_type == DataType.INT:
                 data = struct.unpack_from(
                     f">{tag.length * 'h'}", bytes_response, offset
@@ -385,6 +410,27 @@ def parse_optimized_read_response(
                         # fallback: treat as raw character data without header
                         str_end = abs_off + tag.length
                         value = mv[abs_off:str_end].tobytes().decode("ascii").rstrip("\x00")
+
+                elif dt == DataType.WSTRING:
+                    # WSTRING uses 2-byte headers (unlike STRING which uses 1-byte headers)
+                    max_length = unpack_from(">H", mv, abs_off)[0]
+                    current_length = unpack_from(">H", mv, abs_off + 2)[0]
+
+                    # S7 WSTRING structure: [2 bytes max_length][2 bytes current_length][UTF-16 string data...]
+                    # current_length is character count, but emojis use surrogate pairs (2 code units = 4 bytes)
+                    # So we read the full data area and let UTF-16 decoder handle it
+                    if max_length <= 16383 and current_length <= max_length:
+                        str_start = abs_off + 4
+                        # Read full data area to handle surrogate pairs correctly
+                        string_bytes = mv[str_start:str_start + (max_length * 2)].tobytes()
+                        decoded_full = string_bytes.decode("utf-16-be")
+                        # Find null terminator or use current_length as hint
+                        null_pos = decoded_full.find('\x00')
+                        value = decoded_full[:null_pos] if null_pos >= 0 else decoded_full[:current_length]
+                    else:
+                        # fallback: treat as raw UTF-16 data without header
+                        str_end = abs_off + (tag.length * 2)
+                        value = mv[abs_off:str_end].tobytes().decode("utf-16-be").rstrip("\x00")
 
                 else:
                     # Numeric scalar/array types

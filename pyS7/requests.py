@@ -190,6 +190,9 @@ class ReadRequest(Request):
             elif tag.data_type == DataType.STRING:
                 transport_size = DataTypeData.BYTE_WORD_DWORD.value
                 length = tag.size()
+            elif tag.data_type == DataType.WSTRING:
+                transport_size = DataTypeData.BYTE_WORD_DWORD.value
+                length = tag.size()
             else:
                 transport_size = tag.data_type.value
                 length = tag.length
@@ -247,7 +250,7 @@ class WriteRequest(Request):
                 packet.extend(DataType.BYTE.value.to_bytes(1, byteorder="big"))
 
             # Length (tag length * size of data type)
-            tag_size = tag.size() if tag.data_type == DataType.STRING else tag.length * DataTypeSize[tag.data_type]
+            tag_size = tag.size() if tag.data_type in (DataType.STRING, DataType.WSTRING) else tag.length * DataTypeSize[tag.data_type]
             packet.extend(tag_size.to_bytes(2, byteorder="big"))
             packet.extend(tag.db_number.to_bytes(2, byteorder="big"))  # DB Number
             packet.extend(
@@ -299,6 +302,21 @@ class WriteRequest(Request):
                 new_length = tag.size() * 8
                 header = bytes([max_length, len(encoded)])
                 padding = b"\x00" * (max_length - len(encoded))
+                packed_data = header + encoded + padding
+
+            elif tag.data_type == DataType.WSTRING:
+                transport_size = DataTypeData.BYTE_WORD_DWORD
+                max_length = tag.length
+                assert isinstance(data, str)
+                encoded = data.encode(encoding="utf-16-be")
+                if len(encoded) // 2 > max_length:  # Each char is 2 bytes
+                    raise S7AddressError(
+                        f"WSTRING data too long for {tag}: max length is {max_length} chars, got {len(encoded) // 2}"
+                    )
+                new_length = tag.size() * 8
+                # WSTRING uses 2-byte headers (unlike STRING which uses 1-byte headers)
+                header = struct.pack(">HH", max_length, len(data))  # Big-endian 16-bit values
+                padding = b"\x00" * ((max_length - len(data)) * 2)  # 2 bytes per char
                 packed_data = header + encoded + padding
                 
             elif tag.data_type == DataType.INT:
