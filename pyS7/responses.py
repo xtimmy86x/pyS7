@@ -616,4 +616,115 @@ class SZLResponse:
         else:
             # Return descriptive status for other values
             return f"UNKNOWN (0x{status_byte:02X})"
+    
+    def parse_cpu_info(self) -> Dict[str, Any]:
+        """
+        Parse CPU information from SZL ID 0x0011 response (Module Identification).
+        
+        Returns:
+            Dict containing CPU information with keys:
+                - module_type_name: String name of the CPU module (order number)
+                - hardware_version: Hardware version
+                - firmware_version: Firmware version (may be "N/A" if not in this SZL)
+                - modules: List of all module records found
+                
+        Note:
+            Some PLCs (e.g., S7-1200) do not expose firmware version in SZL 0x0011.
+            The firmware version shown in TIA Portal may come from the project file
+            or other SZL IDs that are not universally supported.
+        """
+        szl_data = self.parse()
+        
+        if szl_data["szl_id"] != 0x0011:
+            raise ValueError(f"Invalid SZL ID for CPU info: {szl_data['szl_id']:#x}, expected 0x0011")
+        
+        data = szl_data["data"]
+        length_dr = szl_data["length_dr"]
+        n_dr = szl_data["n_dr"]
+        
+        if len(data) < length_dr:
+            raise ValueError("Insufficient data for CPU info")
+        
+        # Parse all module identification records
+        # Each record is length_dr bytes (typically 28 bytes)
+        # Structure per record:
+        # - Index (2 bytes)
+        # - Module type name/order number (20 bytes, ASCII)
+        # - Reserved (2 bytes)
+        # - Hardware version (2 bytes)
+        # - Firmware version (2 bytes)
+        
+        modules = []
+        info = {}
+        
+        for i in range(n_dr):
+            offset = i * length_dr
+            record_data = data[offset:offset + length_dr]
+            
+            if len(record_data) < length_dr:
+                break
+            
+            module = {}
+            
+            # Index (bytes 0-1)
+            index = struct.unpack(">H", record_data[0:2])[0]
+            module["index"] = f"0x{index:04X}"
+            
+            # Module type name / order number (bytes 2-21, ASCII)
+            module_type = record_data[2:22].split(b'\x00', 1)[0].decode('ascii', errors='ignore').strip()
+            module["module_type_name"] = module_type
+            
+            # Reserved (bytes 22-23)
+            
+            # Hardware version (bytes 24-25)
+            # Byte 24: Version info (nibbles contain major.minor)
+            # Byte 25: Additional version info or decimal part
+            if len(record_data) >= 26:
+                hw_byte1 = record_data[24]
+                hw_byte2 = record_data[25]
+                
+                # If byte 24 has version nibbles (non-zero)
+                if hw_byte1 > 0:
+                    hw_major = (hw_byte1 >> 4) & 0x0F
+                    hw_minor = hw_byte1 & 0x0F
+                    module["hardware_version"] = f"V{hw_major}.{hw_minor}"
+                else:
+                    # Byte 25 contains the version
+                    module["hardware_version"] = f"V{hw_byte2}"
+            
+            # Firmware version (bytes 26-27)
+            if len(record_data) >= 28:
+                fw_byte1 = record_data[26]
+                fw_byte2 = record_data[27]
+                
+                # Check if bytes contain actual version data (not spaces 0x20)
+                if fw_byte1 == 0x20 or fw_byte1 == 0x00:
+                    # No firmware version data in this field
+                    module["firmware_version"] = "N/A"
+                elif fw_byte2 > 0x0F:
+                    # Byte 2 might be BCD or decimal patch version
+                    # Format: V major.minor.patch where byte1 has nibbles, byte2 is decimal
+                    fw_major = (fw_byte1 >> 4) & 0x0F
+                    fw_minor = fw_byte1 & 0x0F
+                    module["firmware_version"] = f"V{fw_major}.{fw_minor}.{fw_byte2}"
+                else:
+                    # Standard nibble format
+                    fw_major = (fw_byte1 >> 4) & 0x0F  
+                    fw_minor = fw_byte1 & 0x0F
+                    fw_patch = fw_byte2 & 0x0F
+                    module["firmware_version"] = f"V{fw_major}.{fw_minor}.{fw_patch}"
+            
+            modules.append(module)
+            
+            # Use the first module (index 1) as the main CPU info
+            if index == 1 and not info:
+                info = module.copy()
+        
+        # If we have multiple modules, add them to the info
+        if len(modules) > 1:
+            info["modules"] = modules
+        elif not info and modules:
+            info = modules[0].copy()
+        
+        return info
 
