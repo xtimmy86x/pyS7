@@ -21,7 +21,10 @@ from .constants import (
     DataTypeData,
     DataTypeSize,
     Function,
-    MessageType
+    MessageType,
+    UserDataFunction,
+    UserDataSubfunction,
+    SZLId,
 )
 from .tag import S7Tag
 
@@ -642,3 +645,73 @@ def prepare_write_requests_and_values(
             response_size = WRITE_RES_OVERHEAD + 1
 
     return requests, requests_values
+
+
+class SZLRequest(Request):
+    """Request for reading System Status List (SZL) data from an S7 device."""
+
+    def __init__(self, szl_id: SZLId, szl_index: int = 0x0000) -> None:
+        """
+        Initialize an SZL request.
+        
+        Args:
+            szl_id: The SZL ID to request (e.g., SZLId.CPU_DIAGNOSTIC_STATUS)
+            szl_index: The SZL index (default 0x0000)
+        """
+        self.szl_id = szl_id
+        self.szl_index = szl_index
+        self.request = self.__prepare_packet(szl_id=szl_id, szl_index=szl_index)
+
+    def __prepare_packet(self, szl_id: SZLId, szl_index: int) -> bytearray:
+        """Prepare the SZL request packet."""
+        packet = bytearray()
+        
+        # TPKT header
+        packet.extend(b"\x03\x00")
+        tpkt_length_index = len(packet)
+        packet.extend(b"\x00\x00")  # Placeholder for TPKT length
+        
+        # COTP header
+        packet.extend(b"\x02\xf0\x80")
+        
+        # S7 Header
+        packet.extend(b"\x32")  # S7 protocol ID
+        packet.extend(MessageType.USERDATA.value.to_bytes(1, byteorder="big"))
+        packet.extend(b"\x00\x00")  # Reserved
+        packet.extend(b"\x00\x00")  # PDU reference (will be filled by sequence number if needed)
+        param_length_index = len(packet)
+        packet.extend(b"\x00\x00")  # Placeholder for parameter length
+        data_length_index = len(packet)
+        packet.extend(b"\x00\x00")  # Placeholder for data length
+        
+        parameter_start = len(packet)
+        
+        # Parameter section
+        packet.extend(b"\x00\x01\x12")  # Parameter head (3 bytes)
+        packet.extend(b"\x04")  # Parameter length (4 bytes after this)
+        packet.extend(b"\x11")  # Method: Request
+        packet.extend(UserDataFunction.CPU_FUNCTIONS.value.to_bytes(1, byteorder="big"))
+        packet.extend(UserDataSubfunction.READ_SZL.value.to_bytes(1, byteorder="big"))
+        packet.extend(b"\x01")  # Sequence number
+        
+        data_start = len(packet)
+        
+        # Data section
+        packet.extend(b"\xff")  # Return code (0xFF for request)
+        packet.extend(b"\x09")  # Transport size (octet string)
+        data_unit_length = 4
+        packet.extend(data_unit_length.to_bytes(2, byteorder="big"))
+        packet.extend(szl_id.value.to_bytes(2, byteorder="big"))
+        packet.extend(szl_index.to_bytes(2, byteorder="big"))
+        
+        # Update lengths
+        parameter_length = data_start - parameter_start
+        data_length = len(packet) - data_start
+        tpkt_length = len(packet)
+        
+        packet[tpkt_length_index:tpkt_length_index + 2] = tpkt_length.to_bytes(2, byteorder="big")
+        packet[param_length_index:param_length_index + 2] = parameter_length.to_bytes(2, byteorder="big")
+        packet[data_length_index:data_length_index + 2] = data_length.to_bytes(2, byteorder="big")
+        
+        return packet
+

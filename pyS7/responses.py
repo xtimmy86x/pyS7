@@ -1,7 +1,7 @@
 import struct
 from typing import Any, Dict, List, Optional, Protocol, Tuple, Union, runtime_checkable
 
-from .constants import READ_RES_OVERHEAD, WRITE_RES_OVERHEAD, DataType, ReturnCode
+from .constants import READ_RES_OVERHEAD, WRITE_RES_OVERHEAD, DataType, MessageType, ReturnCode
 from .errors import S7ReadResponseError, S7WriteResponseError
 from .requests import TagsMap, Value
 from .tag import S7Tag
@@ -493,3 +493,238 @@ def extract_bit_from_byte(byte_value: int, bit_offset: int) -> bool:
         raise ValueError("byte_value must be between 0 and 255")
     
     return bool((byte_value >> bit_offset) & 1)
+
+
+class SZLResponse:
+    """Response parser for System Status List (SZL) data from an S7 device."""
+
+    def __init__(self, response: bytes) -> None:
+        self.response = response
+
+    def parse(self) -> Dict[str, Any]:
+        """
+        Parse the SZL response and extract the data.
+        
+        Returns:
+            Dict containing the parsed SZL data with keys:
+                - szl_id: The SZL ID that was read
+                - szl_index: The SZL index
+                - length_dr: Length of data record
+                - n_dr: Number of data records
+                - data: Raw data bytes
+        """
+        if len(self.response) < 25:
+            raise ValueError(f"SZL response too short: {len(self.response)} bytes")
+
+        # Parse TPKT header
+        tpkt_version = self.response[0]
+        if tpkt_version != 0x03:
+            raise ValueError(f"Invalid TPKT version: {tpkt_version}")
+        
+        tpkt_length = struct.unpack_from(">H", self.response, 2)[0]
+        if tpkt_length != len(self.response):
+            raise ValueError(f"TPKT length mismatch: expected {tpkt_length}, got {len(self.response)}")
+
+        # Skip COTP (3 bytes at offset 4)
+        # S7 header starts at offset 7
+        offset = 7
+        
+        protocol_id = self.response[offset]
+        if protocol_id != 0x32:
+            raise ValueError(f"Invalid S7 protocol ID: {protocol_id:#x}")
+        
+        message_type = self.response[offset + 1]
+        if message_type != MessageType.USERDATA.value:
+            raise ValueError(f"Expected USERDATA message type, got {message_type:#x}")
+        
+        param_length = struct.unpack_from(">H", self.response, offset + 6)[0]
+        data_length = struct.unpack_from(">H", self.response, offset + 8)[0]
+        
+        # Parameter section starts after S7 header (10 bytes)
+        param_offset = offset + 10
+        
+        # Data section starts after parameter
+        data_offset = param_offset + param_length
+        
+        if data_offset + data_length > len(self.response):
+            raise ValueError("Invalid SZL response: data extends beyond packet")
+
+        # Parse data section
+        return_code = self.response[data_offset]
+        if return_code != 0xFF:
+            raise ValueError(f"SZL request failed with return code: {return_code:#x}")
+        
+        transport_size = self.response[data_offset + 1]
+        data_unit_length = struct.unpack_from(">H", self.response, data_offset + 2)[0]
+        
+        # SZL data structure
+        szl_id = struct.unpack_from(">H", self.response, data_offset + 4)[0]
+        szl_index = struct.unpack_from(">H", self.response, data_offset + 6)[0]
+        length_dr = struct.unpack_from(">H", self.response, data_offset + 8)[0]  # Length of one data record
+        n_dr = struct.unpack_from(">H", self.response, data_offset + 10)[0]  # Number of data records
+        
+        # Extract the actual data records
+        data_start = data_offset + 12
+        data_end = data_start + (length_dr * n_dr)
+        
+        if data_end > len(self.response):
+            raise ValueError("Invalid SZL response: data records extend beyond packet")
+        
+        data_bytes = self.response[data_start:data_end]
+        
+        return {
+            "szl_id": szl_id,
+            "szl_index": szl_index,
+            "length_dr": length_dr,
+            "n_dr": n_dr,
+            "data": data_bytes,
+        }
+    
+    def parse_cpu_status(self) -> str:
+        """
+        Parse the CPU status from SZL ID 0x0424 response.
+        
+        Returns:
+            str: CPU status ("RUN", "STOP", or other status string)
+        """
+        szl_data = self.parse()
+        
+        if szl_data["szl_id"] != 0x0424:
+            raise ValueError(f"Invalid SZL ID for CPU status: {szl_data['szl_id']:#x}, expected 0x0424")
+        
+        data = szl_data["data"]
+        
+        if len(data) < 5:
+            raise ValueError("Insufficient data for CPU status")
+        
+        # For SZL 0x0424 (W#16#xy424), the status information is structured as:
+        # Byte 0: Reserved (0x02 typically)
+        # Byte 1: Status bits (0x51 typically for both RUN and STOP)
+        # Byte 2: Event bits (0xFF typically)
+        # Byte 3: CPU operating mode
+        #   - 0x08: RUN mode
+        #   - 0x03: STOP mode
+        #   - Other values may indicate different states
+        # Byte 4+: Other diagnostic info
+        status_byte = data[3]
+        
+        # Check the operating mode byte
+        if status_byte == 0x08:
+            return "RUN"
+        elif status_byte == 0x03:
+            return "STOP"
+        else:
+            # Return descriptive status for other values
+            return f"UNKNOWN (0x{status_byte:02X})"
+    
+    def parse_cpu_info(self) -> Dict[str, Any]:
+        """
+        Parse CPU information from SZL ID 0x0011 response (Module Identification).
+        
+        Returns:
+            Dict containing CPU information with keys:
+                - module_type_name: String name of the CPU module (order number)
+                - hardware_version: Hardware version
+                - firmware_version: Firmware version (may be "N/A" if not in this SZL)
+                - modules: List of all module records found
+                
+        Note:
+            Some PLCs (e.g., S7-1200) do not expose firmware version in SZL 0x0011.
+            The firmware version shown in TIA Portal may come from the project file
+            or other SZL IDs that are not universally supported.
+        """
+        szl_data = self.parse()
+        
+        if szl_data["szl_id"] != 0x0011:
+            raise ValueError(f"Invalid SZL ID for CPU info: {szl_data['szl_id']:#x}, expected 0x0011")
+        
+        data = szl_data["data"]
+        length_dr = szl_data["length_dr"]
+        n_dr = szl_data["n_dr"]
+        
+        if len(data) < length_dr:
+            raise ValueError("Insufficient data for CPU info")
+        
+        # Parse all module identification records
+        # Each record is length_dr bytes (typically 28 bytes)
+        # Structure per record:
+        # - Index (2 bytes)
+        # - Module type name/order number (20 bytes, ASCII)
+        # - Reserved (2 bytes)
+        # - Hardware version (2 bytes)
+        # - Firmware version (2 bytes)
+        
+        modules = []
+        info = {}
+        
+        for i in range(n_dr):
+            offset = i * length_dr
+            record_data = data[offset:offset + length_dr]
+            
+            if len(record_data) < length_dr:
+                break
+            
+            module = {}
+            
+            # Index (bytes 0-1)
+            index = struct.unpack(">H", record_data[0:2])[0]
+            module["index"] = f"0x{index:04X}"
+            
+            # Module type name / order number (bytes 2-21, ASCII)
+            module_type = record_data[2:22].split(b'\x00', 1)[0].decode('ascii', errors='ignore').strip()
+            module["module_type_name"] = module_type
+            
+            # Reserved (bytes 22-23)
+            
+            # Hardware version (bytes 24-25)
+            # Byte 24: Version info (nibbles contain major.minor)
+            # Byte 25: Additional version info or decimal part
+            if len(record_data) >= 26:
+                hw_byte1 = record_data[24]
+                hw_byte2 = record_data[25]
+                
+                # If byte 24 has version nibbles (non-zero)
+                if hw_byte1 > 0:
+                    hw_major = (hw_byte1 >> 4) & 0x0F
+                    hw_minor = hw_byte1 & 0x0F
+                    module["hardware_version"] = f"V{hw_major}.{hw_minor}"
+                else:
+                    # Byte 25 contains the version
+                    module["hardware_version"] = f"V{hw_byte2}"
+            
+            # Firmware version (bytes 26-27)
+            if len(record_data) >= 28:
+                fw_byte1 = record_data[26]
+                fw_byte2 = record_data[27]
+                
+                # Check if bytes contain actual version data (not spaces 0x20)
+                if fw_byte1 == 0x20 or fw_byte1 == 0x00:
+                    # No firmware version data in this field
+                    module["firmware_version"] = "N/A"
+                elif fw_byte2 > 0x0F:
+                    # Byte 2 might be BCD or decimal patch version
+                    # Format: V major.minor.patch where byte1 has nibbles, byte2 is decimal
+                    fw_major = (fw_byte1 >> 4) & 0x0F
+                    fw_minor = fw_byte1 & 0x0F
+                    module["firmware_version"] = f"V{fw_major}.{fw_minor}.{fw_byte2}"
+                else:
+                    # Standard nibble format
+                    fw_major = (fw_byte1 >> 4) & 0x0F  
+                    fw_minor = fw_byte1 & 0x0F
+                    fw_patch = fw_byte2 & 0x0F
+                    module["firmware_version"] = f"V{fw_major}.{fw_minor}.{fw_patch}"
+            
+            modules.append(module)
+            
+            # Use the first module (index 1) as the main CPU info
+            if index == 1 and not info:
+                info = module.copy()
+        
+        # If we have multiple modules, add them to the info
+        if len(modules) > 1:
+            info["modules"] = modules
+        elif not info and modules:
+            info = modules[0].copy()
+        
+        return info
+

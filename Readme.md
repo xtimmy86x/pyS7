@@ -11,6 +11,7 @@ pyS7 is a lightweight, pure Python library that implements the Siemens S7 commun
 - [Quick start](#quick-start)
   - [Reading data](#reading-data)
   - [Writing data](#writing-data)
+  - [Reading CPU status and information](#reading-cpu-status-and-information)
 - [Advanced connection methods](#advanced-connection-methods)
   - [TSAP connection](#tsap-connection)
 - [Additional examples](#additional-examples)
@@ -22,6 +23,7 @@ pyS7 is a lightweight, pure Python library that implements the Siemens S7 commun
 - **Pure Python** – no external dependencies, making it easy to install on a wide range of platforms.
 - **Intuitive API** – designed to be readable and approachable, with typing support to improve IDE assistance.
 - **Optimised multi-variable reads** – automatically groups contiguous tags to reduce the number of requests sent to the PLC.
+- **CPU diagnostics** – read the PLC's operating status (RUN/STOP) and detailed CPU information (model, firmware version, etc.) using the System Status List (SZL) protocol.
 - **Broad S7 family compatibility** – supports the 200/300/400/1200/1500 series of Siemens PLCs.
 
 ## Safety notice
@@ -108,6 +110,39 @@ if __name__ == "__main__":
     client.write(tags=tags, values=values)
 
 ```
+
+### Reading CPU status and information
+
+Check the current operating status and get detailed information about the PLC CPU:
+
+```python
+from pyS7 import S7Client
+
+if __name__ == "__main__":
+    client = S7Client(address="192.168.5.100", rack=0, slot=1)
+    client.connect()
+
+    # Get CPU status
+    status = client.get_cpu_status()
+    print(f"CPU Status: {status}")  # "RUN" or "STOP"
+
+    # Get CPU information
+    info = client.get_cpu_info()
+    print(f"CPU Model: {info['module_type_name']}")
+    print(f"Firmware: {info['firmware_version']}")  # May be "N/A" on some PLCs
+    print(f"Hardware: {info['hardware_version']}")
+
+    # Use in application logic
+    if status == "RUN":
+        print("CPU is running - ready for operations")
+        data = client.read(["DB1,I0"])
+    elif status == "STOP":
+        print("CPU is stopped - operations not possible")
+    
+    client.disconnect()
+```
+
+See [CPU_STATUS_READING.md](docs/CPU_STATUS_READING.md) for detailed information about CPU diagnostics.
 
 ### String data types
 
