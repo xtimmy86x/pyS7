@@ -71,7 +71,7 @@ class S7Tag:
             raise ValueError(
                 f"Invalid '{field_name}': Expected positive value, got {value}."
             )
-        
+
     @staticmethod
     def _ensure_range(value: int, field_name: str, minimum: int, maximum: int) -> None:
         if value < minimum or value > maximum:

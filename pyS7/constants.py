@@ -66,8 +66,8 @@ class UserDataFunction(Enum):
 
 class UserDataSubfunction(Enum):
     READ_SZL = 0x01
-    
-    
+
+
 class SZLId(Enum):
     """SZL (System Status List) IDs for reading PLC information"""
     MODULE_IDENTIFICATION = 0x0011

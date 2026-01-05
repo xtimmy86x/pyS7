@@ -76,7 +76,7 @@ TOKEN_TABLE: Dict[str, _TokenInfo] = {
     "R": _TokenInfo(DataType.REAL),
     "REAL": _TokenInfo(DataType.REAL),
     "LR": _TokenInfo(DataType.LREAL),
-    "LREAL": _TokenInfo(DataType.LREAL),    
+    "LREAL": _TokenInfo(DataType.LREAL),
     "S": _TokenInfo(DataType.STRING, bit_offset_required=True, bit_offset_is_length=True),
     "STRING": _TokenInfo(DataType.STRING, bit_offset_required=True, bit_offset_is_length=True),
     "WS": _TokenInfo(DataType.WSTRING, bit_offset_required=True, bit_offset_is_length=True),
@@ -158,7 +158,7 @@ def map_address_to_tag(address: str) -> S7Tag:
         start = int(start_s)
         token = token if token is not None else "X"
         return _token_to_tag(token, MemoryArea.INPUT, 0, start, bit_offset, address)
-    
+
     if address.startswith("Q") or address.startswith("A"):
         match = re.match(r"[QA]([A-Z]+)?(\d+)(?:\.(\d+))?", address)
         if match is None:
@@ -169,7 +169,7 @@ def map_address_to_tag(address: str) -> S7Tag:
         start = int(start_s)
         token = token if token is not None else "X"
         return _token_to_tag(token, MemoryArea.OUTPUT, 0, start, bit_offset, address)
-    
+
     if address.startswith("M"):
         match = re.match(r"M([A-Z]+)?(\d+)(?:\.(\d+))?", address)
         if match is None:
@@ -180,5 +180,5 @@ def map_address_to_tag(address: str) -> S7Tag:
         start = int(start_s)
         token = token if token is not None else "X"
         return _token_to_tag(token, MemoryArea.MERKER, 0, start, bit_offset, address)
-    
+
     raise S7AddressError(f"Unsupported address '{address}'")

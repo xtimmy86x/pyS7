@@ -62,13 +62,13 @@ class S7Client:
         self.connection_type = connection_type
         self.port = port
         self.timeout = timeout
-        
+
         # Convert string TSAP to integer if needed
         if isinstance(local_tsap, str):
             local_tsap = self.tsap_from_string(local_tsap)
         if isinstance(remote_tsap, str):
             remote_tsap = self.tsap_from_string(remote_tsap)
-        
+
         self.local_tsap = local_tsap
         self.remote_tsap = remote_tsap
 
@@ -86,19 +86,19 @@ class S7Client:
     @staticmethod
     def tsap_from_string(tsap_str: str) -> int:
         """Convert Siemens TIA Portal TSAP notation to integer value.
-        
+
         TIA Portal uses the format "XX.YY" where XX and YY are decimal bytes.
         For example: "03.00" = 0x0300, "03.01" = 0x0301, "22.00" = 0x2200
-        
+
         Args:
             tsap_str: TSAP string in format "XX.YY" (e.g., "03.00", "22.00")
-            
+
         Returns:
             int: TSAP value as integer
-            
+
         Raises:
             ValueError: If format is invalid or values are out of range
-            
+
         Example:
             >>> local_tsap = S7Client.tsap_from_string("03.00")   # 0x0300
             >>> remote_tsap = S7Client.tsap_from_string("03.01")  # 0x0301
@@ -106,44 +106,44 @@ class S7Client:
         """
         if not isinstance(tsap_str, str):
             raise ValueError(f"tsap_str must be a string, got {type(tsap_str).__name__}")
-        
+
         parts = tsap_str.split('.')
         if len(parts) != 2:
             raise ValueError(
                 f"TSAP string must be in format 'XX.YY' (e.g., '03.00', '22.00'), got '{tsap_str}'"
             )
-        
+
         try:
             byte1 = int(parts[0])
             byte2 = int(parts[1])
-        except ValueError:
+        except ValueError as e:
             raise ValueError(
                 f"TSAP string must contain decimal numbers (e.g., '03.00'), got '{tsap_str}'"
-            )
-        
+            ) from e
+
         if not 0 <= byte1 <= 255:
             raise ValueError(f"First byte must be in range 0-255, got {byte1}")
         if not 0 <= byte2 <= 255:
             raise ValueError(f"Second byte must be in range 0-255, got {byte2}")
-        
+
         return (byte1 << 8) | byte2
 
     @staticmethod
     def tsap_to_string(tsap: int) -> str:
         """Convert TSAP integer value to Siemens TIA Portal notation.
-        
+
         Converts an integer TSAP value to TIA Portal format "XX.YY".
         For example: 0x0300 = "03.00", 0x0301 = "03.01", 0x2200 = "22.00"
-        
+
         Args:
             tsap: TSAP value as integer (0x0000 to 0xFFFF)
-            
+
         Returns:
             str: TSAP string in format "XX.YY"
-            
+
         Raises:
             ValueError: If TSAP value is out of range
-            
+
         Example:
             >>> tsap_str = S7Client.tsap_to_string(0x0301)
             >>> print(tsap_str)  # "03.01"
@@ -154,7 +154,7 @@ class S7Client:
             raise ValueError(
                 f"tsap must be in range 0x0000-0xFFFF (0-65535), got 0x{tsap:04X} ({tsap})"
             )
-        
+
         byte1 = (tsap >> 8) & 0xFF
         byte2 = tsap & 0xFF
         return f"{byte1:02d}.{byte2:02d}"
@@ -162,20 +162,20 @@ class S7Client:
     @staticmethod
     def tsap_from_rack_slot(rack: int, slot: int) -> int:
         """Calculate remote TSAP value from rack and slot numbers.
-        
+
         This is a helper method for users who want to use TSAP connection
         but need to calculate the TSAP value from rack/slot.
-        
+
         Args:
             rack: Rack number (0-7)
             slot: Slot number (0-31)
-            
+
         Returns:
             int: Remote TSAP value (0x0100 | (rack * 32 + slot))
-            
+
         Raises:
             ValueError: If rack or slot values are out of range
-            
+
         Example:
             >>> tsap = S7Client.tsap_from_rack_slot(0, 1)
             >>> print(f"0x{tsap:04X}")  # 0x0101
@@ -187,17 +187,17 @@ class S7Client:
             raise ValueError(f"rack must be in range 0-7, got {rack}")
         if not 0 <= slot <= 31:
             raise ValueError(f"slot must be in range 0-31, got {slot}")
-        
+
         return 0x0100 | (rack * 32 + slot)
 
     @staticmethod
     def _validate_tsap(local_tsap: Optional[int], remote_tsap: Optional[int]) -> None:
         """Validate TSAP values are within valid ranges.
-        
+
         Args:
             local_tsap: Local TSAP value (0x0000 to 0xFFFF)
             remote_tsap: Remote TSAP value (0x0000 to 0xFFFF)
-            
+
         Raises:
             ValueError: If TSAP values are invalid
         """
@@ -208,7 +208,7 @@ class S7Client:
                 raise ValueError(
                     f"local_tsap must be in range 0x0000-0xFFFF (0-65535), got 0x{local_tsap:04X} ({local_tsap})"
                 )
-        
+
         if remote_tsap is not None:
             if not isinstance(remote_tsap, int):
                 raise ValueError(f"remote_tsap must be an integer, got {type(remote_tsap).__name__}")
@@ -216,7 +216,7 @@ class S7Client:
                 raise ValueError(
                     f"remote_tsap must be in range 0x0000-0xFFFF (0-65535), got 0x{remote_tsap:04X} ({remote_tsap})"
                 )
-        
+
         # If only one TSAP is provided, warn user
         if (local_tsap is None) != (remote_tsap is None):
             raise ValueError(
@@ -316,7 +316,7 @@ class S7Client:
             raise S7CommunicationError(
                 "Not connected to PLC. Call 'connect' before performing read operations."
             )
-        
+
         data: List[Value] = []
 
         if optimize:
@@ -386,7 +386,7 @@ class S7Client:
             raise S7CommunicationError(
                 "Not connected to PLC. Call 'connect' before performing write operations."
             )
-        
+
         requests, requests_values = prepare_write_requests_and_values(
             tags=tags_list, values=values, max_pdu=self.pdu_size
         )
@@ -400,15 +400,15 @@ class S7Client:
 
     def get_cpu_status(self) -> str:
         """Get the current CPU operating status (RUN or STOP).
-        
+
         Returns:
             str: The CPU status. Possible values:
                 - "RUN": CPU is running
                 - "STOP": CPU is stopped
-        
+
         Raises:
             S7CommunicationError: If not connected to PLC or communication fails.
-            
+
         Example:
             >>> client = S7Client('192.168.100.10', 0, 1)
             >>> client.connect()
@@ -420,18 +420,18 @@ class S7Client:
             raise S7CommunicationError(
                 "Not connected to PLC. Call 'connect' before getting CPU status."
             )
-        
+
         # Request SZL ID 0x0424 (CPU diagnostic status)
         szl_request = SZLRequest(szl_id=SZLId.CPU_DIAGNOSTIC_STATUS, szl_index=0x0000)
         bytes_response = self.__send(szl_request)
-        
+
         # Parse the response and extract CPU status
         szl_response = SZLResponse(response=bytes_response)
         return szl_response.parse_cpu_status()
-    
+
     def get_cpu_info(self) -> Dict[str, Any]:
         """Get detailed CPU information including model, hardware/firmware versions.
-        
+
         Returns:
             Dict[str, Any]: Dictionary containing CPU information with keys:
                 - module_type_name: Full order number (e.g., "6ES7 211-1BE40-0XB0")
@@ -439,10 +439,10 @@ class S7Client:
                 - firmware_version: Firmware version (e.g., "V32.32")
                 - index: Module index (hex string)
                 - modules: List of all detected modules (if multiple)
-        
+
         Raises:
             S7CommunicationError: If not connected to PLC or communication fails.
-            
+
         Example:
             >>> client = S7Client('192.168.100.10', 0, 1)
             >>> client.connect()
@@ -456,11 +456,11 @@ class S7Client:
             raise S7CommunicationError(
                 "Not connected to PLC. Call 'connect' before getting CPU info."
             )
-        
+
         # Request SZL ID 0x0011 (Module Identification)
         szl_request = SZLRequest(szl_id=SZLId.MODULE_IDENTIFICATION, szl_index=0x0000)
         bytes_response = self.__send(szl_request)
-        
+
         # Parse the response and extract CPU info
         szl_response = SZLResponse(response=bytes_response)
         return szl_response.parse_cpu_info()

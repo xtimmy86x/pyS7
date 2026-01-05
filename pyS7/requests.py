@@ -1,7 +1,14 @@
 import struct
-from typing import Dict, List, Optional, Protocol, Sequence, Tuple, Union, runtime_checkable
-
-from .errors import S7AddressError
+from typing import (
+    Dict,
+    List,
+    Optional,
+    Protocol,
+    Sequence,
+    Tuple,
+    Union,
+    runtime_checkable,
+)
 
 from .constants import (
     COTP_SIZE,
@@ -22,10 +29,11 @@ from .constants import (
     DataTypeSize,
     Function,
     MessageType,
+    SZLId,
     UserDataFunction,
     UserDataSubfunction,
-    SZLId,
 )
+from .errors import S7AddressError
 from .tag import S7Tag
 
 TagsMap = Dict[S7Tag, List[Tuple[int, S7Tag]]]
@@ -321,7 +329,7 @@ class WriteRequest(Request):
                 header = struct.pack(">HH", max_length, len(data))  # Big-endian 16-bit values
                 padding = b"\x00" * ((max_length - len(data)) * 2)  # 2 bytes per char
                 packed_data = header + encoded + padding
-                
+
             elif tag.data_type == DataType.INT:
                 transport_size = DataTypeData.BYTE_WORD_DWORD
                 new_length = tag.length * DataTypeSize[tag.data_type] * 8
@@ -367,7 +375,7 @@ class WriteRequest(Request):
                 if isinstance(data, tuple):
                     packed_data = struct.pack(f">{tag.length * 'd'}", *data)
                 else:
-                    packed_data = struct.pack(">d", data)         
+                    packed_data = struct.pack(">d", data)
             else:
                 raise RuntimeError(
                     f"DataType {tag.data_type} not supported for write operations"
@@ -446,9 +454,9 @@ def prepare_optimized_requests(
       - Respecting negotiated PDU limits and MAX_READ_TAGS per request
 
     Returns:
-      requests: List of request batches; each batch is a list of packed tags to be sent 
+      requests: List of request batches; each batch is a list of packed tags to be sent
       in one ReadRequest
-      groups:   Mapping packed_tag -> list of (original_index, original_tag) for decoding 
+      groups:   Mapping packed_tag -> list of (original_index, original_tag) for decoding
       in the optimized response parser
     """
     requests: List[List[S7Tag]] = [[]]
@@ -653,7 +661,7 @@ class SZLRequest(Request):
     def __init__(self, szl_id: SZLId, szl_index: int = 0x0000) -> None:
         """
         Initialize an SZL request.
-        
+
         Args:
             szl_id: The SZL ID to request (e.g., SZLId.CPU_DIAGNOSTIC_STATUS)
             szl_index: The SZL index (default 0x0000)
@@ -665,15 +673,15 @@ class SZLRequest(Request):
     def __prepare_packet(self, szl_id: SZLId, szl_index: int) -> bytearray:
         """Prepare the SZL request packet."""
         packet = bytearray()
-        
+
         # TPKT header
         packet.extend(b"\x03\x00")
         tpkt_length_index = len(packet)
         packet.extend(b"\x00\x00")  # Placeholder for TPKT length
-        
+
         # COTP header
         packet.extend(b"\x02\xf0\x80")
-        
+
         # S7 Header
         packet.extend(b"\x32")  # S7 protocol ID
         packet.extend(MessageType.USERDATA.value.to_bytes(1, byteorder="big"))
@@ -683,9 +691,9 @@ class SZLRequest(Request):
         packet.extend(b"\x00\x00")  # Placeholder for parameter length
         data_length_index = len(packet)
         packet.extend(b"\x00\x00")  # Placeholder for data length
-        
+
         parameter_start = len(packet)
-        
+
         # Parameter section
         packet.extend(b"\x00\x01\x12")  # Parameter head (3 bytes)
         packet.extend(b"\x04")  # Parameter length (4 bytes after this)
@@ -693,9 +701,9 @@ class SZLRequest(Request):
         packet.extend(UserDataFunction.CPU_FUNCTIONS.value.to_bytes(1, byteorder="big"))
         packet.extend(UserDataSubfunction.READ_SZL.value.to_bytes(1, byteorder="big"))
         packet.extend(b"\x01")  # Sequence number
-        
+
         data_start = len(packet)
-        
+
         # Data section
         packet.extend(b"\xff")  # Return code (0xFF for request)
         packet.extend(b"\x09")  # Transport size (octet string)
@@ -703,15 +711,15 @@ class SZLRequest(Request):
         packet.extend(data_unit_length.to_bytes(2, byteorder="big"))
         packet.extend(szl_id.value.to_bytes(2, byteorder="big"))
         packet.extend(szl_index.to_bytes(2, byteorder="big"))
-        
+
         # Update lengths
         parameter_length = data_start - parameter_start
         data_length = len(packet) - data_start
         tpkt_length = len(packet)
-        
+
         packet[tpkt_length_index:tpkt_length_index + 2] = tpkt_length.to_bytes(2, byteorder="big")
         packet[param_length_index:param_length_index + 2] = parameter_length.to_bytes(2, byteorder="big")
         packet[data_length_index:data_length_index + 2] = data_length.to_bytes(2, byteorder="big")
-        
+
         return packet
 
