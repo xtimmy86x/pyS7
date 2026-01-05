@@ -83,6 +83,8 @@ class S7Tag:
         """Return the S7Tag size in bytes"""
         if self.data_type == DataType.STRING:
             return self.length + 2
+        elif self.data_type == DataType.WSTRING:
+            return (self.length * 2) + 4  # 2 bytes per char + 4 byte header (2 for max_length, 2 for current_length)
         return DataTypeSize[self.data_type] * self.length
 
     def __contains__(self, tag) -> bool:  # type: ignore

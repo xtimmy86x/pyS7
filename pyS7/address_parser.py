@@ -79,6 +79,8 @@ TOKEN_TABLE: Dict[str, _TokenInfo] = {
     "LREAL": _TokenInfo(DataType.LREAL),    
     "S": _TokenInfo(DataType.STRING, bit_offset_required=True, bit_offset_is_length=True),
     "STRING": _TokenInfo(DataType.STRING, bit_offset_required=True, bit_offset_is_length=True),
+    "WS": _TokenInfo(DataType.WSTRING, bit_offset_required=True, bit_offset_is_length=True),
+    "WSTRING": _TokenInfo(DataType.WSTRING, bit_offset_required=True, bit_offset_is_length=True),
 }
 
 
