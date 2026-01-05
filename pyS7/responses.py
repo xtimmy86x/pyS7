@@ -395,7 +395,7 @@ def parse_optimized_read_response(
                         # This is an individual BIT tag - PLC returns bit value directly
                         # Process the same as non-optimized reads
                         data_byte = mv[abs_off]
-                        value: Value = bool(data_byte)
+                        value = bool(data_byte)
 
                 elif dt == DataType.CHAR:
                     # Slice without copy until decoding
@@ -658,7 +658,7 @@ class SZLResponse:
         # - Firmware version (2 bytes)
 
         modules = []
-        info = {}
+        info: Dict[str, Any] = {}
 
         for i in range(n_dr):
             offset = i * length_dr
@@ -667,7 +667,7 @@ class SZLResponse:
             if len(record_data) < length_dr:
                 break
 
-            module = {}
+            module: Dict[str, Any] = {}
 
             # Index (bytes 0-1)
             index = struct.unpack(">H", record_data[0:2])[0]
