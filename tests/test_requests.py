@@ -40,35 +40,30 @@ def test_connection_request() -> None:
         rack=rack, slot=slot, connection_type=connection_type
     )
 
-    expected_packet = bytearray(
-        [
-            0x03,
-            0x00,
-            0x00,
-            0x16,
-            0x11,
-            0xE0,
-            0x00,
-            0x00,
-            0x00,
-            0x02,
-            0x00,
-            0xC0,
-            0x01,
-            0x0A,
-            0xC1,
-            0x02,
-            0x01,
-            0x00,
-            0xC2,
-            0x02,
-            connection_type.value,
-            rack * 32 + slot,
-        ]
-    )
-
-    assert connection_request.request == expected_packet
-    assert connection_request.serialize() == bytes(expected_packet)
+    packet = connection_request.request
+    
+    # Verify packet structure (Source Reference at bytes 8-9 is now random)
+    assert len(packet) == 22
+    assert packet[0:8] == bytearray([0x03, 0x00, 0x00, 0x16, 0x11, 0xE0, 0x00, 0x00])
+    # Bytes 8-9: Source Reference (random 0x0000-0xFFFF) - just verify they exist
+    assert len(packet[8:10]) == 2
+    # Bytes 10-end: fixed structure
+    assert packet[10:] == bytearray([
+        0x00,
+        0xC0,
+        0x01,
+        0x0A,
+        0xC1,
+        0x02,
+        0x01,
+        0x00,
+        0xC2,
+        0x02,
+        connection_type.value,
+        rack * 32 + slot,
+    ])
+    
+    assert connection_request.serialize() == bytes(packet)
 
 
 def test_pdu_negotiation_request() -> None:
