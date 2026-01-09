@@ -43,6 +43,8 @@ class S7Client:
             Can be an integer (0x0000-0xFFFF) or string in TIA Portal format (e.g., "03.00").
         remote_tsap (Optional[Union[int, str]]): Remote TSAP value (overrides rack/slot if provided).
             Can be an integer (0x0000-0xFFFF) or string in TIA Portal format (e.g., "03.01").
+        max_pdu (int): Maximum PDU size for communication. Defaults to 960 bytes.
+            Larger values can improve performance but must be supported by the PLC.
     """
 
     def __init__(
@@ -55,6 +57,7 @@ class S7Client:
         timeout: float = 5.0,
         local_tsap: Optional[Union[int, str]] = None,
         remote_tsap: Optional[Union[int, str]] = None,
+        max_pdu: int = MAX_PDU,
     ) -> None:
         self.address = address
         self.rack = rack
@@ -75,7 +78,7 @@ class S7Client:
         self.socket: Optional[socket.socket] = None
         self._io_lock = threading.Lock()
 
-        self.pdu_size: int = MAX_PDU
+        self.pdu_size: int = max_pdu
         self.max_jobs_calling: int = MAX_JOB_CALLING
         self.max_jobs_called: int = MAX_JOB_CALLED
 
