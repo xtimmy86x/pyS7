@@ -14,11 +14,10 @@ class TestTSAPStringConversion:
         """Test conversion from TIA Portal TSAP string to integer."""
         assert S7Client.tsap_from_string("03.00") == 0x0300
         assert S7Client.tsap_from_string("03.01") == 0x0301
-        assert S7Client.tsap_from_string("22.00") == 0x1600  # 22 decimal = 0x16 hex
-        assert S7Client.tsap_from_string("10.00") == 0x0A00  # 10 decimal = 0x0A hex
+        assert S7Client.tsap_from_string("22.00") == 0x2200
+        assert S7Client.tsap_from_string("10.00") == 0x1000
         assert S7Client.tsap_from_string("01.01") == 0x0101
         assert S7Client.tsap_from_string("00.00") == 0x0000
-        assert S7Client.tsap_from_string("255.255") == 0xFFFF
 
     def test_tsap_from_string_leading_zeros(self) -> None:
         """Test that leading zeros are handled correctly."""
@@ -39,22 +38,22 @@ class TestTSAPStringConversion:
 
     def test_tsap_from_string_invalid_numbers(self) -> None:
         """Test that non-numeric TSAP strings are rejected."""
-        with pytest.raises(ValueError, match="must contain decimal numbers"):
+        with pytest.raises(ValueError, match="must contain hexadecimal numbers"):
             S7Client.tsap_from_string("XX.YY")
         
-        with pytest.raises(ValueError, match="must contain decimal numbers"):
-            S7Client.tsap_from_string("03.0x01")
+        with pytest.raises(ValueError, match="must contain hexadecimal numbers"):
+            S7Client.tsap_from_string("03.gg")
 
     def test_tsap_from_string_out_of_range(self) -> None:
         """Test that TSAP string values out of byte range are rejected."""
-        with pytest.raises(ValueError, match="First byte must be in range 0-255"):
-            S7Client.tsap_from_string("256.00")
+        with pytest.raises(ValueError, match="First byte must be in range 0x00-0xFF"):
+            S7Client.tsap_from_string("100.00")  # 0x100 > 0xFF
         
-        with pytest.raises(ValueError, match="Second byte must be in range 0-255"):
-            S7Client.tsap_from_string("03.256")
+        with pytest.raises(ValueError, match="Second byte must be in range 0x00-0xFF"):
+            S7Client.tsap_from_string("03.100")  # 0x100 > 0xFF
         
-        with pytest.raises(ValueError, match="First byte must be in range 0-255"):
-            S7Client.tsap_from_string("-1.00")
+        with pytest.raises(ValueError, match="First byte must be in range 0x00-0xFF"):
+            S7Client.tsap_from_string("-1.00")  # -1 parses but is out of range
 
     def test_tsap_from_string_wrong_type(self) -> None:
         """Test that non-string input is rejected."""
@@ -68,18 +67,18 @@ class TestTSAPStringConversion:
         """Test conversion from integer TSAP to TIA Portal string."""
         assert S7Client.tsap_to_string(0x0300) == "03.00"
         assert S7Client.tsap_to_string(0x0301) == "03.01"
-        assert S7Client.tsap_to_string(0x1600) == "22.00"  # 0x16 = 22 decimal
-        assert S7Client.tsap_to_string(0x0A00) == "10.00"  # 0x0A = 10 decimal
+        assert S7Client.tsap_to_string(0x2200) == "22.00"  # 0x22 in hex
+        assert S7Client.tsap_to_string(0x1000) == "10.00"  # 0x10 in hex
         assert S7Client.tsap_to_string(0x0101) == "01.01"
         assert S7Client.tsap_to_string(0x0000) == "00.00"
-        assert S7Client.tsap_to_string(0xFFFF) == "255.255"
+        assert S7Client.tsap_to_string(0xFFFF) == "ff.ff"
 
     def test_tsap_to_string_edge_values(self) -> None:
         """Test TSAP to string conversion with edge values."""
         assert S7Client.tsap_to_string(0x0001) == "00.01"
         assert S7Client.tsap_to_string(0x0100) == "01.00"
-        assert S7Client.tsap_to_string(0xFF00) == "255.00"
-        assert S7Client.tsap_to_string(0x00FF) == "00.255"
+        assert S7Client.tsap_to_string(0xFF00) == "ff.00"
+        assert S7Client.tsap_to_string(0x00FF) == "00.ff"
 
     def test_tsap_to_string_out_of_range(self) -> None:
         """Test that TSAP values out of range are rejected."""
@@ -99,12 +98,12 @@ class TestTSAPStringConversion:
 
     def test_tsap_roundtrip_conversion(self) -> None:
         """Test that conversion from string to int and back preserves value."""
-        test_values = ["03.00", "03.01", "22.00", "10.00", "00.00", "255.255"]
+        test_values = ["03.00", "03.01", "22.00", "10.00", "00.00", "ff.ff"]
         for tsap_str in test_values:
             tsap_int = S7Client.tsap_from_string(tsap_str)
             result_str = S7Client.tsap_to_string(tsap_int)
-            # Normalize to 2-digit format for comparison
-            expected = ".".join(f"{int(x):02d}" for x in tsap_str.split("."))
+            # Normalize to 2-digit hex format for comparison
+            expected = ".".join(f"{int(x, 16):02x}" for x in tsap_str.split("."))
             assert result_str == expected, f"Roundtrip failed for {tsap_str}"
 
 
@@ -187,7 +186,7 @@ class TestTSAPValidation:
         with pytest.raises(ValueError, match="TSAP string must be in format 'XX.YY'"):
             S7Client(
                 address="192.168.0.1",
-                local_tsap="0x0100",  # Invalid format (hex notation, not decimal)
+                local_tsap="0x0100",  # Invalid format (0x prefix not allowed)
                 remote_tsap=0x0101,
                 timeout=1.0
             )
@@ -196,7 +195,7 @@ class TestTSAPValidation:
             S7Client(
                 address="192.168.0.1",
                 local_tsap=0x0100,
-                remote_tsap="0x0101",  # Invalid format (hex notation, not decimal)
+                remote_tsap="0x0101",  # Invalid format (0x prefix not allowed)
                 timeout=1.0
             )
 

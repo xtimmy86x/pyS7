@@ -87,7 +87,7 @@ class S7Client:
     def tsap_from_string(tsap_str: str) -> int:
         """Convert Siemens TIA Portal TSAP notation to integer value.
 
-        TIA Portal uses the format "XX.YY" where XX and YY are decimal bytes.
+        TIA Portal uses the format "XX.YY" where XX and YY are hexadecimal bytes.
         For example: "03.00" = 0x0300, "03.01" = 0x0301, "22.00" = 0x2200
 
         Args:
@@ -102,6 +102,7 @@ class S7Client:
         Example:
             >>> local_tsap = S7Client.tsap_from_string("03.00")   # 0x0300
             >>> remote_tsap = S7Client.tsap_from_string("03.01")  # 0x0301
+            >>> remote_tsap = S7Client.tsap_from_string("22.00")  # 0x2200
             >>> client = S7Client(address="192.168.0.1", local_tsap=local_tsap, remote_tsap=remote_tsap)
         """
         if not isinstance(tsap_str, str):
@@ -114,17 +115,18 @@ class S7Client:
             )
 
         try:
-            byte1 = int(parts[0])
-            byte2 = int(parts[1])
+            # Interpret as hexadecimal values (as TIA Portal does)
+            byte1 = int(parts[0], 16)
+            byte2 = int(parts[1], 16)
         except ValueError as e:
             raise ValueError(
-                f"TSAP string must contain decimal numbers (e.g., '03.00'), got '{tsap_str}'"
+                f"TSAP string must contain hexadecimal numbers (e.g., '03.00', '22.00'), got '{tsap_str}'"
             ) from e
 
         if not 0 <= byte1 <= 255:
-            raise ValueError(f"First byte must be in range 0-255, got {byte1}")
+            raise ValueError(f"First byte must be in range 0x00-0xFF, got 0x{byte1:02X}")
         if not 0 <= byte2 <= 255:
-            raise ValueError(f"Second byte must be in range 0-255, got {byte2}")
+            raise ValueError(f"Second byte must be in range 0x00-0xFF, got 0x{byte2:02X}")
 
         return (byte1 << 8) | byte2
 
@@ -132,14 +134,15 @@ class S7Client:
     def tsap_to_string(tsap: int) -> str:
         """Convert TSAP integer value to Siemens TIA Portal notation.
 
-        Converts an integer TSAP value to TIA Portal format "XX.YY".
+        Converts an integer TSAP value to TIA Portal format "XX.YY" where
+        XX and YY are hexadecimal bytes.
         For example: 0x0300 = "03.00", 0x0301 = "03.01", 0x2200 = "22.00"
 
         Args:
             tsap: TSAP value as integer (0x0000 to 0xFFFF)
 
         Returns:
-            str: TSAP string in format "XX.YY"
+            str: TSAP string in format "XX.YY" (hexadecimal)
 
         Raises:
             ValueError: If TSAP value is out of range
@@ -147,6 +150,8 @@ class S7Client:
         Example:
             >>> tsap_str = S7Client.tsap_to_string(0x0301)
             >>> print(tsap_str)  # "03.01"
+            >>> tsap_str = S7Client.tsap_to_string(0x2200)
+            >>> print(tsap_str)  # "22.00"
         """
         if not isinstance(tsap, int):
             raise ValueError(f"tsap must be an integer, got {type(tsap).__name__}")
@@ -157,7 +162,7 @@ class S7Client:
 
         byte1 = (tsap >> 8) & 0xFF
         byte2 = tsap & 0xFF
-        return f"{byte1:02d}.{byte2:02d}"
+        return f"{byte1:02x}.{byte2:02x}"
 
     @staticmethod
     def tsap_from_rack_slot(rack: int, slot: int) -> int:

@@ -1,3 +1,4 @@
+import random
 import struct
 from typing import (
     Dict,
@@ -105,30 +106,37 @@ class ConnectionRequest(Request):
     ) -> bytearray:
         packet = bytearray()
 
-        packet.extend(b"\x03")
-        packet.extend(b"\x00")
-        packet.extend(b"\x00")
-        packet.extend(b"\x16")
+        # TPKT Header (RFC 1006)
+        packet.extend(b"\x03")  # Version
+        packet.extend(b"\x00")  # Reserved
+        packet.extend(b"\x00")  # Length (MSB)
+        packet.extend(b"\x16")  # Length (LSB) = 22 bytes
 
-        packet.extend(b"\x11")
-        packet.extend(b"\xe0")
-        packet.extend(b"\x00")
+        # COTP Header (ISO 8073)
+        packet.extend(b"\x11")  # Length Indicator = 17 bytes
+        packet.extend(b"\xe0")  # PDU Type = CR (Connection Request)
+        packet.extend(b"\x00")  # Destination Reference (MSB)
+        packet.extend(b"\x00")  # Destination Reference (LSB)
+        
+        # Generate a random Source Reference
+        # This prevents connection conflicts when reconnecting
+        source_ref = random.randint(0, 0xFFFF)
+        packet.extend(bytes([(source_ref >> 8) & 0xFF]))  # Source Reference (MSB)
+        packet.extend(bytes([source_ref & 0xFF]))         # Source Reference (LSB)
+        packet.extend(b"\x00")  # Class/Options (TP0)
 
-        packet.extend(b"\x00")
-        packet.extend(b"\x00")
-        packet.extend(b"\x02")
-        packet.extend(b"\x00")
-        packet.extend(b"\xc0")
-        packet.extend(b"\x01")
-        packet.extend(b"\x0a")
-        packet.extend(b"\xc1")
-        packet.extend(b"\x02")
-        packet.extend(b"\x01")
-        packet.extend(b"\x00")
-        packet.extend(b"\xc2")
-        packet.extend(b"\x02")
-        packet.extend(b"\x01")
-        packet.extend(b"\x02")
+        # COTP Parameters
+        packet.extend(b"\xc0")  # Parameter Code: TPDU Size
+        packet.extend(b"\x01")  # Parameter Length
+        packet.extend(b"\x0a")  # TPDU Size = 1024 bytes
+        packet.extend(b"\xc1")  # Parameter Code: Source TSAP
+        packet.extend(b"\x02")  # Parameter Length
+        packet.extend(b"\x01")  # Src-TSAP (MSB) - placeholder
+        packet.extend(b"\x00")  # Src-TSAP (LSB) - placeholder
+        packet.extend(b"\xc2")  # Parameter Code: Destination TSAP
+        packet.extend(b"\x02")  # Parameter Length
+        packet.extend(b"\x01")  # Dst-TSAP (MSB) - placeholder
+        packet.extend(b"\x02")  # Dst-TSAP (LSB) - placeholder
 
         # If TSAP values are provided, use them directly
         # Otherwise, calculate from rack/slot and connection type
