@@ -1,3 +1,4 @@
+import logging
 import socket
 import threading
 from typing import Any, Dict, List, Optional, Sequence, Union
@@ -46,6 +47,8 @@ class S7Client:
         max_pdu (int): Maximum PDU size for communication. Defaults to 960 bytes.
             Larger values can improve performance but must be supported by the PLC.
     """
+
+    logger = logging.getLogger(__name__)
 
     def __init__(
         self,
@@ -235,6 +238,7 @@ class S7Client:
     def connect(self) -> None:
         """Establishes a TCP connection to the S7 PLC and sets up initial communication parameters."""
 
+        self.logger.info(f"Connecting to PLC at {self.address}:{self.port} (rack={self.rack}, slot={self.slot})")
         try:
             # Initialize the socket
             self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -242,8 +246,10 @@ class S7Client:
 
             # Establish TCP connection
             self.socket.connect((self.address, self.port))
+            self.logger.debug(f"TCP connection established to {self.address}:{self.port}")
         except (socket.timeout, socket.error) as e:
             self.socket = None
+            self.logger.error(f"Failed to connect to {self.address}:{self.port}: {e}")
             raise S7ConnectionError(
                 f"Failed to connect to {self.address}:{self.port}: {e}"
             ) from e
@@ -256,11 +262,17 @@ class S7Client:
                 local_tsap=self.local_tsap,
                 remote_tsap=self.remote_tsap,
             )
+            if self.local_tsap is not None and self.remote_tsap is not None:
+                self.logger.debug(f"Sending COTP connection request (local_tsap={self.local_tsap:#06x}, remote_tsap={self.remote_tsap:#06x})")
+            else:
+                self.logger.debug(f"Sending COTP connection request (rack={self.rack}, slot={self.slot})")
             connection_bytes_response: bytes = self.__send(connection_request)
             ConnectionResponse(response=connection_bytes_response)
+            self.logger.debug("COTP connection accepted")
 
             # Communication Setup
             pdu_negotation_request = PDUNegotiationRequest(max_pdu=self.pdu_size)
+            self.logger.debug(f"Negotiating PDU size (requested: {self.pdu_size} bytes)")
             pdu_negotation_bytes_response: bytes = self.__send(pdu_negotation_request)
             pdu_negotiation_response = PDUNegotiationResponse(
                 response=pdu_negotation_bytes_response
@@ -271,7 +283,9 @@ class S7Client:
                 self.max_jobs_called,
                 self.pdu_size,
             ) = pdu_negotiation_response.parse()
+            self.logger.info(f"Connection established successfully. PDU size: {self.pdu_size} bytes")
         except Exception as e:
+            self.logger.error(f"Failed to complete connection setup: {e}")
             self.disconnect()
             raise S7ConnectionError(f"Failed to complete connection setup: {e}") from e
 
@@ -279,11 +293,13 @@ class S7Client:
         """Closes the TCP connection with the S7 PLC."""
 
         if self.socket:
+            self.logger.debug(f"Disconnecting from {self.address}:{self.port}")
             try:
                 self.socket.shutdown(socket.SHUT_RDWR)
                 self.socket.close()
-            except socket.error:
-                ...
+                self.logger.info("Disconnected successfully")
+            except socket.error as e:
+                self.logger.warning(f"Error during disconnect: {e}")
             finally:
                 self.socket = None
 
@@ -311,6 +327,7 @@ class S7Client:
             >>> print(result)
             [True, 300, 20.5] # these values corresponds to the PLC data at specified addresses
         """
+        self.logger.debug(f"Reading {len(tags)} tag(s) with optimize={optimize}")
 
         list_tags: List[S7Tag] = [
             map_address_to_tag(address=tag) if isinstance(tag, str) else tag
@@ -480,9 +497,12 @@ class S7Client:
         assert self.socket, "Unreachable"
         try:
             with self._io_lock:
-                self.socket.sendall(request.serialize())
+                request_data = request.serialize()
+                self.logger.debug(f"Sending {len(request_data)} bytes to PLC")
+                self.socket.sendall(request_data)
 
                 header = self._recv_exact(4)
+                self.logger.debug(f"Received TPKT header: {header.hex()}")
                 if len(header) < 4:
                     raise S7CommunicationError(
                         "Incomplete TPKT header received from the PLC."
@@ -493,13 +513,16 @@ class S7Client:
                     raise S7CommunicationError("Invalid TPKT length received from the PLC.")
 
                 body = self._recv_exact(tpkt_length - 4)
+                self.logger.debug(f"Received {len(body)} bytes body (total packet: {tpkt_length} bytes)")
 
                 return header + body
         except socket.timeout as e:
+            self.logger.error("Socket timeout during communication")
             raise S7CommunicationError(
                 "Socket timeout during communication."
             ) from e
         except socket.error as e:
+            self.logger.error(f"Socket error during communication: {e}")
             raise S7CommunicationError(
                 f"Socket error during communication: {e}."
             ) from e
