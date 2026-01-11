@@ -238,7 +238,16 @@ class S7Client:
     def connect(self) -> None:
         """Establishes a TCP connection to the S7 PLC and sets up initial communication parameters."""
 
-        self.logger.info(f"Connecting to PLC at {self.address}:{self.port} (rack={self.rack}, slot={self.slot})")
+        if self.local_tsap is not None and self.remote_tsap is not None:
+            self.logger.info(
+                f"Connecting to PLC at {self.address}:{self.port} "
+                f"(local_tsap={self.local_tsap:#06x}, remote_tsap={self.remote_tsap:#06x})"
+            )
+        else:
+            self.logger.info(
+                f"Connecting to PLC at {self.address}:{self.port} "
+                f"(rack={self.rack}, slot={self.slot})"
+            )
         try:
             # Initialize the socket
             self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
