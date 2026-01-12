@@ -239,12 +239,12 @@ class S7Client:
         """Establishes a TCP connection to the S7 PLC and sets up initial communication parameters."""
 
         if self.local_tsap is not None and self.remote_tsap is not None:
-            self.logger.info(
+            self.logger.debug(
                 f"Connecting to PLC at {self.address}:{self.port} "
                 f"(local_tsap={self.local_tsap:#06x}, remote_tsap={self.remote_tsap:#06x})"
             )
         else:
-            self.logger.info(
+            self.logger.debug(
                 f"Connecting to PLC at {self.address}:{self.port} "
                 f"(rack={self.rack}, slot={self.slot})"
             )
@@ -292,7 +292,7 @@ class S7Client:
                 self.max_jobs_called,
                 self.pdu_size,
             ) = pdu_negotiation_response.parse()
-            self.logger.info(f"Connection established successfully. PDU size: {self.pdu_size} bytes")
+            self.logger.debug(f"Connection established successfully. PDU size: {self.pdu_size} bytes")
         except Exception as e:
             self.logger.error(f"Failed to complete connection setup: {e}")
             self.disconnect()
@@ -306,7 +306,7 @@ class S7Client:
             try:
                 self.socket.shutdown(socket.SHUT_RDWR)
                 self.socket.close()
-                self.logger.info("Disconnected successfully")
+                self.logger.debug("Disconnected successfully")
             except socket.error as e:
                 self.logger.warning(f"Error during disconnect: {e}")
             finally:
