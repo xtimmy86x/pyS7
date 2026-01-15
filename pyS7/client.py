@@ -275,6 +275,11 @@ class S7Client:
                 self.logger.debug(f"Sending COTP connection request (local_tsap={self.local_tsap:#06x}, remote_tsap={self.remote_tsap:#06x})")
             else:
                 self.logger.debug(f"Sending COTP connection request (rack={self.rack}, slot={self.slot})")
+            
+            # Log the actual COTP packet for debugging
+            cotp_packet = connection_request.serialize()
+            self.logger.debug(f"COTP CR packet: {cotp_packet.hex()}")
+            
             connection_bytes_response: bytes = self.__send(connection_request)
             ConnectionResponse(response=connection_bytes_response)
             self.logger.debug("COTP connection accepted")
