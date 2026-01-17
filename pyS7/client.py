@@ -89,6 +89,15 @@ class S7Client:
         if local_tsap is not None or remote_tsap is not None:
             self._validate_tsap(local_tsap, remote_tsap)
 
+    def __enter__(self) -> "S7Client":
+        """Context manager entry: establish connection to PLC."""
+        self.connect()
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:  # type: ignore
+        """Context manager exit: disconnect from PLC."""
+        self.disconnect()
+
     @staticmethod
     def tsap_from_string(tsap_str: str) -> int:
         """Convert Siemens TIA Portal TSAP notation to integer value.
