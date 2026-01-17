@@ -17,6 +17,12 @@ def client() -> S7Client:
     return client
 
 
+@pytest.fixture(autouse=True)
+def mock_socket_getpeername(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Automatically mock socket.getpeername() for all tests."""
+    monkeypatch.setattr("socket.socket.getpeername", lambda self: ("192.168.100.10", 102))
+
+
 def _mock_recv_factory(*messages: bytes) -> Callable[[Any, int], bytes]:
     buffers = [memoryview(message) for message in messages]
     current: Optional[memoryview] = None
@@ -83,6 +89,42 @@ def test_client_connect(client: S7Client, monkeypatch: pytest.MonkeyPatch) -> No
 
     assert client.socket is not None
     assert client.socket.gettimeout() == 5
+
+
+def test_client_is_connected_property(
+    client: S7Client, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Initially not connected
+    assert client.is_connected is False
+
+    def mock_connect(self: Any, *args: Any) -> None:
+        return None
+
+    def mock_sendall(self: Any, bytes_request: bytes) -> None:
+        return None
+
+    connection_response = (
+        b"\x03\x00\x00\x1b\x02\xf0\x802\x03\x00\x00\x00\x00\x00\x08\x00\x00\x00\x00\xf0\x00\x00\x08\x00\x08\x03\xc0"
+    )
+    pdu_response = (
+        b"\x03\x00\x00\x1b\x02\xf0\x802\x07\x00\x00\x00\x00\x00\x08\x00\x00\x00\x00\xf0\x00\x01\x00\x01\x03\xc0\x00"
+    )
+
+    monkeypatch.setattr("socket.socket.connect", mock_connect)
+    monkeypatch.setattr("socket.socket.sendall", mock_sendall)
+    monkeypatch.setattr(
+        "socket.socket.recv", _mock_recv_factory(connection_response, pdu_response)
+    )
+    monkeypatch.setattr("socket.socket.shutdown", lambda *args, **kwargs: None)
+    monkeypatch.setattr("socket.socket.close", lambda *args, **kwargs: None)
+
+    # After connection
+    client.connect()
+    assert client.is_connected is True
+
+    # After disconnect
+    client.disconnect()
+    assert client.is_connected is False
 
 
 def test_client_connect_handshake_failure(
@@ -234,6 +276,7 @@ def test_write(client: S7Client, monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr("socket.socket.sendall", mock_sendall)
     monkeypatch.setattr("socket.socket.recv", _mock_recv_factory(write_response))
+    monkeypatch.setattr("socket.socket.getpeername", lambda self: ("192.168.100.10", 102))
 
     # Ensure socket is initialized
     client.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -283,7 +326,12 @@ def test_read_bits_optimized_handles_bit_offsets(
 
     monkeypatch.setattr(S7Client, "_S7Client__send", fake_send)
 
-    client.socket = cast(socket.socket, object())
+    # Create a simple mock socket that has getpeername
+    class MockSocket:
+        def getpeername(self):
+            return ("192.168.100.10", 102)
+
+    client.socket = cast(socket.socket, MockSocket())
 
     result = client.read(["DB1,X0.0", "DB1,X0.7"], optimize=True)
 
@@ -328,7 +376,12 @@ def test_write_bit_values_pack_bits_correctly(
 
     monkeypatch.setattr(S7Client, "_S7Client__send", fake_send)
 
-    client.socket = cast(socket.socket, object())
+    # Create a simple mock socket that has getpeername
+    class MockSocket:
+        def getpeername(self):
+            return ("192.168.100.10", 102)
+
+    client.socket = cast(socket.socket, MockSocket())
 
     client.write(["DB1,X0.0", "DB1,X0.7"], [True, False])
 

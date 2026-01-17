@@ -14,7 +14,7 @@ if __name__ == "__main__":
     
     with S7Client(address="192.168.5.100", rack=0, slot=1) as client:
         # Connection is now established
-        print("Connected to PLC")
+        print(f"Connected to PLC: {client.is_connected}")
         
         # Perform operations
         tags = ["DB1,X0.0", "DB1,I10", "DB1,R14"]
@@ -30,7 +30,25 @@ if __name__ == "__main__":
         print(f"CPU status: {status}")
     
     # Connection is automatically closed here
-    print("Disconnected from PLC")
+    print(f"Disconnected from PLC: {client.is_connected}")
+    
+    # Example using is_connected property for conditional logic
+    client = S7Client(address="192.168.5.100", rack=0, slot=1)
+    
+    print(f"Before connect: {client.is_connected}")  # False
+    
+    try:
+        client.connect()
+        print(f"After connect: {client.is_connected}")  # True
+        
+        # Only perform operations if connected
+        if client.is_connected:
+            values = client.read(["DB1,X0.0"])
+            print(f"Values: {values}")
+    finally:
+        if client.is_connected:
+            client.disconnect()
+            print(f"After disconnect: {client.is_connected}")  # False
     
     # Compare with the old style (still supported):
     # client = S7Client(address="192.168.5.100", rack=0, slot=1)

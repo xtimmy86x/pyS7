@@ -99,6 +99,34 @@ class S7Client:
         """Context manager exit: disconnect from PLC."""
         self.disconnect()
 
+    @property
+    def is_connected(self) -> bool:
+        """Check if the client is currently connected to the PLC.
+        
+        Returns:
+            bool: True if connected, False otherwise
+            
+        Example:
+            >>> client = S7Client('192.168.0.1', 0, 1)
+            >>> print(client.is_connected)
+            False
+            >>> client.connect()
+            >>> print(client.is_connected)
+            True
+            >>> client.disconnect()
+            >>> print(client.is_connected)
+            False
+        """
+        if self.socket is None:
+            return False
+        try:
+            # Try to get socket options to verify if socket is still valid
+            self.socket.getpeername()
+            return True
+        except (OSError, AttributeError):
+            # Socket is closed or invalid
+            return False
+
     @staticmethod
     def tsap_from_string(tsap_str: str) -> int:
         """Convert Siemens TIA Portal TSAP notation to integer value.
@@ -388,7 +416,7 @@ class S7Client:
         if not list_tags:
             return []
 
-        if not self.socket:
+        if not self.is_connected:
             raise S7CommunicationError(
                 "Not connected to PLC. Call 'connect' before performing read operations."
             )
@@ -458,7 +486,7 @@ class S7Client:
         if not tags_list:
             return
 
-        if not self.socket:
+        if not self.is_connected:
             raise S7CommunicationError(
                 "Not connected to PLC. Call 'connect' before performing write operations."
             )
@@ -492,7 +520,7 @@ class S7Client:
             >>> print(f"CPU is in {status} mode")
             CPU is in RUN mode
         """
-        if not self.socket:
+        if not self.is_connected:
             raise S7CommunicationError(
                 "Not connected to PLC. Call 'connect' before getting CPU status."
             )
@@ -528,7 +556,7 @@ class S7Client:
             CPU Model: 6ES7 211-1BE40-0XB0
             Firmware: V32.32
         """
-        if not self.socket:
+        if not self.is_connected:
             raise S7CommunicationError(
                 "Not connected to PLC. Call 'connect' before getting CPU info."
             )
