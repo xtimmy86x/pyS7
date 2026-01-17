@@ -134,6 +134,39 @@ def _token_to_tag(
 
     return build_tag(memory_area, db_number, info.data_type, start, bit_offset_int, length)
 
+
+def _parse_memory_area_address(
+    address: str, pattern: str, memory_area: MemoryArea
+) -> S7Tag:
+    """Parse address for INPUT, OUTPUT, or MERKER memory areas.
+    
+    These memory areas share identical parsing logic but differ in
+    the regex pattern and target memory area.
+    
+    Args:
+        address: The address string to parse (already uppercased)
+        pattern: Regex pattern to match the address format
+        memory_area: Target memory area (INPUT, OUTPUT, or MERKER)
+        
+    Returns:
+        S7Tag: Parsed tag object
+        
+    Raises:
+        S7AddressError: If address cannot be parsed
+    """
+    match = re.match(pattern, address)
+    if match is None:
+        raise S7AddressError(f"Impossible to parse address '{address}'")
+    
+    token, start_s, bit_offset = match.groups()
+    if token is None and bit_offset is None:
+        raise S7AddressError(f"Impossible to parse address '{address}'")
+    
+    start = int(start_s)
+    token = token if token is not None else "X"
+    return _token_to_tag(token, memory_area, 0, start, bit_offset, address)
+
+
 def map_address_to_tag(address: str) -> S7Tag:
     address = address.upper()
     match: Optional[re.Match[str]]
@@ -149,36 +182,18 @@ def map_address_to_tag(address: str) -> S7Tag:
         return _token_to_tag(token, MemoryArea.DB, db_number, start, bit_offset, address)
 
     if address.startswith("I") or address.startswith("E"):
-        match = re.match(r"[IE]([A-Z]+)?(\d+)(?:\.(\d+))?", address)
-        if match is None:
-            raise S7AddressError(f"{address}")
-        token, start_s, bit_offset = match.groups()
-        if token is None and bit_offset is None:
-            raise S7AddressError(f"{address}")
-        start = int(start_s)
-        token = token if token is not None else "X"
-        return _token_to_tag(token, MemoryArea.INPUT, 0, start, bit_offset, address)
+        return _parse_memory_area_address(
+            address, r"[IE]([A-Z]+)?(\d+)(?:\.(\d+))?", MemoryArea.INPUT
+        )
 
     if address.startswith("Q") or address.startswith("A"):
-        match = re.match(r"[QA]([A-Z]+)?(\d+)(?:\.(\d+))?", address)
-        if match is None:
-            raise S7AddressError(f"{address}")
-        token, start_s, bit_offset = match.groups()
-        if token is None and bit_offset is None:
-            raise S7AddressError(f"{address}")
-        start = int(start_s)
-        token = token if token is not None else "X"
-        return _token_to_tag(token, MemoryArea.OUTPUT, 0, start, bit_offset, address)
+        return _parse_memory_area_address(
+            address, r"[QA]([A-Z]+)?(\d+)(?:\.(\d+))?", MemoryArea.OUTPUT
+        )
 
     if address.startswith("M"):
-        match = re.match(r"M([A-Z]+)?(\d+)(?:\.(\d+))?", address)
-        if match is None:
-            raise S7AddressError(f"{address}")
-        token, start_s, bit_offset = match.groups()
-        if token is None and bit_offset is None:
-            raise S7AddressError(f"{address}")
-        start = int(start_s)
-        token = token if token is not None else "X"
-        return _token_to_tag(token, MemoryArea.MERKER, 0, start, bit_offset, address)
+        return _parse_memory_area_address(
+            address, r"M([A-Z]+)?(\d+)(?:\.(\d+))?", MemoryArea.MERKER
+        )
 
     raise S7AddressError(f"Unsupported address '{address}'")
