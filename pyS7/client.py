@@ -1,5 +1,6 @@
 import logging
 import socket
+import struct
 import threading
 from typing import Any, Dict, List, Optional, Sequence, Union
 
@@ -307,10 +308,28 @@ class S7Client:
                 self.pdu_size,
             ) = pdu_negotiation_response.parse()
             self.logger.debug(f"Connection established successfully. PDU size: {self.pdu_size} bytes")
-        except Exception as e:
-            self.logger.error(f"Failed to complete connection setup: {e}")
+        except (socket.timeout, socket.error) as e:
+            self.logger.error(f"Socket error during connection setup: {e}")
             self.disconnect()
-            raise S7ConnectionError(f"Failed to complete connection setup: {e}") from e
+            raise S7ConnectionError(f"Socket error during connection setup: {e}") from e
+        except S7ConnectionError:
+            # Re-raise S7ConnectionError as-is
+            self.disconnect()
+            raise
+        except S7CommunicationError as e:
+            # Wrap S7CommunicationError in S7ConnectionError during connection phase
+            self.logger.error(f"Communication error during connection setup: {e}")
+            self.disconnect()
+            raise S7ConnectionError(f"Communication error during connection setup: {e}") from e
+        except (ValueError, struct.error) as e:
+            self.logger.error(f"Protocol parsing error during connection setup: {e}")
+            self.disconnect()
+            raise S7ConnectionError(f"Protocol parsing error during connection setup: {e}") from e
+        except Exception as e:
+            # Catch-all for unexpected errors, but log them distinctly
+            self.logger.error(f"Unexpected error during connection setup: {e}", exc_info=True)
+            self.disconnect()
+            raise S7ConnectionError(f"Unexpected error during connection setup: {e}") from e
 
     def disconnect(self) -> None:
         """Closes the TCP connection with the S7 PLC."""
