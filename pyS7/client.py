@@ -212,6 +212,25 @@ class S7Client:
         return 0x0100 | (rack * 32 + slot)
 
     @staticmethod
+    def _validate_single_tsap(tsap_value: int, tsap_name: str) -> None:
+        """Validate a single TSAP value.
+        
+        Args:
+            tsap_value: TSAP value to validate (0x0000 to 0xFFFF)
+            tsap_name: Name of the TSAP parameter for error messages
+            
+        Raises:
+            ValueError: If TSAP value is invalid
+        """
+        if not isinstance(tsap_value, int):
+            raise ValueError(f"{tsap_name} must be an integer, got {type(tsap_value).__name__}")
+        if not 0x0000 <= tsap_value <= 0xFFFF:
+            raise ValueError(
+                f"{tsap_name} must be in range 0x0000-0xFFFF (0-65535), "
+                f"got 0x{tsap_value:04X} ({tsap_value})"
+            )
+
+    @staticmethod
     def _validate_tsap(local_tsap: Optional[int], remote_tsap: Optional[int]) -> None:
         """Validate TSAP values are within valid ranges.
 
@@ -222,28 +241,18 @@ class S7Client:
         Raises:
             ValueError: If TSAP values are invalid
         """
-        if local_tsap is not None:
-            if not isinstance(local_tsap, int):
-                raise ValueError(f"local_tsap must be an integer, got {type(local_tsap).__name__}")
-            if not 0x0000 <= local_tsap <= 0xFFFF:
-                raise ValueError(
-                    f"local_tsap must be in range 0x0000-0xFFFF (0-65535), got 0x{local_tsap:04X} ({local_tsap})"
-                )
-
-        if remote_tsap is not None:
-            if not isinstance(remote_tsap, int):
-                raise ValueError(f"remote_tsap must be an integer, got {type(remote_tsap).__name__}")
-            if not 0x0000 <= remote_tsap <= 0xFFFF:
-                raise ValueError(
-                    f"remote_tsap must be in range 0x0000-0xFFFF (0-65535), got 0x{remote_tsap:04X} ({remote_tsap})"
-                )
-
-        # If only one TSAP is provided, warn user
+        # If only one TSAP is provided, raise error
         if (local_tsap is None) != (remote_tsap is None):
             raise ValueError(
                 "Both local_tsap and remote_tsap must be provided together, or neither. "
                 f"Got local_tsap={local_tsap}, remote_tsap={remote_tsap}"
             )
+        
+        # Validate individual TSAP values if provided
+        if local_tsap is not None:
+            S7Client._validate_single_tsap(local_tsap, "local_tsap")
+        if remote_tsap is not None:
+            S7Client._validate_single_tsap(remote_tsap, "remote_tsap")
 
     def connect(self) -> None:
         """Establishes a TCP connection to the S7 PLC and sets up initial communication parameters."""
