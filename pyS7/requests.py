@@ -419,9 +419,11 @@ def prepare_requests(tags: List[S7Tag], max_pdu: int) -> List[List[S7Tag]]:
             or READ_RES_OVERHEAD + tag_response_size > max_pdu
         ):
             tag_size = tag.size()
+            max_data_size = max_pdu - READ_RES_OVERHEAD - READ_RES_PARAM_SIZE_TAG
             raise S7AddressError(
-                f"{tag} too big -> it cannot fit the size of the negotiated PDU ({max_pdu})."
-                f" Tag size: {tag_size} bytes."
+                f"{tag} requires {READ_RES_OVERHEAD + tag_response_size} bytes but PDU size is {max_pdu} bytes. "
+                f"Maximum data size for this PDU: {max_data_size} bytes (current tag needs {tag_size} bytes). "
+                f"Consider: 1) Negotiating larger PDU, 2) Reading in smaller chunks, or 3) Using shorter string length."
             )
 
         elif (
@@ -631,8 +633,11 @@ def prepare_write_requests_and_values(
             WRITE_REQ_OVERHEAD + WRITE_REQ_PARAM_SIZE_TAG + tag_size >= max_pdu
             or WRITE_RES_OVERHEAD + tag_size + 1 >= max_pdu
         ):
+            max_data_size = max_pdu - WRITE_REQ_OVERHEAD - WRITE_REQ_PARAM_SIZE_TAG
             raise S7AddressError(
-                f"{tag} too big -> it cannot fit the size of the negotiated PDU ({max_pdu})"
+                f"{tag} requires {WRITE_REQ_OVERHEAD + WRITE_REQ_PARAM_SIZE_TAG + tag_size} bytes but PDU size is {max_pdu} bytes. "
+                f"Maximum data size for this PDU: {max_data_size} bytes (current tag needs {tag_size} bytes). "
+                f"Consider: 1) Negotiating larger PDU, 2) Writing in smaller chunks, or 3) Using shorter string length."
             )
 
         elif (
