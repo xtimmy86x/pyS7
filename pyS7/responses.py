@@ -14,6 +14,86 @@ from .tag import S7Tag
 
 COTP_CONNECTION_CONFIRM = 0xD0
 
+
+def _parse_string(bytes_data: Union[bytes, memoryview], offset: int, tag_length: int) -> str:
+    """
+    Parse S7 STRING data from bytes.
+
+    S7 STRING structure: [max_length byte][current_length byte][string data...]
+    Standard S7 STRING has max_length = 254 (0xFE).
+
+    Args:
+        bytes_data: The raw bytes or memoryview containing the STRING
+        offset: The offset where the STRING data starts
+        tag_length: The tag length for fallback parsing
+
+    Returns:
+        The decoded ASCII string
+    """
+    max_length = bytes_data[offset]
+    current_length = bytes_data[offset + 1]
+
+    # Validate header: max_length should be <= 254 and current_length <= max_length
+    if max_length <= 254 and 0 <= current_length <= max_length:
+        string_start = offset + 2
+        string_end = string_start + current_length
+        if isinstance(bytes_data, memoryview):
+            return bytes_data[string_start:string_end].tobytes().decode("ascii")
+        else:
+            return bytes_data[string_start:string_end].decode("ascii")
+    else:
+        # Fallback: treat as raw character data without header
+        string_end = offset + tag_length
+        if isinstance(bytes_data, memoryview):
+            return bytes_data[offset:string_end].tobytes().decode("ascii").rstrip("\x00")
+        else:
+            return bytes_data[offset:string_end].decode("ascii").rstrip("\x00")
+
+
+def _parse_wstring(bytes_data: Union[bytes, memoryview], offset: int, tag_length: int) -> str:
+    """
+    Parse S7 WSTRING data from bytes.
+
+    S7 WSTRING structure: [2 bytes max_length][2 bytes current_length][UTF-16 string data...]
+    WSTRING uses 2-byte headers (unlike STRING which uses 1-byte headers).
+    Note: current_length is the character count, but emojis use surrogate pairs (2 code units).
+
+    Args:
+        bytes_data: The raw bytes or memoryview containing the WSTRING
+        offset: The offset where the WSTRING data starts
+        tag_length: The tag length for fallback parsing
+
+    Returns:
+        The decoded UTF-16 string
+    """
+    if isinstance(bytes_data, memoryview):
+        max_length = struct.unpack_from(">H", bytes_data, offset)[0]
+        current_length = struct.unpack_from(">H", bytes_data, offset + 2)[0]
+    else:
+        max_length = struct.unpack_from(">H", bytes_data, offset)[0]
+        current_length = struct.unpack_from(">H", bytes_data, offset + 2)[0]
+
+    # Validate header: max_length should be reasonable and current_length <= max_length
+    if max_length <= 16383 and 0 <= current_length <= max_length:
+        string_start = offset + 4
+        # Read the full string data area (max_length * 2 bytes)
+        if isinstance(bytes_data, memoryview):
+            string_bytes = bytes_data[string_start:string_start + (max_length * 2)].tobytes()
+        else:
+            string_bytes = bytes_data[string_start:string_start + (max_length * 2)]
+        # Decode and find the actual string (stop at null terminator)
+        decoded_full = string_bytes.decode("utf-16-be")
+        # Find null terminator or use current_length as hint
+        null_pos = decoded_full.find('\x00')
+        return decoded_full[:null_pos] if null_pos >= 0 else decoded_full[:current_length]
+    else:
+        # Fallback: treat as raw UTF-16 data without header
+        string_end = offset + (tag_length * 2)
+        if isinstance(bytes_data, memoryview):
+            return bytes_data[offset:string_end].tobytes().decode("utf-16-be").rstrip("\x00")
+        else:
+            return bytes_data[offset:string_end].decode("utf-16-be").rstrip("\x00")
+
 COTP_DISCONNECT_REASONS: Dict[int, str] = {
     0x00: "Reason not specified",
     0x01: "Congestion at the destination transport endpoint",
@@ -217,48 +297,14 @@ def parse_read_response(bytes_response: bytes, tags: List[S7Tag]) -> List[Value]
                 offset += 0 if tag.length % 2 == 0 else 1
 
             elif tag.data_type == DataType.STRING:
-                max_length = bytes_response[offset]
-                current_length = bytes_response[offset + 1]
-
-                # S7 STRING structure: [max_length byte][current_length byte][string data...]
-                # Standard S7 STRING has max_length = 254 (0xFE)
-                # Validate header: max_length should be <= 254 and current_length <= max_length
-                if max_length <= 254 and 0 <= current_length <= max_length:
-                    string_start = offset + 2
-                    string_end = string_start + current_length
-                    data = bytes_response[string_start:string_end].decode("ascii")
-                    offset += tag.size()
-                    offset += 0 if tag.size() % 2 == 0 else 1
-                else:
-                    # Fallback: treat as raw character data without header
-                    data = bytes_response[offset: offset + tag.length].decode("ascii").rstrip("\x00")
-                    offset += tag.length
-                    offset += 0 if tag.length % 2 == 0 else 1
+                data = _parse_string(bytes_response, offset, tag.length)
+                offset += tag.size()
+                offset += 0 if tag.size() % 2 == 0 else 1
 
             elif tag.data_type == DataType.WSTRING:
-                # WSTRING uses 2-byte headers (unlike STRING which uses 1-byte headers)
-                max_length = struct.unpack_from(">H", bytes_response, offset)[0]
-                current_length = struct.unpack_from(">H", bytes_response, offset + 2)[0]
-
-                # S7 WSTRING structure: [2 bytes max_length][2 bytes current_length][UTF-16 string data...]
-                # Note: current_length is the character count, but emojis use surrogate pairs (2 code units)
-                # So we need to read the full data area and let UTF-16 decoder handle it
-                if max_length <= 16383 and 0 <= current_length <= max_length:
-                    string_start = offset + 4
-                    # Read the full string data area (max_length * 2 bytes)
-                    string_bytes = bytes_response[string_start:string_start + (max_length * 2)]
-                    # Decode and find the actual string (stop at null terminator)
-                    decoded_full = string_bytes.decode("utf-16-be")
-                    # Find null terminator or use current_length as hint
-                    null_pos = decoded_full.find('\x00')
-                    data = decoded_full[:null_pos] if null_pos >= 0 else decoded_full[:current_length]
-                    offset += tag.size()
-                    offset += 0 if tag.size() % 2 == 0 else 1
-                else:
-                    # Fallback: treat as raw UTF-16 data without header
-                    data = bytes_response[offset: offset + (tag.length * 2)].decode("utf-16-be").rstrip("\x00")
-                    offset += tag.length * 2
-                    offset += 0 if (tag.length * 2) % 2 == 0 else 1
+                data = _parse_wstring(bytes_response, offset, tag.length)
+                offset += tag.size()
+                offset += 0 if tag.size() % 2 == 0 else 1
 
             elif tag.data_type == DataType.INT:
                 data = struct.unpack_from(
@@ -403,40 +449,10 @@ def parse_optimized_read_response(
                     value = mv[abs_off:str_end].tobytes().decode("ascii")
 
                 elif dt == DataType.STRING:
-                    max_length = mv[abs_off]
-                    current_length = mv[abs_off + 1]
-
-                    # S7 STRING structure: [max_length byte][current_length byte][string data...]
-                    # Standard S7 STRING has max_length = 254 (0xFE)
-                    if max_length <= 254 and current_length <= max_length:
-                        str_start = abs_off + 2
-                        str_end = str_start + current_length
-                        value = mv[str_start:str_end].tobytes().decode("ascii")
-                    else:
-                        # fallback: treat as raw character data without header
-                        str_end = abs_off + tag.length
-                        value = mv[abs_off:str_end].tobytes().decode("ascii").rstrip("\x00")
+                    value = _parse_string(mv, abs_off, tag.length)
 
                 elif dt == DataType.WSTRING:
-                    # WSTRING uses 2-byte headers (unlike STRING which uses 1-byte headers)
-                    max_length = unpack_from(">H", mv, abs_off)[0]
-                    current_length = unpack_from(">H", mv, abs_off + 2)[0]
-
-                    # S7 WSTRING structure: [2 bytes max_length][2 bytes current_length][UTF-16 string data...]
-                    # current_length is character count, but emojis use surrogate pairs (2 code units = 4 bytes)
-                    # So we read the full data area and let UTF-16 decoder handle it
-                    if max_length <= 16383 and current_length <= max_length:
-                        str_start = abs_off + 4
-                        # Read full data area to handle surrogate pairs correctly
-                        string_bytes = mv[str_start:str_start + (max_length * 2)].tobytes()
-                        decoded_full = string_bytes.decode("utf-16-be")
-                        # Find null terminator or use current_length as hint
-                        null_pos = decoded_full.find('\x00')
-                        value = decoded_full[:null_pos] if null_pos >= 0 else decoded_full[:current_length]
-                    else:
-                        # fallback: treat as raw UTF-16 data without header
-                        str_end = abs_off + (tag.length * 2)
-                        value = mv[abs_off:str_end].tobytes().decode("utf-16-be").rstrip("\x00")
+                    value = _parse_wstring(mv, abs_off, tag.length)
 
                 else:
                     # Numeric scalar/array types
