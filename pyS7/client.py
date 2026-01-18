@@ -127,6 +127,115 @@ class S7Client:
             # Socket is closed or invalid
             return False
 
+    def _read_large_string(self, tag: S7Tag) -> str:
+        """Read a STRING or WSTRING that exceeds PDU size by chunking.
+        
+        Args:
+            tag: The S7Tag representing a STRING or WSTRING
+            
+        Returns:
+            The complete string value
+        """
+        from .constants import DataType, READ_RES_OVERHEAD, READ_RES_PARAM_SIZE_TAG
+        
+        chunks: List[str] = []
+        
+        if tag.data_type == DataType.STRING:
+            # STRING: 1 byte max_length + 1 byte current_length + data
+            header_size = 2
+            # Read header to know actual string length
+            header_tag = S7Tag(
+                memory_area=tag.memory_area,
+                db_number=tag.db_number,
+                data_type=DataType.BYTE,
+                start=tag.start,
+                bit_offset=0,
+                length=2
+            )
+            header_bytes = self.read([header_tag], optimize=False)[0]
+            # BYTE reads return a tuple of integers
+            assert isinstance(header_bytes, tuple) and len(header_bytes) >= 2
+            max_length = int(header_bytes[0])
+            current_length = int(header_bytes[1])
+            
+            if current_length == 0:
+                return ""
+            
+            # Calculate chunk size
+            max_data_per_read = self.pdu_size - READ_RES_OVERHEAD - READ_RES_PARAM_SIZE_TAG
+            
+            # Read data in chunks
+            offset = 0
+            while offset < current_length:
+                chunk_size = min(max_data_per_read, current_length - offset)
+                chunk_tag = S7Tag(
+                    memory_area=tag.memory_area,
+                    db_number=tag.db_number,
+                    data_type=DataType.CHAR,
+                    start=tag.start + header_size + offset,
+                    bit_offset=0,
+                    length=chunk_size
+                )
+                chunk_data = self.read([chunk_tag], optimize=False)[0]
+                assert isinstance(chunk_data, str)
+                chunks.append(chunk_data)
+                offset += chunk_size
+            
+            return "".join(chunks)
+            
+        elif tag.data_type == DataType.WSTRING:
+            # WSTRING: 2 bytes max_length + 2 bytes current_length + UTF-16 data
+            header_size = 4
+            # Read header to know actual string length
+            header_tag = S7Tag(
+                memory_area=tag.memory_area,
+                db_number=tag.db_number,
+                data_type=DataType.BYTE,
+                start=tag.start,
+                bit_offset=0,
+                length=4
+            )
+            header_bytes = self.read([header_tag], optimize=False)[0]
+            # BYTE reads return a tuple of integers
+            assert isinstance(header_bytes, tuple) and len(header_bytes) >= 4
+            max_length = (int(header_bytes[0]) << 8) | int(header_bytes[1])
+            current_length = (int(header_bytes[2]) << 8) | int(header_bytes[3])
+            
+            if current_length == 0:
+                return ""
+            
+            # Calculate chunk size (in bytes, not characters)
+            max_data_per_read = self.pdu_size - READ_RES_OVERHEAD - READ_RES_PARAM_SIZE_TAG
+            # WSTRING uses 2 bytes per character
+            bytes_to_read = current_length * 2
+            
+            # Read data in chunks
+            offset = 0
+            while offset < bytes_to_read:
+                chunk_size = min(max_data_per_read, bytes_to_read - offset)
+                # Make sure chunk_size is even (UTF-16 uses 2 bytes per char)
+                if chunk_size % 2 != 0:
+                    chunk_size -= 1
+                
+                chunk_tag = S7Tag(
+                    memory_area=tag.memory_area,
+                    db_number=tag.db_number,
+                    data_type=DataType.BYTE,
+                    start=tag.start + header_size + offset,
+                    bit_offset=0,
+                    length=chunk_size
+                )
+                chunk_bytes = self.read([chunk_tag], optimize=False)[0]
+                # BYTE reads return a tuple of integers, convert to bytes
+                assert isinstance(chunk_bytes, tuple)
+                byte_array = bytes(int(b) for b in chunk_bytes)
+                chunks.append(byte_array.decode("utf-16-be"))
+                offset += chunk_size
+            
+            return "".join(chunks)
+        
+        raise ValueError(f"Unsupported data type for large string read: {tag.data_type}")
+
     @staticmethod
     def tsap_from_string(tsap_str: str) -> int:
         """Convert Siemens TIA Portal TSAP notation to integer value.
@@ -421,36 +530,71 @@ class S7Client:
                 "Not connected to PLC. Call 'connect' before performing read operations."
             )
 
-        data: List[Value] = []
+        # Check for large strings and handle them separately
+        from .constants import DataType, READ_RES_OVERHEAD, READ_RES_PARAM_SIZE_TAG
+        
+        regular_tags = []
+        large_string_indices = []
+        large_string_tags = []
+        
+        for i, tag in enumerate(list_tags):
+            if tag.data_type in (DataType.STRING, DataType.WSTRING):
+                tag_response_size = READ_RES_OVERHEAD + READ_RES_PARAM_SIZE_TAG + tag.size()
+                if tag_response_size > self.pdu_size:
+                    # This string is too large, will be read separately
+                    large_string_indices.append(i)
+                    large_string_tags.append(tag)
+                    self.logger.info(
+                        f"Tag {tag} exceeds PDU size ({tag_response_size} > {self.pdu_size}), "
+                        f"will be read in chunks automatically"
+                    )
+                    continue
+            regular_tags.append((i, tag))
+        
+        # Read regular tags (initialize with Any to allow None temporarily)
+        from typing import cast as type_cast
+        data: List[Any] = [None] * len(list_tags)
 
-        if optimize:
-            requests, tags_map = prepare_optimized_requests(
-                tags=list_tags, max_pdu=self.pdu_size
-            )
-
-            bytes_reponse = self.__send(ReadRequest(tags=requests[0]))
-            response = ReadOptimizedResponse(
-                response=bytes_reponse,
-                tag_map={key: tags_map[key] for key in requests[0]},
-            )
-
-            for i in range(1, len(requests)):
-                bytes_reponse = self.__send(ReadRequest(tags=requests[i]))
-                response += ReadOptimizedResponse(
-                    response=bytes_reponse,
-                    tag_map={key: tags_map[key] for key in requests[i]},
+        # Read large strings separately with chunking
+        for idx, tag in zip(large_string_indices, large_string_tags):
+            data[idx] = self._read_large_string(tag)
+        
+        # Read regular tags if any
+        if regular_tags:
+            tags_only = [tag for _, tag in regular_tags]
+            
+            if optimize:
+                requests, tags_map = prepare_optimized_requests(
+                    tags=tags_only, max_pdu=self.pdu_size
                 )
 
-            data = response.parse()
+                bytes_reponse = self.__send(ReadRequest(tags=requests[0]))
+                response = ReadOptimizedResponse(
+                    response=bytes_reponse,
+                    tag_map={key: tags_map[key] for key in requests[0]},
+                )
 
-        else:
-            requests = prepare_requests(tags=list_tags, max_pdu=self.pdu_size)
+                for i in range(1, len(requests)):
+                    bytes_reponse = self.__send(ReadRequest(tags=requests[i]))
+                    response += ReadOptimizedResponse(
+                        response=bytes_reponse,
+                        tag_map={key: tags_map[key] for key in requests[i]},
+                    )
 
-            for request in requests:
-                bytes_reponse = self.__send(ReadRequest(tags=request))
-                read_response = ReadResponse(response=bytes_reponse, tags=request)
+                regular_data = response.parse()
 
-                data.extend(read_response.parse())
+            else:
+                requests = prepare_requests(tags=tags_only, max_pdu=self.pdu_size)
+                regular_data = []
+
+                for request in requests:
+                    bytes_reponse = self.__send(ReadRequest(tags=request))
+                    read_response = ReadResponse(response=bytes_reponse, tags=request)
+                    regular_data.extend(read_response.parse())
+            
+            # Fill in regular data at correct indices
+            for (orig_idx, _), value in zip(regular_tags, regular_data):
+                data[orig_idx] = value
 
         return data
 
