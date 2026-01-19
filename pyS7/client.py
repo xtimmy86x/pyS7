@@ -530,7 +530,7 @@ class S7Client:
                 "Not connected to PLC. Call 'connect' before performing read operations."
             )
 
-        # Check for large strings and handle them separately
+        # Check for large tags (strings and arrays) and handle them separately
         from .constants import DataType, READ_RES_OVERHEAD, READ_RES_PARAM_SIZE_TAG
         
         regular_tags = []
@@ -538,17 +538,30 @@ class S7Client:
         large_string_tags = []
         
         for i, tag in enumerate(list_tags):
-            if tag.data_type in (DataType.STRING, DataType.WSTRING):
-                tag_response_size = READ_RES_OVERHEAD + READ_RES_PARAM_SIZE_TAG + tag.size()
-                if tag_response_size > self.pdu_size:
-                    # This string is too large, will be read separately
+            # Check if tag response exceeds PDU size
+            tag_response_size = READ_RES_OVERHEAD + READ_RES_PARAM_SIZE_TAG + tag.size()
+            if tag_response_size > self.pdu_size:
+                # Only STRING and WSTRING support automatic chunking
+                if tag.data_type in (DataType.STRING, DataType.WSTRING):
+                    # This string is too large, will be read separately with chunking
                     large_string_indices.append(i)
                     large_string_tags.append(tag)
-                    self.logger.info(
+                    self.logger.debug(
                         f"Tag {tag} exceeds PDU size ({tag_response_size} > {self.pdu_size}), "
                         f"will be read in chunks automatically"
                     )
                     continue
+                else:
+                    # Other data types cannot be automatically chunked
+                    from .errors import S7AddressError
+                    tag_size = tag.size()
+                    max_data_size = self.pdu_size - READ_RES_OVERHEAD - READ_RES_PARAM_SIZE_TAG
+                    raise S7AddressError(
+                        f"{tag} requires {tag_response_size} bytes but PDU size is {self.pdu_size} bytes. "
+                        f"Maximum data size for this PDU: {max_data_size} bytes (current tag needs {tag_size} bytes). "
+                        f"For {tag.data_type.name} arrays, read in smaller chunks. "
+                        f"For STRING/WSTRING, automatic chunking is supported."
+                    )
             regular_tags.append((i, tag))
         
         # Read regular tags (initialize with Any to allow None temporarily)
