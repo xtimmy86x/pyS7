@@ -12,9 +12,13 @@ pyS7 is a lightweight, pure Python library that implements the Siemens S7 commun
   - [Reading data](#reading-data)
   - [Writing data](#writing-data)
   - [Reading CPU status and information](#reading-cpu-status-and-information)
+  - [String data types](#string-data-types)
 - [Advanced connection methods](#advanced-connection-methods)
   - [TSAP connection](#tsap-connection)
+- [PDU size and performance optimization](#pdu-size-and-performance-optimization)
+- [Best practices](#best-practices)
 - [Additional examples](#additional-examples)
+- [Troubleshooting](#troubleshooting)
 - [Supported addresses](#supported-addresses)
 - [License](#license)
 - [Acknowledgements](#acknowledgements)
@@ -23,6 +27,7 @@ pyS7 is a lightweight, pure Python library that implements the Siemens S7 commun
 - **Pure Python** – no external dependencies, making it easy to install on a wide range of platforms.
 - **Intuitive API** – designed to be readable and approachable, with typing support to improve IDE assistance.
 - **Optimised multi-variable reads** – automatically groups contiguous tags to reduce the number of requests sent to the PLC.
+- **Automatic chunking** – transparently splits large STRING/WSTRING reads that exceed PDU size into multiple smaller requests.
 - **CPU diagnostics** – read the PLC's operating status (RUN/STOP) and detailed CPU information (model, firmware version, etc.) using the System Status List (SZL) protocol.
 - **Broad S7 family compatibility** – supports the 200/300/400/1200/1500 series of Siemens PLCs.
 
@@ -59,20 +64,28 @@ if __name__ == "__main__":
     # Open the connection to the PLC
     client.connect()
 
-    # Define area tags to read
-    tags = [
-        "DB1,X0.0",  # Bit 0 of DB1
-        "DB1,X0.6",  # Bit 7 of DB1
-        "DB1,I30",   # INT at byte 30 of DB1
-        "M54.4",     # Bit 5 of the marker memory
-        "IW22",      # WORD at byte 22 of the input area
-        "QR24",      # REAL at byte 24 of the output area
-        "DB1,S10.5"  # String of 5 characters starting at byte 10 of DB1
-    ]
+    try:
+        # Define area tags to read
+        tags = [
+            "DB1,X0.0",  # Bit 0 of DB1
+            "DB1,X0.6",  # Bit 6 of DB1
+            "DB1,I30",   # INT at byte 30 of DB1
+            "M54.4",     # Bit 4 of the marker memory
+            "IW22",      # WORD at byte 22 of the input area
+            "QR24",      # REAL at byte 24 of the output area
+            "DB1,S10.5"  # String of 5 characters starting at byte 10 of DB1
+        ]
 
-    data = client.read(tags=tags)
+        data = client.read(tags=tags)
 
-    print(data)  # [True, False, 123, True, 10, -2.54943805634653e-12, 'Hello']
+        print(data)  # [True, False, 123, True, 10, -2.54943805634653e-12, 'Hello']
+    finally:
+        client.disconnect()
+
+# Or use context manager for automatic cleanup
+with S7Client(address="192.168.5.100", rack=0, slot=1) as client:
+    data = client.read(["DB1,I0", "DB1,I2"])
+    print(data)
 ```
 
 ### Writing data
@@ -144,6 +157,8 @@ if __name__ == "__main__":
 
 See [CPU_STATUS_READING.md](docs/CPU_STATUS_READING.md) for detailed information about CPU diagnostics.
 
+> **Note:** Some PLCs may return "N/A" for firmware version. This is normal behavior and depends on the PLC model and configuration.
+
 ### String data types
 
 pyS7 supports two string types:
@@ -182,6 +197,38 @@ print(values[0])  # "Hello 世界! 🌍"
 # Write Unicode string  
 client.write(["DB1,WS100.30"], ["Café Müller 東京"])
 ```
+
+#### Automatic chunking for large strings
+
+When a STRING or WSTRING exceeds the negotiated PDU size, pyS7 automatically splits the read into multiple smaller chunks and reassembles the complete string:
+
+```python
+# STRING[254] with PDU 240 - automatically chunked
+tags = ["DB1,S100.254"]  # Declared as STRING[254] in PLC
+values = client.read(tags)
+print(values[0])  # Complete string, transparently chunked
+
+# Works with WSTRING too
+tags = ["DB1,WS200.254"]  # WSTRING[254]
+values = client.read(tags)
+print(values[0])  # Complete Unicode string, automatically chunked
+```
+
+**How it works:**
+1. pyS7 detects if STRING/WSTRING response would exceed PDU size
+2. Reads the 2-byte (STRING) or 4-byte (WSTRING) header to get actual length
+3. Splits data into chunks that fit within PDU limits
+4. Reassembles chunks and returns complete string
+5. All done transparently - you just get the string!
+
+**PDU size considerations:**
+- PDU size is negotiated during connection (typically 240-960 bytes)
+- Maximum data per chunk = PDU size - 26 bytes (protocol overhead)
+- For PDU 240: max chunk = 214 bytes
+- STRING[254] = 256 bytes → automatically split into 214 + 42 byte chunks
+- WSTRING[254] = 512 bytes → split into 214 + 214 + 84 byte chunks
+
+**Note:** Only STRING and WSTRING support automatic chunking. For other data types (BYTE, WORD, INT, etc.) that exceed PDU size, you must manually split the read into smaller arrays.
 
 ## Advanced connection methods
 
@@ -294,9 +341,152 @@ client = S7Client(address="192.168.5.100", local_tsap=0x0100)
 # This will raise ValueError: TSAP out of range
 client = S7Client(address="192.168.5.100", local_tsap=0x10000, remote_tsap=0x0101)
 ```
+## PDU size and performance optimization
 
+### Understanding PDU size
+
+The PDU (Protocol Data Unit) size is the maximum amount of data that can be exchanged in a single request/response. It's negotiated during connection and affects performance:
+
+```python
+from pyS7 import S7Client
+
+client = S7Client(
+    address="192.168.5.100",
+    rack=0,
+    slot=1,
+    pdu_size=960  # Request PDU 960 (default is 960)
+)
+
+client.connect()
+print(f"Negotiated PDU: {client.pdu_size} bytes")  # Actual PDU may be lower
+```
+
+**Common PDU sizes:**
+- **S7-300/400**: Typically 240 bytes (can be configured up to 960)
+- **S7-1200/1500**: Usually 480 or 960 bytes
+- **Protocol overhead**: ~26 bytes per request (TPKT + COTP + S7 headers)
+
+### Performance tips
+
+1. **Use optimized reads** (enabled by default):
+```python
+# Automatically groups contiguous tags into fewer requests
+data = client.read(tags, optimize=True)  # Default
+```
+
+2. **Group related tags in the same DB**:
+```python
+# Good: Contiguous addresses can be read in one request
+tags = ["DB1,I0", "DB1,I2", "DB1,I4", "DB1,I6"]
+
+# Less efficient: Each tag requires separate request
+tags = ["DB1,I0", "DB5,I0", "DB10,I0", "DB15,I0"]
+```
+
+3. **Read arrays instead of individual values**:
+```python
+# Efficient: Read 10 INTs in one tag
+tags = [S7Tag(MemoryArea.DB, 1, DataType.INT, 0, 0, 10)]
+
+# Less efficient: Read 10 individual INTs
+tags = [f"DB1,I{i*2}" for i in range(10)]
+```
+
+4. **Consider PDU limits for large data**:
+```python
+# For BYTE arrays exceeding PDU, split manually
+max_bytes = client.pdu_size - 26  # Account for overhead
+if data_size > max_bytes:
+    # Read in chunks
+    chunk1 = client.read([S7Tag(MemoryArea.DB, 1, DataType.BYTE, 0, 0, max_bytes)])
+    chunk2 = client.read([S7Tag(MemoryArea.DB, 1, DataType.BYTE, max_bytes, 0, remaining)])
+```
+
+### Handling PDU size errors
+
+If a tag exceeds the PDU size, pyS7 will raise a clear error:
+
+```python
+try:
+    # BYTE[300] exceeds PDU 240
+    data = client.read([S7Tag(MemoryArea.DB, 1, DataType.BYTE, 0, 0, 300)])
+except S7AddressError as e:
+    print(e)
+    # "S7Tag(...) requires 326 bytes but PDU size is 240 bytes.
+    #  Maximum data size for this PDU: 214 bytes (current tag needs 300 bytes).
+    #  For BYTE arrays, read in smaller chunks.
+    #  For STRING/WSTRING, automatic chunking is supported."
+```
+
+**Solutions:**
+1. Increase PDU size if PLC supports it
+2. Split reads into smaller chunks
+3. For STRING/WSTRING, automatic chunking handles this automatically
+
+## Best practices
+
+### Connection management
+
+```python
+# Use context manager for automatic cleanup
+with S7Client("192.168.5.100", 0, 1) as client:
+    data = client.read(["DB1,I0"])
+    # Connection automatically closed on exit
+
+# Or manual connection management
+client = S7Client("192.168.5.100", 0, 1)
+try:
+    client.connect()
+    data = client.read(["DB1,I0"])
+finally:
+    client.disconnect()  # Always disconnect
+```
+
+### Error handling
+
+```python
+from pyS7 import S7Client, S7CommunicationError, S7AddressError
+
+try:
+    client = S7Client("192.168.5.100", 0, 1)
+    client.connect()
+    
+    data = client.read(["DB1,I0"])
+    
+except S7ConnectionError as e:
+    print(f"Connection failed: {e}")
+except S7CommunicationError as e:
+    print(f"Communication error: {e}")
+except S7AddressError as e:
+    print(f"Invalid address or tag: {e}")
+finally:
+    if client.is_connected:
+        client.disconnect()
+```
+
+### Type safety with S7Tag
+
+```python
+from pyS7 import S7Tag, DataType, MemoryArea
+
+# Explicit typing for better IDE support and validation
+tag = S7Tag(
+    memory_area=MemoryArea.DB,
+    db_number=1,
+    data_type=DataType.INT,
+    start=10,
+    bit_offset=0,
+    length=5  # Read 5 consecutive INTs
+)
+
+data = client.read([tag])
+print(data[0])  # Tuple of 5 integers
+```
 ## Additional examples
 More demonstration scripts are available in the repository's [`examples/`](examples/) directory.
+
+## Troubleshooting
+Having issues? Check the [Troubleshooting Guide](docs/TROUBLESHOOTING.md) for common problems and solutions.
 
 ## Supported addresses
 pyS7 adopts a PLC addressing convention inspired by [nodeS7](https://github.com/plcpeople/nodeS7) and [nodes7](https://github.com/st-one-io/nodes7). The table below maps common pyS7 addresses to their Step7/TIA Portal equivalents and highlights the associated data types.
