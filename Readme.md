@@ -8,6 +8,10 @@ pyS7 is a lightweight, pure Python library that implements the Siemens S7 commun
 
 > ⚠️ Neither this project nor its authors are affiliated with Siemens. S7-200, S7-300, S7-400, S7-1200, and S7-1500 are registered trademarks of Siemens AG.
 
+</div>
+
+<img src="docs/banner.png" alt="ha-s7plc banner" width="100%"/>
+
 ## Features
 
 - **Pure Python** – No external dependencies, easy installation across platforms
