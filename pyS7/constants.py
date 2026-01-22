@@ -13,6 +13,43 @@ MAX_GAP_BYTES = 8
 TPKT_SIZE = 4
 COTP_SIZE = 3
 
+# TPKT Protocol constants
+TPKT_VERSION = 0x03
+TPKT_RESERVED = 0x00
+
+# COTP Protocol constants (ISO 8073)
+COTP_PDU_TYPE_CR = 0xE0  # Connection Request
+COTP_PDU_TYPE_CC = 0xD0  # Connection Confirm
+COTP_PDU_TYPE_DR = 0x80  # Disconnect Request
+COTP_PDU_TYPE_DT = 0xF0  # Data Transfer
+COTP_TPDU_SIZE_PARAM = 0xC0  # Parameter code for TPDU size
+COTP_SRC_TSAP_PARAM = 0xC1   # Parameter code for Source TSAP
+COTP_DST_TSAP_PARAM = 0xC2   # Parameter code for Destination TSAP
+COTP_TPDU_SIZE_1024 = 0x0A   # TPDU size value for 1024 bytes
+
+# S7 Protocol constants
+S7_PROTOCOL_ID = 0x32
+
+# Connection Request packet constants
+COTP_CR_LENGTH = 0x11  # Length indicator for Connection Request (17 bytes)
+COTP_CR_PACKET_LENGTH = 0x16  # Total TPKT length for Connection Request (22 bytes)
+COTP_PARAM_LENGTH = 0x01  # Parameter length for COTP parameters
+COTP_TSAP_LENGTH = 0x02  # TSAP parameter length
+
+# SZL Request constants
+SZL_PARAM_HEAD = b"\x00\x01\x12"  # Parameter head for SZL requests
+SZL_PARAM_LENGTH = 0x04  # Parameter length (4 bytes after this)
+SZL_METHOD_REQUEST = 0x11  # Method: Request
+SZL_RETURN_CODE_SUCCESS = 0xFF  # Return code for successful request
+SZL_TRANSPORT_SIZE = 0x09  # Transport size (octet string)
+
+# S7 Header offsets in responses
+S7_HEADER_OFFSET = 7  # Offset where S7 header starts (after TPKT + COTP)
+S7_PROTOCOL_ID_OFFSET = 0  # Offset of protocol ID within S7 header
+S7_MESSAGE_TYPE_OFFSET = 1  # Offset of message type within S7 header
+S7_PARAM_LENGTH_OFFSET = 6  # Offset of parameter length within S7 header
+S7_DATA_LENGTH_OFFSET = 8   # Offset of data length within S7 header
+
 READ_REQ_HEADER_SIZE = 10
 READ_REQ_PARAM_SIZE_NO_TAGS = 2
 READ_REQ_PARAM_SIZE_TAG = 12

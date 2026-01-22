@@ -12,7 +12,16 @@ from typing import (
 )
 
 from .constants import (
+    COTP_CR_LENGTH,
+    COTP_CR_PACKET_LENGTH,
+    COTP_DST_TSAP_PARAM,
+    COTP_PARAM_LENGTH,
+    COTP_PDU_TYPE_CR,
     COTP_SIZE,
+    COTP_SRC_TSAP_PARAM,
+    COTP_TPDU_SIZE_1024,
+    COTP_TPDU_SIZE_PARAM,
+    COTP_TSAP_LENGTH,
     MAX_GAP_BYTES,
     MAX_READ_TAGS,
     MAX_WRITE_TAGS,
@@ -20,7 +29,15 @@ from .constants import (
     READ_REQ_PARAM_SIZE_TAG,
     READ_RES_OVERHEAD,
     READ_RES_PARAM_SIZE_TAG,
+    S7_PROTOCOL_ID,
+    SZL_METHOD_REQUEST,
+    SZL_PARAM_HEAD,
+    SZL_PARAM_LENGTH,
+    SZL_RETURN_CODE_SUCCESS,
+    SZL_TRANSPORT_SIZE,
+    TPKT_RESERVED,
     TPKT_SIZE,
+    TPKT_VERSION,
     WRITE_REQ_OVERHEAD,
     WRITE_REQ_PARAM_SIZE_TAG,
     WRITE_RES_OVERHEAD,
@@ -107,14 +124,14 @@ class ConnectionRequest(Request):
         packet = bytearray()
 
         # TPKT Header (RFC 1006)
-        packet.extend(b"\x03")  # Version
-        packet.extend(b"\x00")  # Reserved
+        packet.extend(TPKT_VERSION.to_bytes(1, byteorder="big"))  # Version
+        packet.extend(TPKT_RESERVED.to_bytes(1, byteorder="big"))  # Reserved
         packet.extend(b"\x00")  # Length (MSB)
-        packet.extend(b"\x16")  # Length (LSB) = 22 bytes
+        packet.extend(COTP_CR_PACKET_LENGTH.to_bytes(1, byteorder="big"))  # Length (LSB) = 22 bytes
 
         # COTP Header (ISO 8073)
-        packet.extend(b"\x11")  # Length Indicator = 17 bytes
-        packet.extend(b"\xe0")  # PDU Type = CR (Connection Request)
+        packet.extend(COTP_CR_LENGTH.to_bytes(1, byteorder="big"))  # Length Indicator = 17 bytes
+        packet.extend(COTP_PDU_TYPE_CR.to_bytes(1, byteorder="big"))  # PDU Type = CR (Connection Request)
         packet.extend(b"\x00")  # Destination Reference (MSB)
         packet.extend(b"\x00")  # Destination Reference (LSB)
         
@@ -126,15 +143,15 @@ class ConnectionRequest(Request):
         packet.extend(b"\x00")  # Class/Options (TP0)
 
         # COTP Parameters
-        packet.extend(b"\xc0")  # Parameter Code: TPDU Size
-        packet.extend(b"\x01")  # Parameter Length
-        packet.extend(b"\x0a")  # TPDU Size = 1024 bytes
-        packet.extend(b"\xc1")  # Parameter Code: Source TSAP
-        packet.extend(b"\x02")  # Parameter Length
+        packet.extend(COTP_TPDU_SIZE_PARAM.to_bytes(1, byteorder="big"))  # Parameter Code: TPDU Size
+        packet.extend(COTP_PARAM_LENGTH.to_bytes(1, byteorder="big"))  # Parameter Length
+        packet.extend(COTP_TPDU_SIZE_1024.to_bytes(1, byteorder="big"))  # TPDU Size = 1024 bytes
+        packet.extend(COTP_SRC_TSAP_PARAM.to_bytes(1, byteorder="big"))  # Parameter Code: Source TSAP
+        packet.extend(COTP_TSAP_LENGTH.to_bytes(1, byteorder="big"))  # Parameter Length
         packet.extend(b"\x01")  # Src-TSAP (MSB) - placeholder
         packet.extend(b"\x00")  # Src-TSAP (LSB) - placeholder
-        packet.extend(b"\xc2")  # Parameter Code: Destination TSAP
-        packet.extend(b"\x02")  # Parameter Length
+        packet.extend(COTP_DST_TSAP_PARAM.to_bytes(1, byteorder="big"))  # Parameter Code: Destination TSAP
+        packet.extend(COTP_TSAP_LENGTH.to_bytes(1, byteorder="big"))  # Parameter Length
         packet.extend(b"\x01")  # Dst-TSAP (MSB) - placeholder
         packet.extend(b"\x02")  # Dst-TSAP (LSB) - placeholder
 
@@ -697,7 +714,8 @@ class SZLRequest(Request):
         packet = bytearray()
 
         # TPKT header
-        packet.extend(b"\x03\x00")
+        packet.extend(TPKT_VERSION.to_bytes(1, byteorder="big"))
+        packet.extend(TPKT_RESERVED.to_bytes(1, byteorder="big"))
         tpkt_length_index = len(packet)
         packet.extend(b"\x00\x00")  # Placeholder for TPKT length
 
@@ -705,7 +723,7 @@ class SZLRequest(Request):
         packet.extend(b"\x02\xf0\x80")
 
         # S7 Header
-        packet.extend(b"\x32")  # S7 protocol ID
+        packet.extend(S7_PROTOCOL_ID.to_bytes(1, byteorder="big"))  # S7 protocol ID
         packet.extend(MessageType.USERDATA.value.to_bytes(1, byteorder="big"))
         packet.extend(b"\x00\x00")  # Reserved
         packet.extend(b"\x00\x00")  # PDU reference (will be filled by sequence number if needed)
@@ -717,9 +735,9 @@ class SZLRequest(Request):
         parameter_start = len(packet)
 
         # Parameter section
-        packet.extend(b"\x00\x01\x12")  # Parameter head (3 bytes)
-        packet.extend(b"\x04")  # Parameter length (4 bytes after this)
-        packet.extend(b"\x11")  # Method: Request
+        packet.extend(SZL_PARAM_HEAD)  # Parameter head (3 bytes)
+        packet.extend(SZL_PARAM_LENGTH.to_bytes(1, byteorder="big"))  # Parameter length (4 bytes after this)
+        packet.extend(SZL_METHOD_REQUEST.to_bytes(1, byteorder="big"))  # Method: Request
         packet.extend(UserDataFunction.CPU_FUNCTIONS.value.to_bytes(1, byteorder="big"))
         packet.extend(UserDataSubfunction.READ_SZL.value.to_bytes(1, byteorder="big"))
         packet.extend(b"\x01")  # Sequence number
@@ -727,8 +745,8 @@ class SZLRequest(Request):
         data_start = len(packet)
 
         # Data section
-        packet.extend(b"\xff")  # Return code (0xFF for request)
-        packet.extend(b"\x09")  # Transport size (octet string)
+        packet.extend(SZL_RETURN_CODE_SUCCESS.to_bytes(1, byteorder="big"))  # Return code (0xFF for request)
+        packet.extend(SZL_TRANSPORT_SIZE.to_bytes(1, byteorder="big"))  # Transport size (octet string)
         data_unit_length = 4
         packet.extend(data_unit_length.to_bytes(2, byteorder="big"))
         packet.extend(szl_id.value.to_bytes(2, byteorder="big"))

@@ -4,7 +4,16 @@ from typing import Any, Dict, List, Optional, Protocol, Tuple, Union, runtime_ch
 # Forward declaration for extract_bit_from_byte (defined later in this file)
 # This allows us to reference it in type hints and avoid circular imports
 from .constants import (
+    COTP_PDU_TYPE_CC,
     READ_RES_OVERHEAD,
+    S7_DATA_LENGTH_OFFSET,
+    S7_HEADER_OFFSET,
+    S7_MESSAGE_TYPE_OFFSET,
+    S7_PARAM_LENGTH_OFFSET,
+    S7_PROTOCOL_ID,
+    S7_PROTOCOL_ID_OFFSET,
+    SZL_RETURN_CODE_SUCCESS,
+    TPKT_VERSION,
     WRITE_RES_OVERHEAD,
     DataType,
     MessageType,
@@ -13,8 +22,6 @@ from .constants import (
 from .errors import S7ReadResponseError, S7WriteResponseError
 from .requests import TagsMap, Value
 from .tag import S7Tag
-
-COTP_CONNECTION_CONFIRM = 0xD0
 
 
 def _parse_string(bytes_data: Union[bytes, memoryview], offset: int, tag_length: int) -> str:
@@ -124,10 +131,9 @@ class ConnectionResponse:
         if len(self.response) < 11:
             raise ValueError("Connection response too short")
 
-        version, reserved, tpkt_length = struct.unpack_from(">BBH", self.response, offset=0
-        )
-        if version != 0x03:
-            raise ValueError("Unsupported TPKT version in connection response")
+        version, reserved, tpkt_length = struct.unpack_from(">BBH", self.response, offset=0)
+        if version != TPKT_VERSION:
+            raise ValueError(f"Unsupported TPKT version in connection response: expected {TPKT_VERSION}, got {version}")
 
         if tpkt_length != len(self.response):
             raise ValueError("TPKT length mismatch in connection response")
@@ -164,7 +170,7 @@ class ConnectionResponse:
 
             offset = value_end
 
-        is_success = pdu_type == COTP_CONNECTION_CONFIRM
+        is_success = pdu_type == COTP_PDU_TYPE_CC
 
         class_options: Optional[int] = None
         reason: Optional[int] = None
@@ -550,18 +556,18 @@ class SZLResponse:
 
         # Skip COTP (3 bytes at offset 4)
         # S7 header starts at offset 7
-        offset = 7
+        offset = S7_HEADER_OFFSET
 
-        protocol_id = self.response[offset]
-        if protocol_id != 0x32:
+        protocol_id = self.response[offset + S7_PROTOCOL_ID_OFFSET]
+        if protocol_id != S7_PROTOCOL_ID:
             raise ValueError(f"Invalid S7 protocol ID: {protocol_id:#x}")
 
-        message_type = self.response[offset + 1]
+        message_type = self.response[offset + S7_MESSAGE_TYPE_OFFSET]
         if message_type != MessageType.USERDATA.value:
             raise ValueError(f"Expected USERDATA message type, got {message_type:#x}")
 
-        param_length = struct.unpack_from(">H", self.response, offset + 6)[0]
-        data_length = struct.unpack_from(">H", self.response, offset + 8)[0]
+        param_length = struct.unpack_from(">H", self.response, offset + S7_PARAM_LENGTH_OFFSET)[0]
+        data_length = struct.unpack_from(">H", self.response, offset + S7_DATA_LENGTH_OFFSET)[0]
 
         # Parameter section starts after S7 header (10 bytes)
         param_offset = offset + 10
@@ -574,7 +580,7 @@ class SZLResponse:
 
         # Parse data section
         return_code = self.response[data_offset]
-        if return_code != 0xFF:
+        if return_code != SZL_RETURN_CODE_SUCCESS:
             raise ValueError(f"SZL request failed with return code: {return_code:#x}")
 
         # SZL data structure
