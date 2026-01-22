@@ -236,7 +236,7 @@ class ReadOptimizedResponse:
 
         self.n_messages = 1
 
-    def __iadd__(self, other):  # type: ignore
+    def __iadd__(self, other: "ReadOptimizedResponse") -> "ReadOptimizedResponse":
         self.responses += other.responses
         self.tags_map += other.tags_map
 

@@ -87,7 +87,7 @@ class S7Tag:
             return (self.length * 2) + 4  # 2 bytes per char + 4 byte header (2 for max_length, 2 for current_length)
         return DataTypeSize[self.data_type] * self.length
 
-    def __contains__(self, tag) -> bool:  # type: ignore
+    def __contains__(self, tag: "S7Tag") -> bool:
         if (
             self.memory_area == tag.memory_area
             and self.db_number == tag.db_number
