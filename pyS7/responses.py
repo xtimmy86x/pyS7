@@ -1,6 +1,8 @@
 import struct
 from typing import Any, Dict, List, Optional, Protocol, Tuple, Union, runtime_checkable
 
+# Forward declaration for extract_bit_from_byte (defined later in this file)
+# This allows us to reference it in type hints and avoid circular imports
 from .constants import (
     READ_RES_OVERHEAD,
     WRITE_RES_OVERHEAD,
@@ -435,7 +437,6 @@ def parse_optimized_read_response(
                     if packed_tag.data_type == DataType.BYTE:
                         # This BIT tag was packed into a BYTE read - extract specific bit
                         data_byte = mv[abs_off]
-                        from . import extract_bit_from_byte
                         value: Value = extract_bit_from_byte(data_byte, tag.bit_offset)
                     else:
                         # This is an individual BIT tag - PLC returns bit value directly

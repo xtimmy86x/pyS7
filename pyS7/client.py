@@ -2,11 +2,20 @@ import logging
 import socket
 import struct
 import threading
-from typing import Any, Dict, List, Optional, Sequence, Union
+from typing import Any, Dict, List, Optional, Sequence, Union, cast
 
 from .address_parser import map_address_to_tag
-from .constants import MAX_JOB_CALLED, MAX_JOB_CALLING, MAX_PDU, ConnectionType, SZLId
-from .errors import S7CommunicationError, S7ConnectionError
+from .constants import (
+    MAX_JOB_CALLED,
+    MAX_JOB_CALLING,
+    MAX_PDU,
+    ConnectionType,
+    DataType,
+    READ_RES_OVERHEAD,
+    READ_RES_PARAM_SIZE_TAG,
+    SZLId,
+)
+from .errors import S7AddressError, S7CommunicationError, S7ConnectionError
 from .requests import (
     ConnectionRequest,
     PDUNegotiationRequest,
@@ -136,8 +145,6 @@ class S7Client:
         Returns:
             The complete string value
         """
-        from .constants import DataType, READ_RES_OVERHEAD, READ_RES_PARAM_SIZE_TAG
-        
         chunks: List[str] = []
         
         if tag.data_type == DataType.STRING:
@@ -531,8 +538,6 @@ class S7Client:
             )
 
         # Check for large tags (strings and arrays) and handle them separately
-        from .constants import DataType, READ_RES_OVERHEAD, READ_RES_PARAM_SIZE_TAG
-        
         regular_tags = []
         large_string_indices = []
         large_string_tags = []
@@ -553,7 +558,6 @@ class S7Client:
                     continue
                 else:
                     # Other data types cannot be automatically chunked
-                    from .errors import S7AddressError
                     tag_size = tag.size()
                     max_data_size = self.pdu_size - READ_RES_OVERHEAD - READ_RES_PARAM_SIZE_TAG
                     raise S7AddressError(
@@ -564,9 +568,8 @@ class S7Client:
                     )
             regular_tags.append((i, tag))
         
-        # Read regular tags (initialize with Any to allow None temporarily)
-        from typing import cast as type_cast
-        data: List[Any] = [None] * len(list_tags)
+        # Read regular tags (initialize with Optional[Value])
+        data: List[Optional[Value]] = [None] * len(list_tags)
 
         # Read large strings separately with chunking
         for idx, tag in zip(large_string_indices, large_string_tags):
@@ -609,7 +612,8 @@ class S7Client:
             for (orig_idx, _), value in zip(regular_tags, regular_data):
                 data[orig_idx] = value
 
-        return data
+        # All elements have been filled at this point (either large strings or regular tags)
+        return cast(List[Value], data)
 
     def write(self, tags: Sequence[Union[str, S7Tag]], values: Sequence[Value]) -> None:
         """Writes data to an S7 PLC at the specified addresses.
