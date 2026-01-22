@@ -306,13 +306,19 @@ class WriteRequest(Request):
             elif tag.data_type == DataType.CHAR:
                 transport_size = DataTypeData.BYTE_WORD_DWORD
                 new_length = tag.length * DataTypeSize[tag.data_type] * 8
-                assert isinstance(data, str)
+                if not isinstance(data, str):
+                    raise S7AddressError(
+                        f"CHAR data must be str, got {type(data).__name__}"
+                    )
                 packed_data = data.encode(encoding="ascii")
 
             elif tag.data_type == DataType.STRING:
                 transport_size = DataTypeData.BYTE_WORD_DWORD
                 max_length = tag.length
-                assert isinstance(data, str)
+                if not isinstance(data, str):
+                    raise S7AddressError(
+                        f"STRING data must be str, got {type(data).__name__}"
+                    )
                 encoded = data.encode(encoding="ascii")
                 if len(encoded) > max_length:
                     raise S7AddressError(
@@ -326,7 +332,10 @@ class WriteRequest(Request):
             elif tag.data_type == DataType.WSTRING:
                 transport_size = DataTypeData.BYTE_WORD_DWORD
                 max_length = tag.length
-                assert isinstance(data, str)
+                if not isinstance(data, str):
+                    raise S7AddressError(
+                        f"WSTRING data must be str, got {type(data).__name__}"
+                    )
                 encoded = data.encode(encoding="utf-16-be")
                 if len(encoded) // 2 > max_length:  # Each char is 2 bytes
                     raise S7AddressError(

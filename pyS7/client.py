@@ -161,7 +161,10 @@ class S7Client:
             )
             header_bytes = self.read([header_tag], optimize=False)[0]
             # BYTE reads return a tuple of integers
-            assert isinstance(header_bytes, tuple) and len(header_bytes) >= 2
+            if not isinstance(header_bytes, tuple) or len(header_bytes) < 2:
+                raise S7CommunicationError(
+                    f"Invalid STRING header response: expected tuple with at least 2 bytes, got {type(header_bytes).__name__}"
+                )
             max_length = int(header_bytes[0])
             current_length = int(header_bytes[1])
             
@@ -184,7 +187,10 @@ class S7Client:
                     length=chunk_size
                 )
                 chunk_data = self.read([chunk_tag], optimize=False)[0]
-                assert isinstance(chunk_data, str)
+                if not isinstance(chunk_data, str):
+                    raise S7CommunicationError(
+                        f"Invalid STRING chunk response: expected str, got {type(chunk_data).__name__}"
+                    )
                 chunks.append(chunk_data)
                 offset += chunk_size
             
@@ -204,7 +210,10 @@ class S7Client:
             )
             header_bytes = self.read([header_tag], optimize=False)[0]
             # BYTE reads return a tuple of integers
-            assert isinstance(header_bytes, tuple) and len(header_bytes) >= 4
+            if not isinstance(header_bytes, tuple) or len(header_bytes) < 4:
+                raise S7CommunicationError(
+                    f"Invalid WSTRING header response: expected tuple with at least 4 bytes, got {type(header_bytes).__name__}"
+                )
             max_length = (int(header_bytes[0]) << 8) | int(header_bytes[1])
             current_length = (int(header_bytes[2]) << 8) | int(header_bytes[3])
             
@@ -234,7 +243,10 @@ class S7Client:
                 )
                 chunk_bytes = self.read([chunk_tag], optimize=False)[0]
                 # BYTE reads return a tuple of integers, convert to bytes
-                assert isinstance(chunk_bytes, tuple)
+                if not isinstance(chunk_bytes, tuple):
+                    raise S7CommunicationError(
+                        f"Invalid WSTRING chunk response: expected tuple of bytes, got {type(chunk_bytes).__name__}"
+                    )
                 byte_array = bytes(int(b) for b in chunk_bytes)
                 chunks.append(byte_array.decode("utf-16-be"))
                 offset += chunk_size
@@ -734,7 +746,8 @@ class S7Client:
         if not isinstance(request, Request):
             raise ValueError(f"Request type {type(request).__name__} not supported")
 
-        assert self.socket, "Unreachable"
+        if self.socket is None:
+            raise S7CommunicationError("Socket is not initialized. Call connect() first.")
         try:
             with self._io_lock:
                 request_data = request.serialize()
@@ -768,7 +781,8 @@ class S7Client:
             ) from e
 
     def _recv_exact(self, expected_length: int) -> bytes:
-        assert self.socket, "Unreachable"
+        if self.socket is None:
+            raise S7CommunicationError("Socket is not initialized. Call connect() first.")
 
         if expected_length == 0:
             return b""
