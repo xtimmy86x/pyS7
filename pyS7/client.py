@@ -15,6 +15,8 @@ from .constants import (
     READ_RES_OVERHEAD,
     READ_RES_PARAM_SIZE_TAG,
     SZLId,
+    WRITE_REQ_OVERHEAD,
+    WRITE_REQ_PARAM_SIZE_TAG,
 )
 from .errors import S7AddressError, S7CommunicationError, S7ConnectionError
 from .requests import (
@@ -255,6 +257,140 @@ class S7Client:
             return "".join(chunks)
         
         raise ValueError(f"Unsupported data type for large string read: {tag.data_type}")
+
+    def _write_large_string(self, tag: S7Tag, value: str) -> None:
+        """Write a STRING or WSTRING that exceeds PDU size by chunking.
+        
+        Args:
+            tag: The S7Tag representing a STRING or WSTRING
+            value: The string value to write
+        """
+        if tag.data_type == DataType.STRING:
+            # STRING: 1 byte max_length + 1 byte current_length + data
+            # Note: S7 STRING can only support up to 254 characters because
+            # both length fields are single bytes (0-255), and 255 is often reserved
+            header_size = 2
+            max_length = tag.length
+            
+            # Validate string length
+            encoded_value = value.encode('ascii', errors='replace')
+            
+            # Check if current string length exceeds byte range
+            if len(encoded_value) > 254:
+                raise S7AddressError(
+                    f"STRING value length ({len(encoded_value)}) exceeds maximum supported length (254 characters). "
+                    f"S7 STRING uses single-byte length fields and cannot store more than 254 characters. "
+                    f"Consider using WSTRING for longer strings or splitting into multiple STRING variables."
+                )
+            
+            if len(encoded_value) > max_length:
+                raise ValueError(
+                    f"String value length ({len(encoded_value)}) exceeds declared maximum length ({max_length})"
+                )
+            
+            current_length = len(encoded_value)
+            
+            # Write header (max_length and current_length)
+            # Note: max_length is stored in a single byte, so it's clamped to 254
+            header_tag = S7Tag(
+                memory_area=tag.memory_area,
+                db_number=tag.db_number,
+                data_type=DataType.BYTE,
+                start=tag.start,
+                bit_offset=0,
+                length=2
+            )
+            # Clamp max_length to 254 (safe maximum for STRING)
+            header_max_length = min(max_length, 254)
+            header_values = (header_max_length, current_length)
+            self.write([header_tag], [header_values])
+            
+            if current_length == 0:
+                return
+            
+            # Calculate chunk size
+            max_data_per_write = self.pdu_size - WRITE_REQ_OVERHEAD - WRITE_REQ_PARAM_SIZE_TAG - 4
+            
+            # Write data in chunks
+            offset = 0
+            while offset < current_length:
+                chunk_size = min(max_data_per_write, current_length - offset)
+                chunk_tag = S7Tag(
+                    memory_area=tag.memory_area,
+                    db_number=tag.db_number,
+                    data_type=DataType.CHAR,
+                    start=tag.start + header_size + offset,
+                    bit_offset=0,
+                    length=chunk_size
+                )
+                chunk_value = encoded_value[offset:offset + chunk_size].decode('ascii')
+                self.write([chunk_tag], [chunk_value])
+                offset += chunk_size
+            
+        elif tag.data_type == DataType.WSTRING:
+            # WSTRING: 2 bytes max_length + 2 bytes current_length + UTF-16 data
+            header_size = 4
+            max_length = tag.length
+            
+            # Validate string length (in characters)
+            if len(value) > max_length:
+                raise ValueError(
+                    f"String value length ({len(value)}) exceeds maximum length ({max_length})"
+                )
+            
+            current_length = len(value)
+            
+            # Write header (max_length and current_length)
+            header_tag = S7Tag(
+                memory_area=tag.memory_area,
+                db_number=tag.db_number,
+                data_type=DataType.BYTE,
+                start=tag.start,
+                bit_offset=0,
+                length=4
+            )
+            # Pack as big-endian 16-bit values (clamp to 65535 max)
+            header_max_length = min(max_length, 65535)
+            header_bytes: tuple[int, int, int, int] = (
+                (header_max_length >> 8) & 0xFF,
+                header_max_length & 0xFF,
+                (current_length >> 8) & 0xFF,
+                current_length & 0xFF
+            )
+            self.write([header_tag], [header_bytes])
+            
+            if current_length == 0:
+                return
+            
+            # Calculate chunk size (in bytes, not characters)
+            max_data_per_write = self.pdu_size - WRITE_REQ_OVERHEAD - WRITE_REQ_PARAM_SIZE_TAG - 4
+            # WSTRING uses 2 bytes per character
+            encoded_value = value.encode('utf-16-be')
+            bytes_to_write = len(encoded_value)
+            
+            # Write data in chunks
+            offset = 0
+            while offset < bytes_to_write:
+                chunk_size = min(max_data_per_write, bytes_to_write - offset)
+                # Make sure chunk_size is even (UTF-16 uses 2 bytes per char)
+                if chunk_size % 2 != 0:
+                    chunk_size -= 1
+                
+                chunk_tag = S7Tag(
+                    memory_area=tag.memory_area,
+                    db_number=tag.db_number,
+                    data_type=DataType.BYTE,
+                    start=tag.start + header_size + offset,
+                    bit_offset=0,
+                    length=chunk_size
+                )
+                chunk_bytes = encoded_value[offset:offset + chunk_size]
+                # Convert bytes to tuple of integers for BYTE write
+                chunk_values = tuple(b for b in chunk_bytes)
+                self.write([chunk_tag], [chunk_values])
+                offset += chunk_size
+        else:
+            raise ValueError(f"Unsupported data type for large string write: {tag.data_type}")
 
     @staticmethod
     def tsap_from_string(tsap_str: str) -> int:
@@ -665,16 +801,50 @@ class S7Client:
                 "Not connected to PLC. Call 'connect' before performing write operations."
             )
 
-        requests, requests_values = prepare_write_requests_and_values(
-            tags=tags_list, values=values, max_pdu=self.pdu_size
-        )
-
-        for i, request in enumerate(requests):
-            bytes_response = self.__send(
-                WriteRequest(tags=request, values=requests_values[i])
+        # Check for large tags (strings) and handle them separately
+        regular_tags = []
+        regular_values = []
+        large_string_indices = []
+        
+        for i, (tag, value) in enumerate(zip(tags_list, values)):
+            # Check if tag request exceeds PDU size
+            tag_request_size = WRITE_REQ_OVERHEAD + WRITE_REQ_PARAM_SIZE_TAG + tag.size() + 4
+            if tag_request_size > self.pdu_size:
+                # Only STRING and WSTRING support automatic chunking
+                if tag.data_type in (DataType.STRING, DataType.WSTRING):
+                    # This string is too large, will be written separately with chunking
+                    large_string_indices.append(i)
+                    self.logger.debug(
+                        f"Tag {tag} exceeds PDU size ({tag_request_size} > {self.pdu_size}), "
+                        f"will be written in chunks automatically"
+                    )
+                    self._write_large_string(tag, value)  # type: ignore
+                    continue
+                else:
+                    # Other data types cannot be automatically chunked
+                    tag_size = tag.size()
+                    max_data_size = self.pdu_size - WRITE_REQ_OVERHEAD - WRITE_REQ_PARAM_SIZE_TAG - 4
+                    raise S7AddressError(
+                        f"{tag} requires {tag_request_size} bytes but PDU size is {self.pdu_size} bytes. "
+                        f"Maximum data size for this PDU: {max_data_size} bytes (current tag needs {tag_size} bytes). "
+                        f"For {tag.data_type.name} arrays, write in smaller chunks. "
+                        f"For STRING/WSTRING, automatic chunking is supported."
+                    )
+            regular_tags.append(tag)
+            regular_values.append(value)
+        
+        # Write regular tags if any
+        if regular_tags:
+            requests, requests_values = prepare_write_requests_and_values(
+                tags=regular_tags, values=regular_values, max_pdu=self.pdu_size
             )
-            response = WriteResponse(response=bytes_response, tags=request)
-            response.parse()
+
+            for i, request in enumerate(requests):
+                bytes_response = self.__send(
+                    WriteRequest(tags=request, values=requests_values[i])
+                )
+                response = WriteResponse(response=bytes_response, tags=request)
+                response.parse()
 
     def get_cpu_status(self) -> str:
         """Get the current CPU operating status (RUN or STOP).
