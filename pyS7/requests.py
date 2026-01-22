@@ -250,6 +250,84 @@ class ReadRequest(Request):
         return packet
 
 
+# Helper functions for data packing to reduce code duplication
+def _pack_numeric_data(data: Union[int, float, Tuple[Union[int, float], ...]], 
+                       format_char: str, 
+                       length: int) -> bytes:
+    """Pack numeric data (int, float) using struct.pack.
+    
+    Args:
+        data: Single value or tuple of values
+        format_char: struct format character (e.g., 'h' for INT, 'f' for REAL)
+        length: Number of elements to pack
+        
+    Returns:
+        Packed bytes
+    """
+    if isinstance(data, tuple):
+        return struct.pack(f">{length * format_char}", *data)
+    else:
+        return struct.pack(f">{format_char}", data)
+
+
+def _pack_string_data(data: str, max_length: int, tag: S7Tag, encoding: str = "ascii") -> bytes:
+    """Pack STRING data with header and padding.
+    
+    Args:
+        data: String to pack
+        max_length: Maximum string length
+        tag: Tag for error messages
+        encoding: Character encoding (default: ascii)
+        
+    Returns:
+        Packed bytes with header and padding
+        
+    Raises:
+        S7AddressError: If data type is incorrect or string is too long
+    """
+    if not isinstance(data, str):
+        raise S7AddressError(
+            f"STRING data must be str, got {type(data).__name__}"
+        )
+    encoded = data.encode(encoding=encoding)
+    if len(encoded) > max_length:
+        raise S7AddressError(
+            f"STRING data too long for {tag}: max length is {max_length}, got {len(encoded)}"
+        )
+    header = bytes([max_length, len(encoded)])
+    padding = b"\x00" * (max_length - len(encoded))
+    return header + encoded + padding
+
+
+def _pack_wstring_data(data: str, max_length: int, tag: S7Tag) -> bytes:
+    """Pack WSTRING data with header and padding.
+    
+    Args:
+        data: String to pack
+        max_length: Maximum string length in characters
+        tag: Tag for error messages
+        
+    Returns:
+        Packed bytes with header and padding
+        
+    Raises:
+        S7AddressError: If data type is incorrect or string is too long
+    """
+    if not isinstance(data, str):
+        raise S7AddressError(
+            f"WSTRING data must be str, got {type(data).__name__}"
+        )
+    encoded = data.encode(encoding="utf-16-be")
+    if len(encoded) // 2 > max_length:  # Each char is 2 bytes
+        raise S7AddressError(
+            f"WSTRING data too long for {tag}: max length is {max_length} chars, got {len(encoded) // 2}"
+        )
+    # WSTRING uses 2-byte headers (unlike STRING which uses 1-byte headers)
+    header = struct.pack(">HH", max_length, len(data))  # Big-endian 16-bit values
+    padding = b"\x00" * ((max_length - len(data)) * 2)  # 2 bytes per char
+    return header + encoded + padding
+
+
 class WriteRequest(Request):
     """Request for writing data to an S7 device."""
 
@@ -315,10 +393,8 @@ class WriteRequest(Request):
             elif tag.data_type == DataType.BYTE:
                 transport_size = DataTypeData.BYTE_WORD_DWORD
                 new_length = tag.length * DataTypeSize[tag.data_type] * 8
-                if isinstance(data, tuple):
-                    packed_data = struct.pack(f">{tag.length * 'B'}", *data)
-                else:
-                    packed_data = struct.pack(">B", data)
+                # data can be int or tuple of ints for BYTE
+                packed_data = _pack_numeric_data(data, 'B', tag.length)  # type: ignore[arg-type]
 
             elif tag.data_type == DataType.CHAR:
                 transport_size = DataTypeData.BYTE_WORD_DWORD
@@ -331,85 +407,46 @@ class WriteRequest(Request):
 
             elif tag.data_type == DataType.STRING:
                 transport_size = DataTypeData.BYTE_WORD_DWORD
-                max_length = tag.length
-                if not isinstance(data, str):
-                    raise S7AddressError(
-                        f"STRING data must be str, got {type(data).__name__}"
-                    )
-                encoded = data.encode(encoding="ascii")
-                if len(encoded) > max_length:
-                    raise S7AddressError(
-                        f"STRING data too long for {tag}: max length is {max_length}, got {len(encoded)}"
-                    )
                 new_length = tag.size() * 8
-                header = bytes([max_length, len(encoded)])
-                padding = b"\x00" * (max_length - len(encoded))
-                packed_data = header + encoded + padding
+                # Type checked inside _pack_string_data
+                packed_data = _pack_string_data(data, tag.length, tag)  # type: ignore[arg-type]
 
             elif tag.data_type == DataType.WSTRING:
                 transport_size = DataTypeData.BYTE_WORD_DWORD
-                max_length = tag.length
-                if not isinstance(data, str):
-                    raise S7AddressError(
-                        f"WSTRING data must be str, got {type(data).__name__}"
-                    )
-                encoded = data.encode(encoding="utf-16-be")
-                if len(encoded) // 2 > max_length:  # Each char is 2 bytes
-                    raise S7AddressError(
-                        f"WSTRING data too long for {tag}: max length is {max_length} chars, got {len(encoded) // 2}"
-                    )
                 new_length = tag.size() * 8
-                # WSTRING uses 2-byte headers (unlike STRING which uses 1-byte headers)
-                header = struct.pack(">HH", max_length, len(data))  # Big-endian 16-bit values
-                padding = b"\x00" * ((max_length - len(data)) * 2)  # 2 bytes per char
-                packed_data = header + encoded + padding
+                # Type checked inside _pack_wstring_data
+                packed_data = _pack_wstring_data(data, tag.length, tag)  # type: ignore[arg-type]
 
             elif tag.data_type == DataType.INT:
                 transport_size = DataTypeData.BYTE_WORD_DWORD
                 new_length = tag.length * DataTypeSize[tag.data_type] * 8
-                if isinstance(data, tuple):
-                    packed_data = struct.pack(f">{tag.length * 'h'}", *data)
-                else:
-                    packed_data = struct.pack(">h", data)
+                packed_data = _pack_numeric_data(data, 'h', tag.length)  # type: ignore[arg-type]
 
             elif tag.data_type == DataType.WORD:
                 transport_size = DataTypeData.BYTE_WORD_DWORD
                 new_length = tag.length * DataTypeSize[tag.data_type] * 8
-                if isinstance(data, tuple):
-                    packed_data = struct.pack(f">{tag.length * 'H'}", *data)
-                else:
-                    packed_data = struct.pack(">H", data)
+                packed_data = _pack_numeric_data(data, 'H', tag.length)  # type: ignore[arg-type]
 
             elif tag.data_type == DataType.DWORD:
                 transport_size = DataTypeData.BYTE_WORD_DWORD
                 new_length = tag.length * DataTypeSize[tag.data_type] * 8
-                if isinstance(data, tuple):
-                    packed_data = struct.pack(f">{tag.length * 'I'}", *data)
-                else:
-                    packed_data = struct.pack(">I", data)
+                packed_data = _pack_numeric_data(data, 'I', tag.length)  # type: ignore[arg-type]
 
             elif tag.data_type == DataType.DINT:
                 transport_size = DataTypeData.BYTE_WORD_DWORD
                 new_length = tag.length * DataTypeSize[tag.data_type] * 8
-                if isinstance(data, tuple):
-                    packed_data = struct.pack(f">{tag.length * 'l'}", *data)
-                else:
-                    packed_data = struct.pack(">l", data)
+                packed_data = _pack_numeric_data(data, 'l', tag.length)  # type: ignore[arg-type]
 
             elif tag.data_type == DataType.REAL:
                 transport_size = DataTypeData.BYTE_WORD_DWORD
                 new_length = tag.length * DataTypeSize[tag.data_type] * 8
-                if isinstance(data, tuple):
-                    packed_data = struct.pack(f">{tag.length * 'f'}", *data)
-                else:
-                    packed_data = struct.pack(">f", data)
+                packed_data = _pack_numeric_data(data, 'f', tag.length)  # type: ignore[arg-type]
+
             elif tag.data_type == DataType.LREAL:
                 transport_size = DataTypeData.BYTE_WORD_DWORD
                 new_length = tag.length * DataTypeSize[tag.data_type] * 8
-                if isinstance(data, tuple):
-                    packed_data = struct.pack(f">{tag.length * 'd'}", *data)
-                else:
-                    packed_data = struct.pack(">d", data)
+                packed_data = _pack_numeric_data(data, 'd', tag.length)  # type: ignore[arg-type]
+
             else:
                 raise RuntimeError(
                     f"DataType {tag.data_type} not supported for write operations"
