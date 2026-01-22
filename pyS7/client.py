@@ -3,7 +3,7 @@ import socket
 import struct
 import threading
 from types import TracebackType
-from typing import Any, Dict, List, Optional, Sequence, Union, cast
+from typing import Any, Dict, List, Optional, Sequence, Type, Union, cast
 
 from .address_parser import map_address_to_tag
 from .constants import (
@@ -107,7 +107,7 @@ class S7Client:
         self.connect()
         return self
 
-    def __exit__(self, exc_type: Optional[type[BaseException]], exc_val: Optional[BaseException], exc_tb: Optional[TracebackType]) -> None:
+    def __exit__(self, exc_type: Optional[Type[BaseException]], exc_val: Optional[BaseException], exc_tb: Optional[TracebackType]) -> None:
         """Context manager exit: disconnect from PLC."""
         self.disconnect()
 
