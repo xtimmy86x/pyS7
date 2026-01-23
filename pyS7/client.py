@@ -7,9 +7,11 @@ from typing import Any, Dict, List, Optional, Sequence, Type, Union, cast
 
 from .address_parser import map_address_to_tag
 from .constants import (
+    COTP_SIZE,
     MAX_JOB_CALLED,
     MAX_JOB_CALLING,
     MAX_PDU,
+    TPKT_SIZE,
     ConnectionType,
     DataType,
     READ_RES_OVERHEAD,
@@ -621,7 +623,10 @@ class S7Client:
                 self.max_jobs_called,
                 self.pdu_size,
             ) = pdu_negotiation_response.parse()
-            self.logger.debug(f"Connection established successfully. PDU size: {self.pdu_size} bytes")
+            self.logger.debug(
+                f"Connected to PLC {self.address}:{self.port} - "
+                f"PDU: {self.pdu_size} bytes, Jobs: {self.max_jobs_calling}/{self.max_jobs_called}"
+            )
         except socket.timeout as e:
             self.logger.error(f"Connection timeout during COTP/PDU negotiation: {e}")
             self.disconnect()
@@ -655,7 +660,7 @@ class S7Client:
             try:
                 self.socket.shutdown(socket.SHUT_RDWR)
                 self.socket.close()
-                self.logger.debug("Disconnected successfully")
+                self.logger.debug(f"Disconnected from PLC {self.address}:{self.port}")
             except socket.error as e:
                 self.logger.warning(f"Error during disconnect: {e}")
             finally:
@@ -685,15 +690,19 @@ class S7Client:
             >>> print(result)
             [True, 300, 20.5] # these values corresponds to the PLC data at specified addresses
         """
-        self.logger.debug(f"Reading {len(tags)} tag(s) with optimize={optimize}")
-
         list_tags: List[S7Tag] = [
             map_address_to_tag(address=tag) if isinstance(tag, str) else tag
             for tag in tags
         ]
 
         if not list_tags:
+            self.logger.debug("Read called with empty tag list")
             return []
+        
+        self.logger.debug(
+            f"Reading {len(list_tags)} tag(s) - optimize={optimize}, "
+            f"PDU={self.pdu_size} bytes"
+        )
 
         if not self.is_connected:
             raise S7CommunicationError(
@@ -746,6 +755,10 @@ class S7Client:
                 requests, tags_map = prepare_optimized_requests(
                     tags=tags_only, max_pdu=self.pdu_size
                 )
+                self.logger.debug(
+                    f"Optimized {len(tags_only)} tags into {len(requests[0])} request(s) "
+                    f"(reduction: {len(tags_only) - len(requests[0])} merges)"
+                )
 
                 bytes_reponse = self.__send(ReadRequest(tags=requests[0]))
                 response = ReadOptimizedResponse(
@@ -776,6 +789,7 @@ class S7Client:
                 data[orig_idx] = value
 
         # All elements have been filled at this point (either large strings or regular tags)
+        self.logger.debug(f"Read completed: {len(list_tags)} tag(s) retrieved successfully")
         return cast(List[Value], data)
 
     def write(self, tags: Sequence[Union[str, S7Tag]], values: Sequence[Value]) -> None:
@@ -808,7 +822,10 @@ class S7Client:
         ]
 
         if not tags_list:
+            self.logger.debug("Write called with empty tag list")
             return
+        
+        self.logger.debug(f"Writing {len(tags_list)} tag(s) to PLC")
 
         if not self.is_connected:
             raise S7CommunicationError(
@@ -859,6 +876,8 @@ class S7Client:
                 )
                 response = WriteResponse(response=bytes_response, tags=request)
                 response.parse()
+        
+        self.logger.debug(f"Write completed: {len(tags_list)} tag(s) written successfully")
 
     def get_cpu_status(self) -> str:
         """Get the current CPU operating status (RUN or STOP).
@@ -884,12 +903,15 @@ class S7Client:
             )
 
         # Request SZL ID 0x0424 (CPU diagnostic status)
+        self.logger.debug("Requesting CPU diagnostic status (SZL ID 0x0424)")
         szl_request = SZLRequest(szl_id=SZLId.CPU_DIAGNOSTIC_STATUS, szl_index=0x0000)
         bytes_response = self.__send(szl_request)
 
         # Parse the response and extract CPU status
         szl_response = SZLResponse(response=bytes_response)
-        return szl_response.parse_cpu_status()
+        cpu_status = szl_response.parse_cpu_status()
+        self.logger.debug(f"CPU status: {cpu_status}")
+        return cpu_status
 
     def get_cpu_info(self) -> Dict[str, Any]:
         """Get detailed CPU information including model, hardware/firmware versions.
@@ -936,11 +958,14 @@ class S7Client:
         try:
             with self._io_lock:
                 request_data = request.serialize()
-                self.logger.debug(f"Sending {len(request_data)} bytes to PLC")
+                self.logger.debug(
+                    f"TX -> PLC: {len(request_data)} bytes "
+                    f"[TPKT+COTP+S7]"
+                )
                 self.socket.sendall(request_data)
 
-                header = self._recv_exact(4)
-                self.logger.debug(f"Received TPKT header: {header.hex()}")
+                header = self._recv_exact(TPKT_SIZE)
+                self.logger.debug(f"RX <- PLC: TPKT header {header.hex()}")
                 if len(header) < 4:
                     raise S7CommunicationError(
                         "Incomplete TPKT header received from the PLC."
