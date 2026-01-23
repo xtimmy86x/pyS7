@@ -6,7 +6,10 @@ from .errors import (
     S7CommunicationError,
     S7ConnectionError,
     S7Error,
+    S7PDUError,
+    S7ProtocolError,
     S7ReadResponseError,
+    S7TimeoutError,
     S7WriteResponseError,
 )
 from .responses import extract_bit_from_byte
@@ -27,4 +30,7 @@ __all__ = [
     "S7ConnectionError",
     "S7ReadResponseError",
     "S7WriteResponseError",
+    "S7TimeoutError",
+    "S7ProtocolError",
+    "S7PDUError",
 ]

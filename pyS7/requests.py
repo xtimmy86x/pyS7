@@ -51,7 +51,7 @@ from .constants import (
     UserDataFunction,
     UserDataSubfunction,
 )
-from .errors import S7AddressError
+from .errors import S7AddressError, S7PDUError
 from .tag import S7Tag
 
 TagsMap = Dict[S7Tag, List[Tuple[int, S7Tag]]]
@@ -483,7 +483,7 @@ def prepare_requests(tags: List[S7Tag], max_pdu: int) -> List[List[S7Tag]]:
         ):
             tag_size = tag.size()
             max_data_size = max_pdu - READ_RES_OVERHEAD - READ_RES_PARAM_SIZE_TAG
-            raise S7AddressError(
+            raise S7PDUError(
                 f"{tag} requires {READ_RES_OVERHEAD + tag_response_size} bytes but PDU size is {max_pdu} bytes. "
                 f"Maximum data size for this PDU: {max_data_size} bytes (current tag needs {tag_size} bytes). "
                 f"Consider: 1) Negotiating larger PDU, 2) Reading in smaller chunks, or 3) Using shorter string length."
@@ -578,7 +578,7 @@ def _check_tag_fits_pdu(tag: S7Tag, max_pdu: int) -> None:
         READ_REQ_OVERHEAD + tag_request_size >= max_pdu
         or READ_RES_OVERHEAD + tag_response_size > max_pdu
     ):
-        raise S7AddressError(
+        raise S7PDUError(
             f"{tag} too big -> it cannot fit negotiated PDU ({max_pdu}). "
             f"Tag size: {tag.size()} bytes."
         )
@@ -744,7 +744,7 @@ def prepare_write_requests_and_values(
             or WRITE_RES_OVERHEAD + tag_size + 1 >= max_pdu
         ):
             max_data_size = max_pdu - WRITE_REQ_OVERHEAD - WRITE_REQ_PARAM_SIZE_TAG
-            raise S7AddressError(
+            raise S7PDUError(
                 f"{tag} requires {WRITE_REQ_OVERHEAD + WRITE_REQ_PARAM_SIZE_TAG + tag_size} bytes but PDU size is {max_pdu} bytes. "
                 f"Maximum data size for this PDU: {max_data_size} bytes (current tag needs {tag_size} bytes). "
                 f"Consider: 1) Negotiating larger PDU, 2) Writing in smaller chunks, or 3) Using shorter string length."

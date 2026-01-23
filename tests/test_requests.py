@@ -18,7 +18,7 @@ from pyS7.constants import (
     DataTypeSize,
     MemoryArea,
 )
-from pyS7.errors import S7AddressError
+from pyS7.errors import S7AddressError, S7PDUError
 from pyS7.tag import S7Tag
 from pyS7.requests import (
     ConnectionRequest,
@@ -425,7 +425,7 @@ def test_prepare_request_exception() -> None:
     tags = [
         S7Tag(MemoryArea.MERKER, 0, DataType.REAL, 0, 0, 250),
     ]
-    with pytest.raises(S7AddressError):
+    with pytest.raises(S7PDUError):
         _, _ = prepare_requests(tags=tags, max_pdu=pdu_size)
 
 
@@ -555,7 +555,7 @@ def test_prepare_write_request_exception() -> None:
     ]
     values = [tuple([0.1] * 200)]
 
-    with pytest.raises(S7AddressError):
+    with pytest.raises(S7PDUError):
         _, _ = prepare_write_requests_and_values(
             tags=tags, values=values, max_pdu=pdu_size
         )

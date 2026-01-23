@@ -36,3 +36,18 @@ class S7ReadResponseError(S7Error):
 class S7WriteResponseError(S7Error):
     """Raised when it is impossible to correctly parse a 'write' response from the peer."""
     pass
+
+
+class S7TimeoutError(S7CommunicationError):
+    """Raised when a communication timeout occurs."""
+    pass
+
+
+class S7ProtocolError(S7CommunicationError):
+    """Raised when an invalid protocol response is received."""
+    pass
+
+
+class S7PDUError(S7Error):
+    """Raised when PDU size limits are exceeded."""
+    pass

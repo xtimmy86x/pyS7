@@ -18,7 +18,13 @@ from .constants import (
     WRITE_REQ_OVERHEAD,
     WRITE_REQ_PARAM_SIZE_TAG,
 )
-from .errors import S7AddressError, S7CommunicationError, S7ConnectionError
+from .errors import (
+    S7AddressError,
+    S7CommunicationError,
+    S7ConnectionError,
+    S7ProtocolError,
+    S7TimeoutError,
+)
 from .requests import (
     ConnectionRequest,
     PDUNegotiationRequest,
@@ -568,7 +574,13 @@ class S7Client:
             # Establish TCP connection
             self.socket.connect((self.address, self.port))
             self.logger.debug(f"TCP connection established to {self.address}:{self.port}")
-        except (socket.timeout, socket.error) as e:
+        except socket.timeout as e:
+            self.socket = None
+            self.logger.error(f"Connection timeout to {self.address}:{self.port}: {e}")
+            raise S7TimeoutError(
+                f"Connection timeout to {self.address}:{self.port} after {self.timeout}s"
+            ) from e
+        except socket.error as e:
             self.socket = None
             self.logger.error(f"Failed to connect to {self.address}:{self.port}: {e}")
             raise S7ConnectionError(
@@ -610,7 +622,13 @@ class S7Client:
                 self.pdu_size,
             ) = pdu_negotiation_response.parse()
             self.logger.debug(f"Connection established successfully. PDU size: {self.pdu_size} bytes")
-        except (socket.timeout, socket.error) as e:
+        except socket.timeout as e:
+            self.logger.error(f"Connection timeout during COTP/PDU negotiation: {e}")
+            self.disconnect()
+            raise S7TimeoutError(
+                f"Connection timeout during COTP/PDU negotiation after {self.timeout}s: {e}"
+            ) from e
+        except socket.error as e:
             self.logger.error(f"Socket error during connection setup: {e}")
             self.disconnect()
             raise S7ConnectionError(f"Socket error during connection setup: {e}") from e
@@ -624,14 +642,10 @@ class S7Client:
             self.disconnect()
             raise S7ConnectionError(f"Communication error during connection setup: {e}") from e
         except (ValueError, struct.error) as e:
+            # Protocol parsing errors
             self.logger.error(f"Protocol parsing error during connection setup: {e}")
             self.disconnect()
-            raise S7ConnectionError(f"Protocol parsing error during connection setup: {e}") from e
-        except Exception as e:
-            # Catch-all for unexpected errors, but log them distinctly
-            self.logger.error(f"Unexpected error during connection setup: {e}", exc_info=True)
-            self.disconnect()
-            raise S7ConnectionError(f"Unexpected error during connection setup: {e}") from e
+            raise S7ProtocolError(f"Invalid protocol response during connection setup: {e}") from e
 
     def disconnect(self) -> None:
         """Closes the TCP connection with the S7 PLC."""
@@ -942,8 +956,8 @@ class S7Client:
                 return header + body
         except socket.timeout as e:
             self.logger.error("Socket timeout during communication")
-            raise S7CommunicationError(
-                "Socket timeout during communication."
+            raise S7TimeoutError(
+                f"Communication timeout after {self.timeout}s"
             ) from e
         except socket.error as e:
             self.logger.error(f"Socket error during communication: {e}")
