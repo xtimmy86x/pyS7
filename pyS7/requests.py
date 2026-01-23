@@ -509,40 +509,24 @@ def prepare_requests(tags: List[S7Tag], max_pdu: int) -> List[List[S7Tag]]:
     return requests
 
 
-def prepare_optimized_requests(
-    tags: List[S7Tag],
-    max_pdu: int,
-    *,
-    max_gap_bytes: int = MAX_GAP_BYTES,
-    allow_overlap: bool = True,
-) -> Tuple[List[List[S7Tag]], TagsMap]:
-    """
-    Prepare optimized read requests by:
-      - Sorting tags by (area, db, start)
-      - Pre-bucketing BIT tags that share the same byte address into a single BYTE(1) read
-        to avoid duplicate packed keys and reduce telegram count
-      - Merging tags into packed BYTE blocks:
-          * If allow_overlap=True: merge when overlap/containment happens OR gap <= max_gap_bytes
-          * If allow_overlap=False: merge only when tag starts after prev_end AND gap <= max_gap_bytes
-      - Respecting negotiated PDU limits and MAX_READ_TAGS per request
-
+def _bucket_bit_tags(tags: List[S7Tag]) -> Tuple[List[Tuple[int, S7Tag]], TagsMap]:
+    """Pre-bucket BIT tags by byte address to optimize reads.
+    
+    Groups BIT tags that share the same byte address into a single BYTE read.
+    This avoids duplicate packed keys and works around PLCs that don't support
+    single BIT reads reliably.
+    
+    Args:
+        tags: List of tags to process
+        
     Returns:
-      requests: List of request batches; each batch is a list of packed tags to be sent
-      in one ReadRequest
-      groups:   Mapping packed_tag -> list of (original_index, original_tag) for decoding
-      in the optimized response parser
+        Tuple of (work_items, initial_groups) where:
+        - work_items: List of (index, tag) tuples ready for processing
+        - initial_groups: TagsMap with packed BYTE tags already grouped
     """
-    requests: List[List[S7Tag]] = [[]]
-    groups: TagsMap = {}
-
-    cum_req = READ_REQ_OVERHEAD
-    cum_res = READ_RES_OVERHEAD
-
-    # --- 0) Pre-bucket BIT tags by (area, db, byte_start) ---
-    # This avoids collisions when many bits belong to the same byte (e.g. X0.0..X0.7),
-    # and it also works around PLCs that do not support single BIT reads reliably.
     bit_buckets: Dict[Tuple[int, int, int], List[Tuple[int, S7Tag]]] = {}
     non_bits: List[Tuple[int, S7Tag]] = []
+    groups: TagsMap = {}
 
     for idx, t in enumerate(tags):
         if t.data_type == DataType.BIT:
@@ -574,6 +558,111 @@ def prepare_optimized_requests(
 
     # Add all non-bit tags as-is
     work.extend(non_bits)
+    return work, groups
+
+
+def _check_tag_fits_pdu(tag: S7Tag, max_pdu: int) -> None:
+    """Check if a single tag fits within PDU size limits.
+    
+    Args:
+        tag: Tag to check
+        max_pdu: Maximum PDU size
+        
+    Raises:
+        S7AddressError: If tag doesn't fit in PDU
+    """
+    tag_request_size = READ_REQ_PARAM_SIZE_TAG
+    tag_response_size = READ_RES_PARAM_SIZE_TAG + tag.size()
+    
+    if (
+        READ_REQ_OVERHEAD + tag_request_size >= max_pdu
+        or READ_RES_OVERHEAD + tag_response_size > max_pdu
+    ):
+        raise S7AddressError(
+            f"{tag} too big -> it cannot fit negotiated PDU ({max_pdu}). "
+            f"Tag size: {tag.size()} bytes."
+        )
+
+
+def _try_merge_tags(prev: S7Tag, tag: S7Tag, max_gap_bytes: int, allow_overlap: bool) -> Optional[S7Tag]:
+    """Try to merge two adjacent tags into a single read.
+    
+    Args:
+        prev: Previous tag
+        tag: Current tag to merge
+        max_gap_bytes: Maximum gap allowed between tags
+        allow_overlap: Whether to allow overlapping tags
+        
+    Returns:
+        Merged tag if merge is possible, None otherwise
+    """
+    # Only merge tags in the same memory area and DB
+    if prev.memory_area != tag.memory_area or prev.db_number != tag.db_number:
+        return None
+    
+    prev_start = prev.start
+    prev_end = prev.start + prev.size()  # exclusive end in bytes
+    tag_start = tag.start
+    tag_end = tag.start + tag.size()     # exclusive end in bytes
+
+    # Positive only when tag starts after prev_end; negative/zero means overlap/containment
+    gap = tag_start - prev_end
+
+    # Decide if merge is allowed
+    if allow_overlap:
+        # Merge if overlap/containment (gap <= 0) OR within gap threshold
+        merge_ok = gap <= max_gap_bytes
+    else:
+        # Merge only when strictly after previous range AND within gap threshold
+        merge_ok = (gap >= 0) and (gap <= max_gap_bytes)
+
+    if not merge_ok:
+        return None
+    
+    new_start = prev_start
+    new_end = max(prev_end, tag_end)
+    new_len = new_end - new_start
+
+    return S7Tag(
+        memory_area=prev.memory_area,
+        db_number=prev.db_number,
+        data_type=DataType.BYTE,
+        start=new_start,
+        bit_offset=0,
+        length=new_len,
+    )
+
+
+def prepare_optimized_requests(
+    tags: List[S7Tag],
+    max_pdu: int,
+    *,
+    max_gap_bytes: int = MAX_GAP_BYTES,
+    allow_overlap: bool = True,
+) -> Tuple[List[List[S7Tag]], TagsMap]:
+    """
+    Prepare optimized read requests by:
+      - Sorting tags by (area, db, start)
+      - Pre-bucketing BIT tags that share the same byte address into a single BYTE(1) read
+        to avoid duplicate packed keys and reduce telegram count
+      - Merging tags into packed BYTE blocks:
+          * If allow_overlap=True: merge when overlap/containment happens OR gap <= max_gap_bytes
+          * If allow_overlap=False: merge only when tag starts after prev_end AND gap <= max_gap_bytes
+      - Respecting negotiated PDU limits and MAX_READ_TAGS per request
+
+    Returns:
+      requests: List of request batches; each batch is a list of packed tags to be sent
+      in one ReadRequest
+      groups:   Mapping packed_tag -> list of (original_index, original_tag) for decoding
+      in the optimized response parser
+    """
+    requests: List[List[S7Tag]] = [[]]
+    
+    # Pre-bucket BIT tags and prepare work items
+    work, groups = _bucket_bit_tags(tags)
+    
+    cum_req = READ_REQ_OVERHEAD
+    cum_res = READ_RES_OVERHEAD
 
     # Sort by address (the index is used only for stable ordering in the final decoded output)
     sorted_tags = sorted(
@@ -581,25 +670,8 @@ def prepare_optimized_requests(
         key=lambda elem: (elem[1].memory_area.value, elem[1].db_number, elem[1].start),
     )
 
-    def _tag_request_size(_: S7Tag) -> int:
-        return READ_REQ_PARAM_SIZE_TAG
-
-    def _tag_response_size(t: S7Tag) -> int:
-        return READ_RES_PARAM_SIZE_TAG + t.size()
-
-    def _check_tag_fits(t: S7Tag) -> None:
-        # Check single-tag feasibility against negotiated PDU size
-        if (
-            READ_REQ_OVERHEAD + _tag_request_size(t) >= max_pdu
-            or READ_RES_OVERHEAD + _tag_response_size(t) > max_pdu
-        ):
-            raise S7AddressError(
-                f"{t} too big -> it cannot fit negotiated PDU ({max_pdu}). "
-                f"Tag size: {t.size()} bytes."
-            )
-
     for idx, tag in sorted_tags:
-        _check_tag_fits(tag)
+        _check_tag_fits_pdu(tag, max_pdu)
 
         # Ensure every tag has an entry in the mapping
         if tag not in groups:
@@ -608,71 +680,46 @@ def prepare_optimized_requests(
         # First element in current request
         if not requests[-1]:
             requests[-1].append(tag)
-            cum_req += _tag_request_size(tag)
-            cum_res += _tag_response_size(tag)
+            cum_req += READ_REQ_PARAM_SIZE_TAG
+            cum_res += READ_RES_PARAM_SIZE_TAG + tag.size()
             continue
 
+        # Calculate sizes for current tag
+        tag_req_size = READ_REQ_PARAM_SIZE_TAG
+        tag_res_size = READ_RES_PARAM_SIZE_TAG + tag.size()
+        
         # If there is no room in the current request, start a new one
         if not (
-            cum_req + _tag_request_size(tag) < max_pdu
-            and cum_res + _tag_response_size(tag) < max_pdu
+            cum_req + tag_req_size < max_pdu
+            and cum_res + tag_res_size < max_pdu
             and len(requests[-1]) < MAX_READ_TAGS
         ):
             requests.append([tag])
-            cum_req = READ_REQ_OVERHEAD + _tag_request_size(tag)
-            cum_res = READ_RES_OVERHEAD + _tag_response_size(tag)
+            cum_req = READ_REQ_OVERHEAD + tag_req_size
+            cum_res = READ_RES_OVERHEAD + tag_res_size
             continue
 
         prev = requests[-1][-1]
 
-        # Attempt merging with previous tag if in the same memory area and DB
-        if prev.memory_area == tag.memory_area and prev.db_number == tag.db_number:
-            prev_start = prev.start
-            prev_end = prev.start + prev.size()  # exclusive end in bytes
-            tag_start = tag.start
-            tag_end = tag.start + tag.size()     # exclusive end in bytes
+        # Attempt merging with previous tag
+        merged_tag = _try_merge_tags(prev, tag, max_gap_bytes, allow_overlap)
+        if merged_tag is not None:
+            # Request tag count does not increase (we replace prev with merged_tag),
+            # only the response payload for that item grows.
+            delta_res = merged_tag.size() - prev.size()
+            if cum_res + delta_res < max_pdu:
+                prev_map = groups.pop(prev, [(idx, prev)])
+                cur_map = groups.pop(tag, [(idx, tag)])
+                groups[merged_tag] = prev_map + cur_map
 
-            # Positive only when tag starts after prev_end; negative/zero means overlap/containment
-            gap = tag_start - prev_end
-
-            # Decide if merge is allowed
-            if allow_overlap:
-                # Merge if overlap/containment (gap <= 0) OR within gap threshold
-                merge_ok = gap <= max_gap_bytes
-            else:
-                # Merge only when strictly after previous range AND within gap threshold
-                merge_ok = (gap >= 0) and (gap <= max_gap_bytes)
-
-            if merge_ok:
-                new_start = prev_start
-                new_end = max(prev_end, tag_end)
-                new_len = new_end - new_start
-
-                new_tag = S7Tag(
-                    memory_area=prev.memory_area,
-                    db_number=prev.db_number,
-                    data_type=DataType.BYTE,
-                    start=new_start,
-                    bit_offset=0,
-                    length=new_len,
-                )
-
-                # Request tag count does not increase (we replace prev with new_tag),
-                # only the response payload for that item grows.
-                delta_res = new_tag.size() - prev.size()
-                if cum_res + delta_res < max_pdu:
-                    prev_map = groups.pop(prev, [(idx, prev)])
-                    cur_map = groups.pop(tag, [(idx, tag)])
-                    groups[new_tag] = prev_map + cur_map
-
-                    requests[-1][-1] = new_tag
-                    cum_res += delta_res
-                    continue
+                requests[-1][-1] = merged_tag
+                cum_res += delta_res
+                continue
 
         # No merge: append tag to the request
         requests[-1].append(tag)
-        cum_req += _tag_request_size(tag)
-        cum_res += _tag_response_size(tag)
+        cum_req += tag_req_size
+        cum_res += tag_res_size
 
     return requests, groups
 
