@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pys7"
-version = "2.4.0"
+version = "2.5.0"
 description = "Lightweight Python library for Siemens S7 over ISO-on-TCP (RFC1006)."
 readme = { file = "Readme.md", content-type = "text/markdown" }
 requires-python = ">=3.8"
@@ -14,7 +14,7 @@ authors = [
     { name = "Alessandro", email = "xtimmy86x@gmail.com" }
 ]
 classifiers = [
-  "Development Status :: 4 - Beta",
+  "Development Status :: 5 - Production/Stable",
   "Intended Audience :: Developers",
   "Intended Audience :: Manufacturing",
   "License :: OSI Approved :: MIT License",

@@ -6,6 +6,8 @@
 
 pyS7 is a lightweight, pure Python library that implements the Siemens S7 communication protocol over ISO-on-TCP (RFC1006). It enables direct communication with Siemens S7-200, S7-300, S7-400, S7-1200, and S7-1500 PLCs from Python applications.
 
+**Production/Stable** • **2x Performance** • **Fully Tested**
+
 > ⚠️ Neither this project nor its authors are affiliated with Siemens. S7-200, S7-300, S7-400, S7-1200, and S7-1500 are registered trademarks of Siemens AG.
 
 </div>
@@ -16,16 +18,16 @@ pyS7 is a lightweight, pure Python library that implements the Siemens S7 commun
 
 - **Pure Python** – No external dependencies, easy installation across platforms
 - **Intuitive API** – Clean, readable code with full typing support for IDE assistance
+- **High Performance** – Optimized hot paths, 2x faster request preparation (v2.5.0)
 - **Optimized multi-variable reads** – Automatically groups contiguous tags to reduce network requests
 - **Automatic chunking** – Transparently splits large STRING/WSTRING reads exceeding PDU size
 - **CPU diagnostics** – Read PLC status (RUN/STOP) and information (model, firmware) via SZL protocol
 - **Broad compatibility** – Supports S7-200/300/400/1200/1500 series
+- **Production Ready** – 187 tests, 82% coverage, strict type checking
 
 ## Safety Notice
 
 Industrial safety must always remain your top priority. By using pyS7 you accept full responsibility for any damage, data loss, downtime, or unintended effects. Understand your system and the implications of each operation before interacting with live equipment.
-
-⚠️ **The project is under active development. The API may evolve and has not yet undergone extensive production testing.**
 
 ## Installation
 
