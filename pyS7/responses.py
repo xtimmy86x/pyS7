@@ -260,6 +260,14 @@ class WriteResponse:
 
 
 def _return_code_name(return_code: int) -> str:
+    """Convert return code to human-readable name.
+    
+    Args:
+        return_code: Numeric return code from PLC response
+        
+    Returns:
+        Enum name if recognized, otherwise formatted hex string
+    """
     try:
         return ReturnCode(return_code).name
     except ValueError:

@@ -66,6 +66,17 @@ HEADER_SIZE = TPKT_SIZE + COTP_SIZE + S7_HEADER_SIZE
 
 
 def _init_s7_packet(message_type: MessageType) -> Tuple[bytearray, int]:
+    """Initialize an S7 packet with TPKT, COTP, and S7 headers.
+    
+    Creates the base packet structure with placeholders for lengths.
+    Placeholders are filled by _finalize_packet after adding parameters and data.
+    
+    Args:
+        message_type: Type of S7 message (JOB, ACK_DATA, USERDATA)
+        
+    Returns:
+        Tuple of (packet bytearray, header size offset)
+    """
     packet = bytearray()
     packet.extend(b"\x03\x00\x00\x00")  # TPKT header with placeholder length
     packet.extend(b"\x02\xf0\x80")  # COTP header
@@ -80,6 +91,16 @@ def _init_s7_packet(message_type: MessageType) -> Tuple[bytearray, int]:
 
 
 def _finalize_packet(packet: bytearray, parameter_start: int, data_start: int) -> None:
+    """Finalize S7 packet by updating length fields.
+    
+    Updates TPKT total length, S7 parameter length, and S7 data length
+    based on the final packet size and section boundaries.
+    
+    Args:
+        packet: Packet to finalize (modified in-place)
+        parameter_start: Byte offset where parameters begin
+        data_start: Byte offset where data begins
+    """
     parameter_length = data_start - parameter_start
     data_length = len(packet) - data_start
 

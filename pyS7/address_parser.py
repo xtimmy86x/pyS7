@@ -92,6 +92,21 @@ def build_tag(
     bit_offset: int,
     length: int,
 ) -> S7Tag:
+    """Build an S7Tag from component parameters.
+    
+    Simple wrapper around S7Tag constructor for consistency.
+    
+    Args:
+        memory_area: Memory area (DB, INPUT, OUTPUT, MERKER, etc.)
+        db_number: DB number (0 for non-DB areas)
+        data_type: Data type (BIT, BYTE, INT, REAL, STRING, etc.)
+        start: Start byte address
+        bit_offset: Bit offset within byte (0-7, used for BIT type)
+        length: Length in units appropriate to data_type
+        
+    Returns:
+        Constructed S7Tag instance
+    """
     return S7Tag(
         memory_area=memory_area,
         db_number=db_number,
@@ -110,6 +125,25 @@ def _token_to_tag(
     bit_offset: Optional[str],
     address: str,
 ) -> S7Tag:
+    """Convert a data type token to an S7Tag.
+    
+    Validates token against TOKEN_TABLE and processes bit_offset based on
+    whether it is required, represents length (for strings), or not allowed.
+    
+    Args:
+        token: Data type token (e.g., 'X', 'B', 'I', 'S')
+        memory_area: Memory area for the tag
+        db_number: DB number (0 for non-DB areas)
+        start: Start byte address
+        bit_offset: Optional bit offset or length (as string)
+        address: Original address string for error messages
+        
+    Returns:
+        Constructed S7Tag
+        
+    Raises:
+        S7AddressError: If token is invalid or bit_offset is incorrect
+    """
     info = TOKEN_TABLE.get(token)
     if info is None:
         raise S7AddressError(f"Impossible to parse address: '{address}'")
