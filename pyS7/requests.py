@@ -495,14 +495,16 @@ def prepare_requests(tags: List[S7Tag], max_pdu: int) -> List[List[S7Tag]]:
     cumulated_response_size = READ_RES_OVERHEAD
 
     for tag in tags:
+        # Cache tag size to avoid multiple calls (performance optimization)
+        tag_size = tag.size()
+        
         tag_request_size = READ_REQ_PARAM_SIZE_TAG
-        tag_response_size = READ_RES_PARAM_SIZE_TAG + tag.size()
+        tag_response_size = READ_RES_PARAM_SIZE_TAG + tag_size
 
         if (
             READ_REQ_OVERHEAD + tag_request_size >= max_pdu
             or READ_RES_OVERHEAD + tag_response_size > max_pdu
         ):
-            tag_size = tag.size()
             max_data_size = max_pdu - READ_RES_OVERHEAD - READ_RES_PARAM_SIZE_TAG
             raise S7PDUError(
                 f"{tag} requires {READ_RES_OVERHEAD + tag_response_size} bytes but PDU size is {max_pdu} bytes. "
@@ -518,13 +520,13 @@ def prepare_requests(tags: List[S7Tag], max_pdu: int) -> List[List[S7Tag]]:
             requests[-1].append(tag)
 
             cumulated_request_size += READ_REQ_PARAM_SIZE_TAG
-            cumulated_response_size += READ_RES_PARAM_SIZE_TAG + tag.size()
+            cumulated_response_size += READ_RES_PARAM_SIZE_TAG + tag_size
 
         else:
             requests.append([tag])
             cumulated_request_size = READ_REQ_OVERHEAD + READ_REQ_PARAM_SIZE_TAG
             cumulated_response_size = (
-                READ_RES_OVERHEAD + READ_RES_PARAM_SIZE_TAG + tag.size()
+                READ_RES_OVERHEAD + READ_RES_PARAM_SIZE_TAG + tag_size
             )
 
     return requests
@@ -757,6 +759,7 @@ def prepare_write_requests_and_values(
     response_size = WRITE_RES_OVERHEAD
 
     for i, tag in enumerate(tags):
+        # Cache tag size to avoid duplicate calls (performance optimization)
         tag_size = tag.size()
         tag_padding = tag_size % 2
 
