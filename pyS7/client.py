@@ -11,6 +11,9 @@ from .constants import (
     MAX_JOB_CALLED,
     MAX_JOB_CALLING,
     MAX_PDU,
+    MAX_PDU_SIZE,
+    MIN_PDU_SIZE,
+    RECOMMENDED_MIN_PDU,
     TPKT_SIZE,
     ConnectionType,
     DataType,
@@ -531,6 +534,56 @@ class S7Client:
                 f"got 0x{tsap_value:04X} ({tsap_value})"
             )
 
+    def _validate_and_adjust_pdu(self, requested: int, negotiated: int) -> int:
+        """Validate the negotiated PDU size and warn user if needed.
+        
+        Args:
+            requested: PDU size requested by client
+            negotiated: PDU size returned by PLC
+            
+        Returns:
+            Validated and possibly adjusted PDU size
+            
+        Raises:
+            S7ConnectionError: If negotiated PDU is invalid
+        """
+        # 1. Check protocol limits
+        if negotiated <= 0 or negotiated < MIN_PDU_SIZE:
+            raise S7ConnectionError(
+                f"PLC returned invalid PDU size: {negotiated} bytes. "
+                f"Minimum required: {MIN_PDU_SIZE} bytes. "
+                f"Check PLC configuration or try a different connection type."
+            )
+        
+        if negotiated > MAX_PDU_SIZE:
+            self.logger.warning(
+                f"PLC returned unusually large PDU size: {negotiated} bytes, "
+                f"clamping to protocol maximum: {MAX_PDU_SIZE} bytes"
+            )
+            negotiated = MAX_PDU_SIZE
+        
+        # 2. Warn if PDU is very small
+        if negotiated < RECOMMENDED_MIN_PDU:
+            self.logger.warning(
+                f"⚠️  PLC negotiated very small PDU: {negotiated} bytes. "
+                f"This may limit functionality and performance. "
+                f"Recommended minimum: {RECOMMENDED_MIN_PDU} bytes. "
+                f"Consider: 1) Checking PLC configuration, 2) Using larger PDU in TIA Portal, "
+                f"3) Reading/writing smaller data chunks."
+            )
+        
+        # 3. Info if significantly reduced from request
+        if negotiated < requested:
+            reduction_percent = ((requested - negotiated) / requested) * 100
+            if reduction_percent >= 20:
+                self.logger.info(
+                    f"PDU size reduced by {reduction_percent:.0f}%: "
+                    f"requested {requested} bytes, negotiated {negotiated} bytes. "
+                    f"Operations will be automatically adjusted to fit smaller PDU."
+                )
+        
+        return negotiated
+
     @staticmethod
     def _validate_tsap(local_tsap: Optional[int], remote_tsap: Optional[int]) -> None:
         """Validate TSAP values are within valid ranges.
@@ -611,8 +664,9 @@ class S7Client:
             self.logger.debug("COTP connection accepted")
 
             # Communication Setup
-            pdu_negotation_request = PDUNegotiationRequest(max_pdu=self.pdu_size)
-            self.logger.debug(f"Negotiating PDU size (requested: {self.pdu_size} bytes)")
+            requested_pdu = self.pdu_size
+            pdu_negotation_request = PDUNegotiationRequest(max_pdu=requested_pdu)
+            self.logger.debug(f"Negotiating PDU size (requested: {requested_pdu} bytes)")
             pdu_negotation_bytes_response: bytes = self.__send(pdu_negotation_request)
             pdu_negotiation_response = PDUNegotiationResponse(
                 response=pdu_negotation_bytes_response
@@ -621,8 +675,12 @@ class S7Client:
             (
                 self.max_jobs_calling,
                 self.max_jobs_called,
-                self.pdu_size,
+                negotiated_pdu,
             ) = pdu_negotiation_response.parse()
+            
+            # Validate and adjust PDU size
+            self.pdu_size = self._validate_and_adjust_pdu(requested_pdu, negotiated_pdu)
+            
             self.logger.debug(
                 f"Connected to PLC {self.address}:{self.port} - "
                 f"PDU: {self.pdu_size} bytes, Jobs: {self.max_jobs_calling}/{self.max_jobs_called}"

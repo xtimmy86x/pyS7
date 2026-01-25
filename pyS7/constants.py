@@ -5,6 +5,11 @@ MAX_PDU = 960
 MAX_JOB_CALLING = 8
 MAX_JOB_CALLED = 8
 
+# PDU size limits for validation
+MIN_PDU_SIZE = 100  # Minimum practical PDU size for S7 protocol
+MAX_PDU_SIZE = 65535  # Maximum PDU size (2-byte limit)
+RECOMMENDED_MIN_PDU = 240  # Recommended minimum for normal operations
+
 MAX_READ_TAGS = 20
 MAX_WRITE_TAGS = 20
 
