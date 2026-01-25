@@ -2,6 +2,7 @@ import logging
 import socket
 import struct
 import threading
+from dataclasses import dataclass
 from types import TracebackType
 from typing import Any, Dict, List, Optional, Sequence, Type, Union, cast
 
@@ -51,6 +52,22 @@ from .responses import (
     WriteResponse,
 )
 from .tag import S7Tag
+
+
+@dataclass
+class WriteResult:
+    """Result of a single write operation.
+    
+    Attributes:
+        tag: The S7Tag that was written
+        success: True if write succeeded, False if failed
+        error: Error message if write failed, None if succeeded
+        error_code: PLC return code if available
+    """
+    tag: S7Tag
+    success: bool
+    error: Optional[str] = None
+    error_code: Optional[int] = None
 
 
 class S7Client:
@@ -936,6 +953,206 @@ class S7Client:
                 response.parse()
         
         self.logger.debug(f"Write completed: {len(tags_list)} tag(s) written successfully")
+
+    def write_detailed(
+        self, tags: Sequence[Union[str, S7Tag]], values: Sequence[Value]
+    ) -> List[WriteResult]:
+        """Writes data to an S7 PLC with detailed results for each tag.
+        
+        Unlike write(), this method does not raise an exception on write failures.
+        Instead, it returns detailed results for each tag, allowing you to see
+        which writes succeeded and which failed.
+
+        Args:
+            tags (Sequence[S7Tag | str]): A sequence of S7Tag or string addresses.
+            values (Sequence[Value]): Values to be written to the PLC.
+
+        Returns:
+            List[WriteResult]: A list of WriteResult objects, one for each tag,
+                containing success status and error information.
+
+        Raises:
+            ValueError: If the number of tags doesn't match the number of values.
+            S7CommunicationError: If not connected to PLC or communication fails.
+
+        Example:
+            >>> client = S7Client('192.168.100.10', 0, 1)
+            >>> client.connect()
+            >>> tags = ['DB1,X0.0', 'DB1,I10', 'DB2,R14']
+            >>> values = [False, 500, 40.5]
+            >>> results = client.write_detailed(tags, values)
+            >>> for result in results:
+            ...     if result.success:
+            ...         print(f"{result.tag}: SUCCESS")
+            ...     else:
+            ...         print(f"{result.tag}: FAILED - {result.error}")
+        """
+        # Validate input lengths
+        if not tags or not values:
+            raise ValueError("Tags and values lists cannot be empty")
+            
+        if len(tags) != len(values):
+            raise ValueError("Tags and values must have the same length")
+
+        # Convert string addresses to S7Tag objects
+        tags_list: List[S7Tag] = [
+            map_address_to_tag(address=tag) if isinstance(tag, str) else tag
+            for tag in tags
+        ]
+        
+        self.logger.debug(f"Writing {len(tags_list)} tag(s) to PLC with detailed results")
+
+        if not self.is_connected:
+            raise ConnectionError("Not connected to PLC")
+
+        # Initialize results list
+        results: List[WriteResult] = []
+        
+        # Track which tags have been processed
+        processed_indices = set()
+        
+        # Handle large strings separately
+        for i, (tag, value) in enumerate(zip(tags_list, values)):
+            tag_request_size = WRITE_REQ_OVERHEAD + WRITE_REQ_PARAM_SIZE_TAG + tag.size() + 4
+            if tag_request_size > self.pdu_size:
+                if tag.data_type in (DataType.STRING, DataType.WSTRING):
+                    # Write large string with chunking
+                    try:
+                        self._write_large_string(tag, value)  # type: ignore
+                        results.append(WriteResult(tag=tag, success=True))
+                        processed_indices.add(i)
+                        self.logger.debug(f"Large string write succeeded: {tag}")
+                    except Exception as e:
+                        results.append(
+                            WriteResult(
+                                tag=tag,
+                                success=False,
+                                error=f"Large string write failed: {str(e)}"
+                            )
+                        )
+                        processed_indices.add(i)
+                        self.logger.warning(f"Large string write failed: {tag} - {e}")
+                else:
+                    # Tag too large for PDU
+                    tag_size = tag.size()
+                    max_data_size = self.pdu_size - WRITE_REQ_OVERHEAD - WRITE_REQ_PARAM_SIZE_TAG - 4
+                    results.append(
+                        WriteResult(
+                            tag=tag,
+                            success=False,
+                            error=f"Tag exceeds PDU size: {tag_request_size} bytes > {self.pdu_size} bytes. "
+                                  f"Maximum: {max_data_size} bytes. Split into smaller chunks."
+                        )
+                    )
+                    processed_indices.add(i)
+        
+        # Collect regular tags (not yet processed)
+        regular_tags = []
+        regular_values = []
+        regular_indices = []
+        
+        for i, (tag, value) in enumerate(zip(tags_list, values)):
+            if i not in processed_indices:
+                regular_tags.append(tag)
+                regular_values.append(value)
+                regular_indices.append(i)
+        
+        # Write regular tags in batches
+        if regular_tags:
+            requests, requests_values = prepare_write_requests_and_values(
+                tags=regular_tags, values=regular_values, max_pdu=self.pdu_size
+            )
+
+            # Track results for each batch
+            tag_offset = 0
+            for batch_idx, request in enumerate(requests):
+                try:
+                    bytes_response = self.__send(
+                        WriteRequest(tags=request, values=requests_values[batch_idx])
+                    )
+                    # Parse with detailed results (don't raise on error)
+                    batch_results = self._parse_write_response_detailed(
+                        bytes_response, request
+                    )
+                    
+                    # Map batch results back to original indices
+                    for j, batch_result in enumerate(batch_results):
+                        orig_idx = regular_indices[tag_offset + j]
+                        results.append(batch_result)
+                    
+                    tag_offset += len(request)
+                    
+                except Exception as e:
+                    # Communication error - mark all tags in this batch as failed
+                    self.logger.error(f"Batch {batch_idx + 1} communication error: {e}")
+                    for j in range(len(request)):
+                        orig_idx = regular_indices[tag_offset + j]
+                        results.append(
+                            WriteResult(
+                                tag=request[j],
+                                success=False,
+                                error=f"Communication error: {str(e)}"
+                            )
+                        )
+                    tag_offset += len(request)
+        
+        # Sort results by original tag order
+        # Create mapping of tag to original index
+        tag_to_index = {id(tag): i for i, tag in enumerate(tags_list)}
+        results_sorted = sorted(results, key=lambda r: tag_to_index.get(id(r.tag), 0))
+        
+        # Log summary
+        success_count = sum(1 for r in results_sorted if r.success)
+        failure_count = len(results_sorted) - success_count
+        self.logger.info(
+            f"Write detailed completed: {success_count} succeeded, {failure_count} failed "
+            f"(total: {len(results_sorted)} tags)"
+        )
+        
+        return results_sorted
+
+    def _parse_write_response_detailed(
+        self, bytes_response: bytes, tags: List[S7Tag]
+    ) -> List[WriteResult]:
+        """Parse write response and return detailed results for each tag.
+        
+        Unlike the standard parse that raises on first error, this collects
+        all results and returns them.
+        """
+        from .constants import ReturnCode
+        from .responses import WRITE_RES_OVERHEAD, _return_code_name
+        
+        results = []
+        offset = WRITE_RES_OVERHEAD
+        
+        for tag in tags:
+            try:
+                return_code = struct.unpack_from(">B", bytes_response, offset)[0]
+                offset += 1
+                
+                if return_code == ReturnCode.SUCCESS.value:
+                    results.append(WriteResult(tag=tag, success=True))
+                else:
+                    error_name = _return_code_name(return_code)
+                    results.append(
+                        WriteResult(
+                            tag=tag,
+                            success=False,
+                            error=f"PLC returned error: {error_name}",
+                            error_code=return_code
+                        )
+                    )
+            except Exception as e:
+                # Parsing error for this tag
+                results.append(
+                    WriteResult(
+                        tag=tag,
+                        success=False,
+                        error=f"Failed to parse response: {str(e)}"
+                    )
+                )
+        
+        return results
 
     def get_cpu_status(self) -> str:
         """Get the current CPU operating status (RUN or STOP).

@@ -1,5 +1,5 @@
 from .address_parser import map_address_to_tag
-from .client import S7Client
+from .client import S7Client, WriteResult
 from .constants import ConnectionType, DataType, MemoryArea, SZLId
 from .errors import (
     S7AddressError,
@@ -18,6 +18,7 @@ from .tag import S7Tag
 __all__ = [
     "S7Client",
     "S7Tag",
+    "WriteResult",
     "map_address_to_tag",
     "extract_bit_from_byte",
     "ConnectionType",
