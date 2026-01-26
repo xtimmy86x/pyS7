@@ -72,6 +72,24 @@ class WriteResult:
 
 
 @dataclass
+class ReadResult:
+    """Result of a single read operation.
+    
+    Attributes:
+        tag: The S7Tag that was read
+        success: True if read succeeded, False if failed
+        value: The value read from PLC if successful, None if failed
+        error: Error message if read failed, None if succeeded
+        error_code: PLC return code if available
+    """
+    tag: S7Tag
+    success: bool
+    value: Optional[Value] = None
+    error: Optional[str] = None
+    error_code: Optional[int] = None
+
+
+@dataclass
 class BatchWriteTransaction:
     """Batch write transaction for atomic multi-tag writes.
     
@@ -1072,6 +1090,226 @@ class S7Client:
         self.logger.debug(f"Read completed: {len(list_tags)} tag(s) retrieved successfully")
         return cast(List[Value], data)
 
+    def read_detailed(
+        self, tags: Sequence[Union[str, S7Tag]], optimize: bool = True
+    ) -> List[ReadResult]:
+        """Reads data from an S7 PLC with detailed results for each tag.
+        
+        Unlike read(), this method does not raise an exception on read failures.
+        Instead, it returns detailed results for each tag, allowing you to see
+        which reads succeeded and which failed.
+        
+        Args:
+            tags (Sequence[S7Tag | str]): A sequence of S7Tag or string addresses.
+            optimize (bool): If True, optimize reads by merging adjacent tags.
+                Default True.
+        
+        Returns:
+            List[ReadResult]: A list of ReadResult objects, one for each tag,
+                containing success status, value, and error information.
+        
+        Raises:
+            ValueError: If no tags are provided.
+            S7CommunicationError: If not connected to PLC.
+        
+        Example:
+            >>> client = S7Client('192.168.100.10', 0, 1)
+            >>> client.connect()
+            >>> tags = ['DB1,X0.0', 'DB1,I10', 'DB99,R14']  # DB99 might not exist
+            >>> results = client.read_detailed(tags)
+            >>> for result in results:
+            ...     if result.success:
+            ...         print(f"{result.tag}: {result.value}")
+            ...     else:
+            ...         print(f"{result.tag}: FAILED - {result.error}")
+        """
+        if not tags:
+            raise ValueError("Tags list cannot be empty")
+        
+        # Convert string addresses to S7Tag objects
+        list_tags: List[S7Tag] = [
+            map_address_to_tag(address=tag) if isinstance(tag, str) else tag
+            for tag in tags
+        ]
+        
+        self.logger.debug(
+            f"Reading {len(list_tags)} tag(s) with detailed results - "
+            f"optimize={optimize}, PDU={self.pdu_size} bytes"
+        )
+        
+        if not self.is_connected:
+            raise S7CommunicationError(
+                "Not connected to PLC. Call 'connect' before performing read operations."
+            )
+        
+        # Initialize results list
+        results: List[ReadResult] = []
+        
+        # Track which tags have been processed
+        processed_indices = set()
+        
+        # Handle large strings separately
+        for i, tag in enumerate(list_tags):
+            tag_response_size = READ_RES_OVERHEAD + READ_RES_PARAM_SIZE_TAG + tag.size()
+            if tag_response_size > self.pdu_size:
+                if tag.data_type in (DataType.STRING, DataType.WSTRING):
+                    # Read large string with chunking
+                    try:
+                        value = self._read_large_string(tag)
+                        results.append(ReadResult(tag=tag, success=True, value=value))
+                        processed_indices.add(i)
+                        self.logger.debug(f"Large string read succeeded: {tag}")
+                    except Exception as e:
+                        results.append(
+                            ReadResult(
+                                tag=tag,
+                                success=False,
+                                error=f"Large string read failed: {str(e)}"
+                            )
+                        )
+                        processed_indices.add(i)
+                        self.logger.warning(f"Large string read failed: {tag} - {e}")
+                else:
+                    # Tag too large for PDU
+                    tag_size = tag.size()
+                    max_data_size = self.pdu_size - READ_RES_OVERHEAD - READ_RES_PARAM_SIZE_TAG
+                    results.append(
+                        ReadResult(
+                            tag=tag,
+                            success=False,
+                            error=f"Tag exceeds PDU size: {tag_response_size} bytes > {self.pdu_size} bytes. "
+                                  f"Maximum: {max_data_size} bytes. Read in smaller chunks."
+                        )
+                    )
+                    processed_indices.add(i)
+        
+        # Collect regular tags (not yet processed)
+        regular_tags = [
+            (i, tag) for i, tag in enumerate(list_tags) if i not in processed_indices
+        ]
+        
+        # Read regular tags if any
+        if regular_tags:
+            tags_only = [tag for _, tag in regular_tags]
+            
+            try:
+                if optimize:
+                    requests, tags_map = prepare_optimized_requests(
+                        tags=tags_only, max_pdu=self.pdu_size
+                    )
+                    self.logger.debug(
+                        f"Optimized {len(tags_only)} tags into {len(requests[0])} request(s)"
+                    )
+                    
+                    # Process all requests and parse with detailed error handling
+                    all_bytes_responses = []
+                    all_requests = []
+                    
+                    for request in requests:
+                        try:
+                            bytes_response = self.__send(ReadRequest(tags=request))
+                            all_bytes_responses.append(bytes_response)
+                            all_requests.append(request)
+                        except Exception as e:
+                            # If entire request fails, mark all tags in it as failed
+                            for req_tag in request:
+                                # Find original tags that match this request tag
+                                for orig_idx, orig_tag in regular_tags:
+                                    if orig_tag == req_tag:
+                                        results.append(
+                                            ReadResult(
+                                                tag=orig_tag,
+                                                success=False,
+                                                error=f"Request failed: {str(e)}"
+                                            )
+                                        )
+                                        processed_indices.add(orig_idx)
+                            self.logger.warning(f"Read request failed: {e}")
+                    
+                    # Parse responses with detailed error handling
+                    for bytes_response, request in zip(all_bytes_responses, all_requests):
+                        # Extract only the original tag from tags_map for each request tag
+                        tag_map: Dict[S7Tag, S7Tag] = {}
+                        for key in request:
+                            mapped = tags_map.get(key)
+                            if mapped:
+                                # Get the first original tag from the list
+                                tag_map[key] = mapped[0][1]
+                        detailed_results = self._parse_read_response_detailed(
+                            bytes_response, request, tag_map
+                        )
+                        
+                        # Map back to original indices
+                        for result in detailed_results:
+                            for orig_idx, orig_tag in regular_tags:
+                                if orig_tag == result.tag and orig_idx not in processed_indices:
+                                    results.append(result)
+                                    processed_indices.add(orig_idx)
+                                    break
+                
+                else:
+                    requests = prepare_requests(tags=tags_only, max_pdu=self.pdu_size)
+                    
+                    for request in requests:
+                        try:
+                            bytes_response = self.__send(ReadRequest(tags=request))
+                            detailed_results = self._parse_read_response_detailed(
+                                bytes_response, request, None
+                            )
+                            
+                            # Map back to original indices
+                            for result in detailed_results:
+                                for orig_idx, orig_tag in regular_tags:
+                                    if orig_tag == result.tag and orig_idx not in processed_indices:
+                                        results.append(result)
+                                        processed_indices.add(orig_idx)
+                                        break
+                        
+                        except Exception as e:
+                            # Mark all tags in failed request as failed
+                            for req_tag in request:
+                                for orig_idx, orig_tag in regular_tags:
+                                    if orig_tag == req_tag and orig_idx not in processed_indices:
+                                        results.append(
+                                            ReadResult(
+                                                tag=orig_tag,
+                                                success=False,
+                                                error=f"Request failed: {str(e)}"
+                                            )
+                                        )
+                                        processed_indices.add(orig_idx)
+                            self.logger.warning(f"Read request failed: {e}")
+            
+            except Exception as e:
+                # Unexpected error, mark all remaining tags as failed
+                self.logger.error(f"Unexpected error during read_detailed: {e}")
+                for orig_idx, orig_tag in regular_tags:
+                    if orig_idx not in processed_indices:
+                        results.append(
+                            ReadResult(
+                                tag=orig_tag,
+                                success=False,
+                                error=f"Unexpected error: {str(e)}"
+                            )
+                        )
+        
+        # Sort results by original order
+        results_dict = {}
+        for result in results:
+            for i, tag in enumerate(list_tags):
+                if tag == result.tag and i not in results_dict:
+                    results_dict[i] = result
+                    break
+        
+        sorted_results = [results_dict[i] for i in sorted(results_dict.keys())]
+        
+        success_count = sum(1 for r in sorted_results if r.success)
+        self.logger.debug(
+            f"Read detailed completed: {success_count}/{len(list_tags)} tags succeeded"
+        )
+        
+        return sorted_results
+
     def write(self, tags: Sequence[Union[str, S7Tag]], values: Sequence[Value]) -> None:
         """Writes data to an S7 PLC at the specified addresses.
 
@@ -1358,6 +1596,177 @@ class S7Client:
                 )
         
         return results
+
+    def _parse_read_response_detailed(
+        self,
+        bytes_response: bytes,
+        tags: List[S7Tag],
+        tags_map: Optional[Dict[S7Tag, S7Tag]] = None
+    ) -> List[ReadResult]:
+        """Parse read response and return detailed results for each tag.
+        
+        Unlike the standard parse that raises on first error, this collects
+        all results and returns them.
+        
+        Args:
+            bytes_response: Raw response bytes from PLC
+            tags: List of tags that were requested
+            tags_map: Optional mapping for optimized reads (merged tags)
+        
+        Returns:
+            List of ReadResult objects, one per tag
+        """
+        from .constants import READ_RES_OVERHEAD, ReturnCode
+        from .responses import _return_code_name
+        
+        results = []
+        offset = READ_RES_OVERHEAD
+        
+        for tag in tags:
+            try:
+                # Read return code
+                return_code = struct.unpack_from(">B", bytes_response, offset)[0]
+                offset += 1
+                
+                if return_code == ReturnCode.SUCCESS.value:
+                    # Read transport size and length
+                    transport_size = struct.unpack_from(">B", bytes_response, offset)[0]
+                    offset += 1
+                    length_bytes = struct.unpack_from(">H", bytes_response, offset)[0]
+                    offset += 2
+                    
+                    # Calculate actual data length
+                    if transport_size in (0x03, 0x04, 0x05):  # BIT, BYTE, CHAR
+                        data_length = (length_bytes + 7) // 8
+                    else:
+                        data_length = length_bytes // 8
+                    
+                    # Extract data bytes
+                    data_bytes = bytes_response[offset:offset + data_length]
+                    offset += data_length
+                    
+                    # Handle fill byte for odd lengths
+                    if data_length % 2 != 0:
+                        offset += 1
+                    
+                    # Parse value based on data type
+                    try:
+                        value = self._parse_tag_value(tag, data_bytes, tags_map)
+                        results.append(ReadResult(tag=tag, success=True, value=value))
+                    except Exception as e:
+                        results.append(
+                            ReadResult(
+                                tag=tag,
+                                success=False,
+                                error=f"Failed to parse value: {str(e)}"
+                            )
+                        )
+                else:
+                    # Error return code - no data follows, just add fill byte for alignment
+                    error_name = _return_code_name(return_code)
+                    results.append(
+                        ReadResult(
+                            tag=tag,
+                            success=False,
+                            error=f"PLC returned error: {error_name}",
+                            error_code=return_code
+                        )
+                    )
+                    # Add fill byte for alignment after single-byte return code
+                    offset += 1
+            
+            except Exception as e:
+                # Parsing error for this tag
+                results.append(
+                    ReadResult(
+                        tag=tag,
+                        success=False,
+                        error=f"Failed to parse response: {str(e)}"
+                    )
+                )
+        
+        return results
+
+    def _parse_tag_value(
+        self,
+        tag: S7Tag,
+        data_bytes: bytes,
+        tags_map: Optional[Dict[S7Tag, S7Tag]] = None
+    ) -> Value:
+        """Parse tag value from data bytes.
+        
+        Args:
+            tag: The tag being parsed
+            data_bytes: Raw data bytes for this tag
+            tags_map: Optional mapping for optimized reads
+        
+        Returns:
+            Parsed value
+        """
+        from .responses import (
+            _parse_string,
+            _parse_wstring,
+            extract_bit_from_byte
+        )
+        
+        # Handle bit extraction for BIT type or from larger types
+        if tag.data_type == DataType.BIT:
+            # For non-optimized BIT reads, PLC returns the bit value directly (0 or 1)
+            return bool(data_bytes[0])
+        
+        # Handle string types
+        if tag.data_type == DataType.STRING:
+            return _parse_string(data_bytes, 0, tag.length)
+        
+        if tag.data_type == DataType.WSTRING:
+            return _parse_wstring(data_bytes, 0, tag.length)
+        
+        # Handle arrays (length > 1)
+        if tag.length > 1:
+            values: List[Union[int, float]] = []
+            item_size = tag.data_type.value
+            
+            for i in range(tag.length):
+                item_bytes = data_bytes[i * item_size:(i + 1) * item_size]
+                
+                if tag.data_type == DataType.BYTE:
+                    values.append(int(struct.unpack('>B', item_bytes)[0]))
+                elif tag.data_type == DataType.INT:
+                    values.append(int(struct.unpack('>h', item_bytes)[0]))
+                elif tag.data_type == DataType.WORD:
+                    values.append(int(struct.unpack('>H', item_bytes)[0]))
+                elif tag.data_type == DataType.DINT:
+                    values.append(int(struct.unpack('>i', item_bytes)[0]))
+                elif tag.data_type == DataType.DWORD:
+                    values.append(int(struct.unpack('>I', item_bytes)[0]))
+                elif tag.data_type == DataType.REAL:
+                    values.append(float(struct.unpack('>f', item_bytes)[0]))
+            
+            return tuple(values)
+        
+        # Handle single numeric types (length == 1)
+        if tag.data_type == DataType.BYTE:
+            return int(struct.unpack('>B', data_bytes)[0])
+        
+        if tag.data_type == DataType.CHAR:
+            return str(struct.unpack('>c', data_bytes)[0].decode('ascii'))
+        
+        if tag.data_type == DataType.INT:
+            return int(struct.unpack('>h', data_bytes)[0])
+        
+        if tag.data_type == DataType.WORD:
+            return int(struct.unpack('>H', data_bytes)[0])
+        
+        if tag.data_type == DataType.DINT:
+            return int(struct.unpack('>i', data_bytes)[0])
+        
+        if tag.data_type == DataType.DWORD:
+            return int(struct.unpack('>I', data_bytes)[0])
+        
+        if tag.data_type == DataType.REAL:
+            return float(struct.unpack('>f', data_bytes)[0])
+        
+        raise ValueError(f"Unsupported data type for parsing: {tag.data_type}")
 
     def batch_write(
         self,
