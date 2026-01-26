@@ -71,6 +71,131 @@ class WriteResult:
     error_code: Optional[int] = None
 
 
+@dataclass
+class BatchWriteTransaction:
+    """Batch write transaction for atomic multi-tag writes.
+    
+    Allows grouping multiple write operations into a single transaction
+    with rollback support if any write fails.
+    
+    Attributes:
+        tags: List of tags to write
+        values: List of values to write
+        auto_commit: If True, commit automatically on __exit__. Default True.
+        rollback_on_error: If True, rollback on any error. Default True.
+    
+    Example:
+        >>> with client.batch_write() as batch:
+        ...     batch.add('DB1,I0', 100)
+        ...     batch.add('DB1,I2', 200)
+        ...     # Commits automatically on context exit
+    """
+    _client: 'S7Client'
+    _tags: List[Union[str, S7Tag]]
+    _values: List[Value]
+    _original_values: Optional[List[Any]]
+    auto_commit: bool = True
+    rollback_on_error: bool = True
+    
+    def __init__(
+        self,
+        client: 'S7Client',
+        auto_commit: bool = True,
+        rollback_on_error: bool = True
+    ):
+        """Initialize batch write transaction."""
+        self._client = client
+        self._tags = []
+        self._values = []
+        self._original_values = None
+        self.auto_commit = auto_commit
+        self.rollback_on_error = rollback_on_error
+    
+    def add(self, tag: Union[str, S7Tag], value: Value) -> 'BatchWriteTransaction':
+        """Add a tag/value pair to the batch.
+        
+        Args:
+            tag: Tag address string or S7Tag object
+            value: Value to write
+            
+        Returns:
+            Self for method chaining
+        """
+        self._tags.append(tag)
+        self._values.append(value)
+        return self
+    
+    def commit(self) -> List[WriteResult]:
+        """Execute all writes in the batch.
+        
+        Returns:
+            List of WriteResult objects for each write operation
+            
+        Raises:
+            ValueError: If no tags have been added
+            S7CommunicationError: If communication fails
+        """
+        if not self._tags:
+            raise ValueError("No tags added to batch")
+        
+        # Save original values if rollback is enabled
+        if self.rollback_on_error:
+            try:
+                self._original_values = self._client.read(self._tags)
+            except Exception as e:
+                self._client.logger.warning(
+                    f"Could not read original values for rollback: {e}"
+                )
+                self._original_values = None
+        
+        # Execute writes
+        results = self._client.write_detailed(self._tags, self._values)
+        
+        # Check for failures and rollback if needed
+        if self.rollback_on_error:
+            failed_results = [r for r in results if not r.success]
+            if failed_results and self._original_values is not None:
+                self._client.logger.warning(
+                    f"Batch write had {len(failed_results)} failures, rolling back"
+                )
+                try:
+                    # Restore original values
+                    self._client.write(self._tags, self._original_values)
+                except Exception as e:
+                    self._client.logger.error(f"Rollback failed: {e}")
+        
+        return results
+    
+    def rollback(self) -> None:
+        """Manually rollback to original values.
+        
+        Raises:
+            RuntimeError: If no original values were saved
+        """
+        if self._original_values is None:
+            raise RuntimeError(
+                "Cannot rollback: no original values saved. "
+                "Ensure rollback_on_error=True or call commit() first."
+            )
+        
+        self._client.write(self._tags, self._original_values)
+        self._client.logger.info("Batch write transaction rolled back")
+    
+    def __enter__(self) -> 'BatchWriteTransaction':
+        """Enter context manager."""
+        return self
+    
+    def __exit__(
+        self,
+        exc_type: Optional[Type[BaseException]],
+        exc_val: Optional[BaseException],
+        exc_tb: Optional[TracebackType]
+    ) -> None:
+        """Exit context manager, auto-commit if enabled."""
+        if exc_type is None and self.auto_commit and self._tags:
+            self.commit()
+
+
 class S7Client:
     """The S7Client class provides a high-level interface for communicating with a Siemens S7 programmable logic controller (PLC) over a network connection.
     It allows for reading from and writing to memory locations in the PLC, with support for a variety of data types.
@@ -1233,6 +1358,50 @@ class S7Client:
                 )
         
         return results
+
+    def batch_write(
+        self,
+        auto_commit: bool = True,
+        rollback_on_error: bool = True
+    ) -> BatchWriteTransaction:
+        """Create a batch write transaction for atomic multi-tag writes.
+        
+        Allows grouping multiple write operations with optional automatic
+        rollback on failure.
+        
+        Args:
+            auto_commit: If True, commit automatically when context exits.
+                Default True.
+            rollback_on_error: If True, restore original values if any write
+                fails. Default True.
+        
+        Returns:
+            BatchWriteTransaction context manager
+        
+        Example:
+            >>> # Automatic commit with rollback on error
+            >>> with client.batch_write() as batch:
+            ...     batch.add('DB1,I0', 100)
+            ...     batch.add('DB1,I2', 200)
+            ...     batch.add('DB1,I4', 300)
+            
+            >>> # Manual commit without rollback
+            >>> with client.batch_write(auto_commit=False, rollback_on_error=False) as batch:
+            ...     batch.add('DB1,I0', 100)
+            ...     batch.add('DB1,I2', 200)
+            ...     results = batch.commit()
+            ...     if all(r.success for r in results):
+            ...         print("All writes succeeded")
+            
+            >>> # Method chaining
+            >>> with client.batch_write() as batch:
+            ...     batch.add('DB1,I0', 100).add('DB1,I2', 200).add('DB1,I4', 300)
+        """
+        return BatchWriteTransaction(
+            client=self,
+            auto_commit=auto_commit,
+            rollback_on_error=rollback_on_error
+        )
 
     def get_cpu_status(self) -> str:
         """Get the current CPU operating status (RUN or STOP).
