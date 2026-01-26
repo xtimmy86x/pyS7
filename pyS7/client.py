@@ -16,6 +16,7 @@ from .constants import (
     MIN_PDU_SIZE,
     RECOMMENDED_MIN_PDU,
     TPKT_SIZE,
+    ConnectionState,
     ConnectionType,
     DataType,
     READ_RES_OVERHEAD,
@@ -121,6 +122,8 @@ class S7Client:
 
         self.socket: Optional[socket.socket] = None
         self._io_lock = threading.Lock()
+        self._connection_state = ConnectionState.DISCONNECTED
+        self._last_error: Optional[str] = None
 
         self.pdu_size: int = max_pdu
         self.max_jobs_calling: int = MAX_JOB_CALLING
@@ -140,6 +143,60 @@ class S7Client:
         self.disconnect()
 
     @property
+    def connection_state(self) -> ConnectionState:
+        """Get current connection state.
+        
+        Returns:
+            ConnectionState: Current connection state
+            
+        Example:
+            >>> client = S7Client('192.168.0.1', 0, 1)
+            >>> print(client.connection_state)
+            ConnectionState.DISCONNECTED
+            >>> client.connect()
+            >>> print(client.connection_state)
+            ConnectionState.CONNECTED
+        """
+        return self._connection_state
+    
+    @property
+    def last_error(self) -> Optional[str]:
+        """Get the last connection error message.
+        
+        Returns:
+            Optional[str]: Last error message, or None if no error
+            
+        Example:
+            >>> client = S7Client('192.168.0.1', 0, 1)
+            >>> try:
+            ...     client.connect()
+            ... except Exception:
+            ...     print(client.last_error)
+        """
+        return self._last_error
+    
+    def _set_connection_state(self, state: ConnectionState, error: Optional[str] = None) -> None:
+        """Set connection state and optionally store error.
+        
+        Args:
+            state: New connection state
+            error: Optional error message for ERROR state
+        """
+        old_state = self._connection_state
+        self._connection_state = state
+        
+        if state == ConnectionState.ERROR:
+            self._last_error = error
+        elif state == ConnectionState.CONNECTED:
+            # Clear error when successfully connected
+            self._last_error = None
+        
+        if old_state != state:
+            self.logger.debug(f"Connection state: {old_state.value} → {state.value}")
+            if error:
+                self.logger.debug(f"Error: {error}")
+
+    @property
     def is_connected(self) -> bool:
         """Check if the client is currently connected to the PLC.
         
@@ -157,15 +214,7 @@ class S7Client:
             >>> print(client.is_connected)
             False
         """
-        if self.socket is None:
-            return False
-        try:
-            # Try to get socket options to verify if socket is still valid
-            self.socket.getpeername()
-            return True
-        except (OSError, AttributeError):
-            # Socket is closed or invalid
-            return False
+        return self._connection_state == ConnectionState.CONNECTED
 
     def _read_large_string(self, tag: S7Tag) -> str:
         """Read a STRING or WSTRING that exceeds PDU size by chunking.
@@ -627,6 +676,17 @@ class S7Client:
 
     def connect(self) -> None:
         """Establishes a TCP connection to the S7 PLC and sets up initial communication parameters."""
+        
+        # Check if already connected or connecting
+        if self._connection_state == ConnectionState.CONNECTED:
+            self.logger.warning("Already connected to PLC")
+            return
+        
+        if self._connection_state == ConnectionState.CONNECTING:
+            self.logger.warning("Connection already in progress")
+            return
+        
+        self._set_connection_state(ConnectionState.CONNECTING)
 
         if self.local_tsap is not None and self.remote_tsap is not None:
             self.logger.debug(
@@ -647,17 +707,17 @@ class S7Client:
             self.socket.connect((self.address, self.port))
             self.logger.debug(f"TCP connection established to {self.address}:{self.port}")
         except socket.timeout as e:
+            error_msg = f"Connection timeout to {self.address}:{self.port} after {self.timeout}s"
             self.socket = None
-            self.logger.error(f"Connection timeout to {self.address}:{self.port}: {e}")
-            raise S7TimeoutError(
-                f"Connection timeout to {self.address}:{self.port} after {self.timeout}s"
-            ) from e
+            self._set_connection_state(ConnectionState.ERROR, error_msg)
+            self.logger.error(error_msg)
+            raise S7TimeoutError(error_msg) from e
         except socket.error as e:
+            error_msg = f"Failed to connect to {self.address}:{self.port}: {e}"
             self.socket = None
-            self.logger.error(f"Failed to connect to {self.address}:{self.port}: {e}")
-            raise S7ConnectionError(
-                f"Failed to connect to {self.address}:{self.port}: {e}"
-            ) from e
+            self._set_connection_state(ConnectionState.ERROR, error_msg)
+            self.logger.error(error_msg)
+            raise S7ConnectionError(error_msg) from e
 
         try:
             connection_request = ConnectionRequest(
@@ -698,37 +758,53 @@ class S7Client:
             # Validate and adjust PDU size
             self.pdu_size = self._validate_and_adjust_pdu(requested_pdu, negotiated_pdu)
             
+            self._set_connection_state(ConnectionState.CONNECTED)
             self.logger.debug(
                 f"Connected to PLC {self.address}:{self.port} - "
                 f"PDU: {self.pdu_size} bytes, Jobs: {self.max_jobs_calling}/{self.max_jobs_called}"
             )
         except socket.timeout as e:
-            self.logger.error(f"Connection timeout during COTP/PDU negotiation: {e}")
+            error_msg = f"Connection timeout during COTP/PDU negotiation after {self.timeout}s: {e}"
+            self._set_connection_state(ConnectionState.ERROR, error_msg)
+            self.logger.error(error_msg)
             self.disconnect()
-            raise S7TimeoutError(
-                f"Connection timeout during COTP/PDU negotiation after {self.timeout}s: {e}"
-            ) from e
+            raise S7TimeoutError(error_msg) from e
         except socket.error as e:
-            self.logger.error(f"Socket error during connection setup: {e}")
+            error_msg = f"Socket error during connection setup: {e}"
+            self._set_connection_state(ConnectionState.ERROR, error_msg)
+            self.logger.error(error_msg)
             self.disconnect()
-            raise S7ConnectionError(f"Socket error during connection setup: {e}") from e
-        except S7ConnectionError:
+            raise S7ConnectionError(error_msg) from e
+        except S7ConnectionError as e:
             # Re-raise S7ConnectionError as-is
+            self._set_connection_state(ConnectionState.ERROR, str(e))
             self.disconnect()
             raise
         except S7CommunicationError as e:
             # Wrap S7CommunicationError in S7ConnectionError during connection phase
-            self.logger.error(f"Communication error during connection setup: {e}")
+            error_msg = f"Communication error during connection setup: {e}"
+            self._set_connection_state(ConnectionState.ERROR, error_msg)
+            self.logger.error(error_msg)
             self.disconnect()
-            raise S7ConnectionError(f"Communication error during connection setup: {e}") from e
+            raise S7ConnectionError(error_msg) from e
         except (ValueError, struct.error) as e:
             # Protocol parsing errors
-            self.logger.error(f"Protocol parsing error during connection setup: {e}")
+            error_msg = f"Invalid protocol response during connection setup: {e}"
+            self._set_connection_state(ConnectionState.ERROR, error_msg)
+            self.logger.error(error_msg)
             self.disconnect()
-            raise S7ProtocolError(f"Invalid protocol response during connection setup: {e}") from e
+            raise S7ProtocolError(error_msg) from e
 
     def disconnect(self) -> None:
         """Closes the TCP connection with the S7 PLC."""
+        
+        if self._connection_state == ConnectionState.DISCONNECTED:
+            self.logger.debug("Already disconnected")
+            return
+        
+        # Don't change state if we're cleaning up after an error during connection
+        if self._connection_state != ConnectionState.ERROR:
+            self._set_connection_state(ConnectionState.DISCONNECTING)
 
         if self.socket:
             self.logger.debug(f"Disconnecting from {self.address}:{self.port}")
@@ -740,6 +816,10 @@ class S7Client:
                 self.logger.warning(f"Error during disconnect: {e}")
             finally:
                 self.socket = None
+        
+        # Set to DISCONNECTED unless we were in ERROR state (preserve ERROR)
+        if self._connection_state != ConnectionState.ERROR:
+            self._set_connection_state(ConnectionState.DISCONNECTED)
 
     def read(
         self, tags: Sequence[Union[str, S7Tag]], optimize: bool = True

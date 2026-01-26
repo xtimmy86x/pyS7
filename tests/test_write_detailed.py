@@ -1,13 +1,20 @@
 """Tests for write_detailed method with detailed results."""
 
+import socket
 from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
 
 from pyS7 import S7Client, WriteResult
-from pyS7.constants import ConnectionType, DataType, MemoryArea, ReturnCode
+from pyS7.constants import ConnectionState, ConnectionType, DataType, MemoryArea, ReturnCode
 from pyS7.tag import S7Tag
+
+
+def _set_client_connected(client: S7Client, sock: socket.socket) -> None:
+    """Helper to set client as connected for testing."""
+    client.socket = sock
+    client._connection_state = ConnectionState.CONNECTED
 
 
 @pytest.fixture
@@ -46,8 +53,8 @@ class TestWriteDetailed:
         
         monkeypatch.setattr("pyS7.client.S7Client._S7Client__send", mock_send)
         
-        # Ensure socket is initialized
-        client.socket = MagicMock()
+        # Ensure socket is initialized and state is connected
+        _set_client_connected(client, MagicMock())
 
         tags = ["DB1,I0", "DB1,I2", "DB1,I4"]
         values = [100, 200, 300]
@@ -77,7 +84,7 @@ class TestWriteDetailed:
         
         monkeypatch.setattr("pyS7.client.S7Client._S7Client__send", mock_send)
 
-        client.socket = MagicMock()
+        _set_client_connected(client, MagicMock())
 
         tags = ["DB1,I0", "DB1,I2", "DB1,I4"]
         values = [100, 200, 300]
@@ -113,7 +120,7 @@ class TestWriteDetailed:
         
         monkeypatch.setattr("pyS7.client.S7Client._S7Client__send", mock_send)
 
-        client.socket = MagicMock()
+        _set_client_connected(client, MagicMock())
 
         tags = ["DB99,I0", "DB99,I2", "DB99,I4"]
         values = [100, 200, 300]
@@ -159,7 +166,7 @@ class TestWriteDetailed:
         
         monkeypatch.setattr("pyS7.client.S7Client._S7Client__send", mock_send)
 
-        client.socket = MagicMock()
+        _set_client_connected(client, MagicMock())
 
         results = client.write_detailed(["DB1,I0"], [42])
 
@@ -185,7 +192,7 @@ class TestWriteDetailed:
         
         monkeypatch.setattr("pyS7.client.S7Client._S7Client__send", mock_send)
 
-        client.socket = MagicMock()
+        _set_client_connected(client, MagicMock())
 
         tags = ["DB1,I0", "DB1,I2", "DB1,I4", "DB1,I6", "DB1,I8"]
         values = [1, 2, 3, 4, 5]
@@ -224,7 +231,7 @@ class TestWriteDetailed:
         
         monkeypatch.setattr("pyS7.client.S7Client._S7Client__send", mock_send)
 
-        client.socket = MagicMock()
+        _set_client_connected(client, MagicMock())
 
         tags = [
             S7Tag(MemoryArea.DB, 1, DataType.INT, 0, 0, 1),

@@ -6,7 +6,7 @@ from typing import Any, Callable, Dict, Optional, cast
 import pytest
 
 from pyS7.client import S7Client
-from pyS7.constants import MAX_JOB_CALLED, MAX_JOB_CALLING, MAX_PDU, ConnectionType
+from pyS7.constants import MAX_JOB_CALLED, MAX_JOB_CALLING, MAX_PDU, ConnectionState, ConnectionType
 from pyS7.errors import S7ConnectionError
 from pyS7.requests import ReadRequest, Request, WriteRequest
 
@@ -15,6 +15,12 @@ from pyS7.requests import ReadRequest, Request, WriteRequest
 def client() -> S7Client:
     client = S7Client("192.168.100.10", 0, 1, ConnectionType.S7Basic, 102, 5)
     return client
+
+
+def _set_client_connected(client: S7Client, sock: socket.socket) -> None:
+    """Helper to set client as connected for testing."""
+    client.socket = sock
+    client._connection_state = ConnectionState.CONNECTED
 
 
 @pytest.fixture(autouse=True)
@@ -224,8 +230,8 @@ def test_read(client: S7Client, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("socket.socket.sendall", mock_sendall)
     monkeypatch.setattr("socket.socket.recv", _mock_recv_factory(read_response))
 
-    # Ensure socket is initialized
-    client.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    # Ensure socket is initialized and state is connected
+    _set_client_connected(client, socket.socket(socket.AF_INET, socket.SOCK_STREAM))
 
     tags = ["DB1,X0.0", "DB1,X0.1", "DB2,I2"]
     result = client.read(tags, optimize=False)
@@ -237,7 +243,7 @@ def test_read_returns_empty_list_for_no_tags(
     def unexpected(*_: Any, **__: Any) -> Any:
         raise AssertionError("read should not prepare requests when no tags are provided")
 
-    client.socket = cast(socket.socket, object())
+    _set_client_connected(client, cast(socket.socket, object()))
 
     monkeypatch.setattr("pyS7.client.prepare_optimized_requests", unexpected)
     monkeypatch.setattr("pyS7.client.S7Client._S7Client__send", unexpected)
@@ -258,8 +264,8 @@ def test_read_optimized(client: S7Client, monkeypatch: pytest.MonkeyPatch) -> No
     monkeypatch.setattr("socket.socket.sendall", mock_sendall)
     monkeypatch.setattr("socket.socket.recv", _mock_recv_factory(read_response))
 
-    # Ensure socket is initialized
-    client.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    # Ensure socket is initialized and state is connected
+    _set_client_connected(client, socket.socket(socket.AF_INET, socket.SOCK_STREAM))
 
     tags = ["DB1,X0.1", "DB2,I2"]
     result = client.read(tags, optimize=True)
@@ -278,8 +284,8 @@ def test_write(client: S7Client, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("socket.socket.recv", _mock_recv_factory(write_response))
     monkeypatch.setattr("socket.socket.getpeername", lambda self: ("192.168.100.10", 102))
 
-    # Ensure socket is initialized
-    client.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    # Ensure socket is initialized and state is connected
+    _set_client_connected(client, socket.socket(socket.AF_INET, socket.SOCK_STREAM))
 
     tags = ["DB1,X0.0", "DB1,X0.1", "DB2,I2"]
     values = [False, True, 69]
@@ -303,7 +309,7 @@ def test_read_empty_tags(
 
     monkeypatch.setattr(S7Client, "_S7Client__send", fake_send)
 
-    client.socket = cast(socket.socket, object())
+    _set_client_connected(client, cast(socket.socket, object()))
 
     result = client.read([], optimize=optimize)
 
@@ -331,7 +337,7 @@ def test_read_bits_optimized_handles_bit_offsets(
         def getpeername(self):
             return ("192.168.100.10", 102)
 
-    client.socket = cast(socket.socket, MockSocket())
+    _set_client_connected(client, cast(socket.socket, MockSocket()))
 
     result = client.read(["DB1,X0.0", "DB1,X0.7"], optimize=True)
 
@@ -352,7 +358,7 @@ def test_write_empty_tags(client: S7Client, monkeypatch: pytest.MonkeyPatch) -> 
 
     monkeypatch.setattr(S7Client, "_S7Client__send", fake_send)
 
-    client.socket = cast(socket.socket, object())
+    _set_client_connected(client, cast(socket.socket, object()))
 
     client.write([], [])
 
@@ -381,7 +387,7 @@ def test_write_bit_values_pack_bits_correctly(
         def getpeername(self):
             return ("192.168.100.10", 102)
 
-    client.socket = cast(socket.socket, MockSocket())
+    _set_client_connected(client, cast(socket.socket, MockSocket()))
 
     client.write(["DB1,X0.0", "DB1,X0.7"], [True, False])
 
@@ -480,7 +486,7 @@ def test_client_serializes_socket_access(client: S7Client) -> None:
         b"req-2": _tpkt(b"resp-2"),
     }
 
-    client.socket = cast(socket.socket, _SerializingFakeSocket(responses))
+    _set_client_connected(client, cast(socket.socket, _SerializingFakeSocket(responses)))
 
     barrier = threading.Barrier(len(responses))
     results: Dict[bytes, bytes] = {}

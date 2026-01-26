@@ -5,6 +5,23 @@ MAX_PDU = 960
 MAX_JOB_CALLING = 8
 MAX_JOB_CALLED = 8
 
+
+class ConnectionState(Enum):
+    """PLC connection state.
+    
+    Attributes:
+        DISCONNECTED: Not connected to PLC
+        CONNECTING: Connection in progress (TCP + COTP + PDU negotiation)
+        CONNECTED: Successfully connected and ready for operations
+        ERROR: Connection failed or lost due to error
+        DISCONNECTING: Disconnection in progress
+    """
+    DISCONNECTED = "disconnected"
+    CONNECTING = "connecting"
+    CONNECTED = "connected"
+    ERROR = "error"
+    DISCONNECTING = "disconnecting"
+
 # PDU size limits for validation
 MIN_PDU_SIZE = 100  # Minimum practical PDU size for S7 protocol
 MAX_PDU_SIZE = 65535  # Maximum PDU size (2-byte limit)
