@@ -249,6 +249,129 @@ def safe_write(client, tags, values):
     if len(tags) != len(values):
         raise ValueError(f"Tag count ({len(tags)}) != value count ({len(values)})")
     
+    # Validate connection
+    if not client.is_connected:
+        raise RuntimeError("Client not connected")
+    
+    # Perform write
+    client.write(tags, values)
+```
+
+### Choose the right method for error handling
+
+pyS7 provides three approaches to batch operations, each suited for different scenarios:
+
+#### Use `read()` / `write()` when:
+- **All tags must succeed** or the operation is meaningless
+- You want **fail-fast behavior** (stop on first error)
+- Tags are known to be valid and accessible
+- Simplified error handling is acceptable
+
+```python
+from pyS7 import S7Client
+
+with S7Client("192.168.5.100", 0, 1) as client:
+    try:
+        # All or nothing - raises exception on first failure
+        data = client.read(["DB1,I0", "DB1,I2", "DB1,R4"])
+        print(f"All reads succeeded: {data}")
+    except Exception as e:
+        print(f"One or more reads failed: {e}")
+        # Cannot determine which specific tag failed
+```
+
+#### Use `read_detailed()` / `write_detailed()` when:
+- **Partial success is acceptable** (some tags may fail)
+- You need to **know which specific tags failed**
+- Working with potentially inaccessible areas
+- Implementing **custom retry logic** for failed tags
+- **Collecting diagnostic data** from multiple sources
+- Need detailed error information per tag
+
+```python
+from pyS7 import S7Client
+
+with S7Client("192.168.5.100", 0, 1) as client:
+    # Continue even if some tags fail
+    tags = ["DB1,I0", "DB99,I0", "DB1,R4"]  # DB99 may not exist
+    results = client.read_detailed(tags)
+    
+    # Process each result individually
+    successful_data = {}
+    failed_tags = []
+    
+    for result in results:
+        if result.success:
+            successful_data[str(result.tag)] = result.value
+        else:
+            failed_tags.append((str(result.tag), result.error))
+            print(f"Failed: {result.tag} - {result.error}")
+    
+    # Retry only failed tags
+    if failed_tags:
+        retry_tags = [tag for tag, _ in failed_tags]
+        retry_results = client.read_detailed(retry_tags)
+        for result in retry_results:
+            if result.success:
+                successful_data[str(result.tag)] = result.value
+    
+    print(f"Collected {len(successful_data)} values from {len(tags)} tags")
+```
+
+**read_detailed() / write_detailed() use cases:**
+- Discovering which data blocks exist in a PLC
+- Monitoring system with some sensors offline
+- Batch operations where partial data is useful
+- Error categorization and reporting
+- Resilient data collection in production
+
+#### Use `batch_write()` when:
+- **Atomicity is required** (all writes must succeed or all revert)
+- Need **automatic rollback** on failure
+- Writing related data that must stay consistent
+- Testing with automatic cleanup
+- Critical operations requiring verification
+
+```python
+from pyS7 import S7Client
+
+with S7Client("192.168.5.100", 0, 1) as client:
+    # Transactional write with automatic rollback
+    try:
+        with client.batch_write() as batch:
+            batch.add("DB1,I0", 100)
+            batch.add("DB1,I2", 200)
+            batch.add("DB1,R4", 3.14)
+            # Auto-commits on exit
+            # Rolls back to original values on any error
+        print("All writes succeeded and verified")
+    
+    except Exception as e:
+        print(f"Batch write failed and rolled back: {e}")
+        # Original values automatically restored
+```
+
+**batch_write() use cases:**
+- Recipe/parameter changes that must be complete or reverted
+- Multi-step processes requiring data consistency
+- Critical setpoint updates
+- Testing/debugging with automatic cleanup
+- Configuration updates that must be atomic
+
+**Comparison table:**
+
+| Scenario | Recommended Method | Why |
+|----------|-------------------|-----|
+| Read sensor values (all required) | `read()` | Fail-fast, simple |
+| Read multiple DBs (some may not exist) | `read_detailed()` | Partial success OK |
+| Write production setpoints | `batch_write()` | Atomicity required |
+| Write to various PLCs/areas | `write_detailed()` | Individual error handling |
+| Update recipe (all values related) | `batch_write()` | Rollback on failure |
+| Diagnostic data collection | `read_detailed()` | Continue on errors |
+| Single critical value | `write()` | Simple, clear |
+| Testing new configuration | `batch_write()` | Auto cleanup on error |
+
+    
     # Check connection
     if not client.is_connected:
         raise RuntimeError("Client not connected")

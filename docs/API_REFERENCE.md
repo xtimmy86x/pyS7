@@ -307,3 +307,213 @@ def safe_string_write(client, tag, value, max_length):
 # Usage
 safe_string_write(client, "DB1,S10.20", "Hello World", max_length=20)
 ```
+## Advanced Methods
+
+### read_detailed()
+
+Read multiple tags with per-tag error handling. Unlike `read()` which fails fast on the first error, `read_detailed()` continues processing all tags and returns detailed results for each one.
+
+**Signature:**
+```python
+def read_detailed(
+    tags: Sequence[Union[str, S7Tag]], 
+    optimize: bool = True
+) -> List[ReadResult]
+```
+
+**Parameters:**
+- `tags`: List of tag addresses (strings) or S7Tag objects
+- `optimize`: Whether to optimize by grouping contiguous tags (default: True)
+
+**Returns:**
+- List of `ReadResult` objects, one per tag in the same order
+
+**ReadResult fields:**
+- `tag`: The S7Tag object
+- `success`: bool indicating if read succeeded
+- `value`: The read value (if success=True) or None
+- `error`: Error message (if success=False) or None
+- `error_code`: S7 error code (if available) or None
+
+**Example:**
+```python
+from pyS7 import S7Client
+
+with S7Client(address="192.168.5.100", rack=0, slot=1) as client:
+    # Some tags may fail (e.g., DB99 doesn't exist)
+    tags = ["DB1,I0", "DB99,I0", "DB1,R4", "DB1,X8.0"]
+    results = client.read_detailed(tags)
+    
+    for result in results:
+        if result.success:
+            print(f"✓ {result.tag}: {result.value}")
+        else:
+            print(f"✗ {result.tag}: {result.error}")
+            if result.error_code:
+                print(f"  Error code: 0x{result.error_code:02X}")
+    
+    # Collect only successful values
+    successful_data = {
+        str(r.tag): r.value 
+        for r in results 
+        if r.success
+    }
+    
+    # Retry only failed reads
+    failed_tags = [str(r.tag) for r in results if not r.success]
+    if failed_tags:
+        retry_results = client.read_detailed(failed_tags)
+```
+
+**Use cases:**
+- Batch operations where partial success is acceptable
+- Diagnostic/monitoring with some inaccessible areas
+- Discovering which data blocks are accessible
+- Error categorization and reporting
+- Implementing retry logic for failed reads only
+
+**See also:** [examples/read_detailed_demo.py](../examples/read_detailed_demo.py)
+
+### write_detailed()
+
+Write multiple tags with per-tag error handling. Unlike `write()` which fails fast, `write_detailed()` attempts all writes and returns detailed results for each one.
+
+**Signature:**
+```python
+def write_detailed(
+    tags: Sequence[Union[str, S7Tag]], 
+    values: Sequence[Value]
+) -> List[WriteResult]
+```
+
+**Parameters:**
+- `tags`: List of tag addresses (strings) or S7Tag objects
+- `values`: List of values to write (must match length of tags)
+
+**Returns:**
+- List of `WriteResult` objects, one per tag in the same order
+
+**WriteResult fields:**
+- `tag`: The S7Tag object
+- `success`: bool indicating if write succeeded
+- `error`: Error message (if success=False) or None
+- `error_code`: S7 error code (if available) or None
+
+**Example:**
+```python
+from pyS7 import S7Client
+
+with S7Client(address="192.168.5.100", rack=0, slot=1) as client:
+    tags = ["DB1,I0", "DB1,R4", "DB99,I0", "DB1,X8.0"]
+    values = [100, 3.14, 200, True]
+    
+    results = client.write_detailed(tags, values)
+    
+    success_count = 0
+    for i, result in enumerate(results):
+        if result.success:
+            print(f"✓ {tags[i]}: Written successfully")
+            success_count += 1
+        else:
+            print(f"✗ {tags[i]}: {result.error}")
+    
+    print(f"\nSuccess rate: {success_count}/{len(results)}")
+    
+    # Retry only failed writes
+    failed_indices = [i for i, r in enumerate(results) if not r.success]
+    if failed_indices:
+        retry_tags = [tags[i] for i in failed_indices]
+        retry_values = [values[i] for i in failed_indices]
+        retry_results = client.write_detailed(retry_tags, retry_values)
+```
+
+**Use cases:**
+- Batch writes where partial success is acceptable
+- Implementing retry logic for failed writes only
+- Detailed error reporting in production systems
+- Writing to multiple PLCs/areas with varying accessibility
+
+**See also:** [examples/write_detailed_demo.py](../examples/write_detailed_demo.py)
+
+### batch_write()
+
+Transactional batch write with automatic rollback on failure. Reads original values before writing, then verifies the write. If verification fails, automatically restores original values.
+
+**Signature:**
+```python
+@contextmanager
+def batch_write(
+    auto_commit: bool = True,
+    rollback_on_error: bool = True
+) -> BatchWriteTransaction
+```
+
+**Parameters:**
+- `auto_commit`: If True, automatically commit on context exit (default: True)
+- `rollback_on_error`: If True, rollback on commit failure (default: True)
+
+**Returns:**
+- `BatchWriteTransaction` object (context manager)
+
+**BatchWriteTransaction methods:**
+- `add(tag, value)`: Add a tag/value pair to the batch
+- `commit()`: Execute the write and verify
+- `rollback()`: Restore original values (if commit failed)
+
+**Example:**
+```python
+from pyS7 import S7Client
+
+with S7Client(address="192.168.5.100", rack=0, slot=1) as client:
+    # Auto-commit mode (recommended)
+    with client.batch_write() as batch:
+        batch.add("DB1,I0", 100)
+        batch.add("DB1,I2", 200)
+        batch.add("DB1,R4", 3.14)
+        # Automatically commits on exit
+        # Rolls back on any error
+    
+    # Manual mode (explicit control)
+    batch = client.batch_write(auto_commit=False)
+    batch.add("DB1,I0", 100)
+    batch.add("DB1,I2", 200)
+    
+    try:
+        batch.commit()  # Write and verify
+        print("Batch write successful")
+    except Exception as e:
+        print(f"Batch write failed: {e}")
+        batch.rollback()  # Restore original values
+        print("Rolled back to original values")
+    
+    # Method chaining
+    batch = client.batch_write(auto_commit=False)
+    (batch
+        .add("DB1,I0", 100)
+        .add("DB1,I2", 200)
+        .add("DB1,R4", 3.14))
+    
+    batch.commit()
+```
+
+**Behavior:**
+1. `add()`: Stores tag/value pairs (no PLC communication)
+2. `commit()`: 
+   - Reads original values from PLC
+   - Writes new values to PLC
+   - Reads back to verify
+   - If verification fails and `rollback_on_error=True`, writes original values
+3. `rollback()`: Explicitly restore original values (only after commit)
+
+**Use cases:**
+- Critical writes that must succeed or revert
+- Multi-tag updates that must be atomic
+- Production systems requiring data consistency
+- Testing/debugging with automatic cleanup
+
+**Limitations:**
+- Cannot rollback after context exit
+- Empty batch raises ValueError on commit
+- Original values captured at commit time (not add time)
+
+**See also:** [examples/batch_write_demo.py](../examples/batch_write_demo.py)

@@ -19,11 +19,13 @@ pyS7 is a lightweight, pure Python library that implements the Siemens S7 commun
 - **Pure Python** – No external dependencies, easy installation across platforms
 - **Intuitive API** – Clean, readable code with full typing support for IDE assistance
 - **High Performance** – Optimized hot paths, 2x faster request preparation (v2.5.0)
+- **Graceful error handling** – read_detailed() and write_detailed() provide per-tag success/failure info
+- **Transactional writes** – Batch write with automatic rollback on read verification failure
 - **Optimized multi-variable reads** – Automatically groups contiguous tags to reduce network requests
 - **Automatic chunking** – Transparently splits large STRING/WSTRING reads exceeding PDU size
 - **CPU diagnostics** – Read PLC status (RUN/STOP) and information (model, firmware) via SZL protocol
 - **Broad compatibility** – Supports S7-200/300/400/1200/1500 series
-- **Production Ready** – 187 tests, 82% coverage, strict type checking
+- **Production Ready** – 253 tests, 85% coverage, strict type checking
 
 ## Safety Notice
 
@@ -74,6 +76,58 @@ with S7Client(address="192.168.5.100", rack=0, slot=1) as client:
     values = [True, 25000, 1.2345, "Hello"]
     
     client.write(tags, values)
+```
+
+### Graceful error handling
+
+```python
+from pyS7 import S7Client
+
+with S7Client(address="192.168.5.100", rack=0, slot=1) as client:
+    # read_detailed() continues on errors, returns per-tag results
+    results = client.read_detailed(["DB1,I0", "DB99,I0", "DB1,R4"])
+    
+    for result in results:
+        if result.success:
+            print(f"{result.tag}: {result.value}")
+        else:
+            print(f"{result.tag} failed: {result.error}")
+    
+    # write_detailed() provides per-tag success/failure info
+    tags = ["DB1,I0", "DB1,I2", "DB99,I0"]
+    values = [100, 200, 300]
+    write_results = client.write_detailed(tags, values)
+    
+    for result in write_results:
+        if result.success:
+            print(f"✓ {result.tag}: Written")
+        else:
+            print(f"✗ {result.tag}: {result.error}")
+```
+
+### Transactional batch writes
+
+```python
+from pyS7 import S7Client
+
+with S7Client(address="192.168.5.100", rack=0, slot=1) as client:
+    # Batch write with automatic rollback on verification failure
+    with client.batch_write() as batch:
+        batch.add("DB1,I0", 100)
+        batch.add("DB1,I2", 200)
+        batch.add("DB1,R4", 3.14)
+        # Auto-commits on exit, rolls back on error
+    
+    # Or with explicit control
+    batch = client.batch_write(auto_commit=False)
+    batch.add("DB1,I0", 100)
+    batch.add("DB1,I2", 200)
+    
+    try:
+        batch.commit()  # Write and verify
+    except Exception as e:
+        batch.rollback()  # Restore original values
+        print(f"Write failed: {e}")
 ```
 
 ### Reading CPU status
@@ -144,11 +198,15 @@ Example scripts in the [`examples/`](examples/) directory demonstrate:
 
 - `read_data.py` – Basic reading operations
 - `write_data.py` – Basic writing operations
+- `read_detailed_demo.py` – Graceful error handling for reads
+- `write_detailed_demo.py` – Graceful error handling for writes
+- `batch_write_demo.py` – Transactional batch writes with rollback
 - `get_cpu_status.py` – CPU status monitoring
 - `get_cpu_info.py` – CPU information retrieval
 - `read_data_tsap.py` – TSAP connection example
 - `bit_read_workaround.py` – Bit operations
 - `manage_reconnection.py` – Connection handling
+- `connection_state_demo.py` – Connection state management
 
 ## License
 
