@@ -1324,8 +1324,8 @@ class S7Client:
         Unlike the standard parse that raises on first error, this collects
         all results and returns them.
         """
-        from .constants import ReturnCode
-        from .responses import WRITE_RES_OVERHEAD, _return_code_name
+        from .constants import WRITE_RES_OVERHEAD, ReturnCode
+        from .responses import _return_code_name
         
         results = []
         offset = WRITE_RES_OVERHEAD
