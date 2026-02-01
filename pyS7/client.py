@@ -1913,15 +1913,31 @@ class S7Client:
 
                 return header + body
         except socket.timeout as e:
-            self.logger.error("Socket timeout during communication")
-            raise S7TimeoutError(
-                f"Communication timeout after {self.timeout}s"
-            ) from e
+            error_msg = f"Communication timeout after {self.timeout}s"
+            self.logger.error(error_msg)
+            self._set_connection_state(ConnectionState.ERROR, error_msg)
+            # Close the socket as it's no longer usable
+            if self.socket:
+                try:
+                    self.socket.close()
+                except Exception:
+                    pass
+                self.socket = None
+            self._set_connection_state(ConnectionState.DISCONNECTED)
+            raise S7TimeoutError(error_msg) from e
         except socket.error as e:
-            self.logger.error(f"Socket error during communication: {e}")
-            raise S7CommunicationError(
-                f"Socket error during communication: {e}."
-            ) from e
+            error_msg = f"Socket error during communication: {e}"
+            self.logger.error(error_msg)
+            self._set_connection_state(ConnectionState.ERROR, error_msg)
+            # Close the socket as it's no longer usable
+            if self.socket:
+                try:
+                    self.socket.close()
+                except Exception:
+                    pass
+                self.socket = None
+            self._set_connection_state(ConnectionState.DISCONNECTED)
+            raise S7CommunicationError(error_msg) from e
 
     def _recv_exact(self, expected_length: int) -> bytes:
         if self.socket is None:
@@ -1935,9 +1951,18 @@ class S7Client:
         while len(data) < expected_length:
             chunk = self.socket.recv(expected_length - len(data))
             if len(chunk) == 0:
-                raise S7CommunicationError(
-                    "The connection has been closed by the peer."
-                )
+                error_msg = "The connection has been closed by the peer"
+                self.logger.error(error_msg)
+                self._set_connection_state(ConnectionState.ERROR, error_msg)
+                # Close the socket as it's no longer usable
+                if self.socket:
+                    try:
+                        self.socket.close()
+                    except Exception:
+                        pass
+                    self.socket = None
+                self._set_connection_state(ConnectionState.DISCONNECTED)
+                raise S7CommunicationError(error_msg)
 
             data.extend(chunk)
 
