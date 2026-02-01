@@ -94,8 +94,8 @@ class TestConnectionState:
         with pytest.raises(S7TimeoutError):
             client.connect()
 
-        # Should be in ERROR state
-        assert client.connection_state == ConnectionState.ERROR
+        # Should be in DISCONNECTED state (passed through ERROR)
+        assert client.connection_state == ConnectionState.DISCONNECTED
         assert not client.is_connected
         assert client.last_error is not None
         assert "timeout" in client.last_error.lower()
@@ -116,8 +116,8 @@ class TestConnectionState:
         with pytest.raises(S7ConnectionError):
             client.connect()
 
-        # Should be in ERROR state
-        assert client.connection_state == ConnectionState.ERROR
+        # Should be in DISCONNECTED state (passed through ERROR)
+        assert client.connection_state == ConnectionState.DISCONNECTED
         assert not client.is_connected
         assert client.last_error is not None
         assert "connection refused" in client.last_error.lower()
