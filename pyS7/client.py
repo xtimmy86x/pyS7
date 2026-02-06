@@ -852,14 +852,14 @@ class S7Client:
         except socket.timeout as e:
             error_msg = f"Connection timeout to {self.address}:{self.port} after {self.timeout}s"
             self.socket = None
-            self._set_connection_state(ConnectionState.ERROR, error_msg)
+            self._last_error = error_msg
             self._set_connection_state(ConnectionState.DISCONNECTED)
             self.logger.error(error_msg)
             raise S7TimeoutError(error_msg) from e
         except socket.error as e:
             error_msg = f"Failed to connect to {self.address}:{self.port}: {e}"
             self.socket = None
-            self._set_connection_state(ConnectionState.ERROR, error_msg)
+            self._last_error = error_msg
             self._set_connection_state(ConnectionState.DISCONNECTED)
             self.logger.error(error_msg)
             raise S7ConnectionError(error_msg) from e
