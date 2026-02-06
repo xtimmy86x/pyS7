@@ -953,12 +953,19 @@ class S7Client:
 
         if self.socket:
             self.logger.debug(f"Disconnecting from {self.address}:{self.port}")
+            # Shutdown and close socket with proper error handling
+            # Always attempt both operations to prevent resource leaks
             try:
                 self.socket.shutdown(socket.SHUT_RDWR)
+            except (socket.error, OSError) as e:
+                # Socket may already be closed or in invalid state
+                self.logger.debug(f"Socket shutdown failed (expected if already closed): {e}")
+            
+            try:
                 self.socket.close()
                 self.logger.debug(f"Disconnected from PLC {self.address}:{self.port}")
-            except socket.error as e:
-                self.logger.warning(f"Error during disconnect: {e}")
+            except (socket.error, OSError) as e:
+                self.logger.warning(f"Socket close failed: {e}")
             finally:
                 self.socket = None
         
@@ -1922,7 +1929,7 @@ class S7Client:
             if self.socket:
                 try:
                     self.socket.close()
-                except Exception:
+                except (socket.error, OSError):
                     pass
                 self.socket = None
             self._set_connection_state(ConnectionState.DISCONNECTED)
@@ -1935,7 +1942,7 @@ class S7Client:
             if self.socket:
                 try:
                     self.socket.close()
-                except Exception:
+                except (socket.error, OSError):
                     pass
                 self.socket = None
             self._set_connection_state(ConnectionState.DISCONNECTED)
@@ -1960,7 +1967,7 @@ class S7Client:
                 if self.socket:
                     try:
                         self.socket.close()
-                    except Exception:
+                    except (socket.error, OSError):
                         pass
                     self.socket = None
                 self._set_connection_state(ConnectionState.DISCONNECTED)
