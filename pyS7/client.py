@@ -1956,23 +1956,51 @@ class S7Client:
             return b""
 
         data = bytearray()
+        empty_reads = 0
+        max_empty_reads = 100  # Prevent infinite loop on partial data
 
         while len(data) < expected_length:
             chunk = self.socket.recv(expected_length - len(data))
             if len(chunk) == 0:
-                error_msg = "The connection has been closed by the peer"
-                self.logger.error(error_msg)
-                self._set_connection_state(ConnectionState.ERROR, error_msg)
-                # Close the socket as it's no longer usable
-                if self.socket:
-                    try:
-                        self.socket.close()
-                    except (socket.error, OSError):
-                        pass
-                    self.socket = None
-                self._set_connection_state(ConnectionState.DISCONNECTED)
-                raise S7CommunicationError(error_msg)
-
+                empty_reads += 1
+                if empty_reads >= max_empty_reads:
+                    error_msg = (
+                        f"Incomplete data from PLC: expected {expected_length} bytes, "
+                        f"received {len(data)} bytes after {empty_reads} empty reads. "
+                        f"Connection may be unstable or PLC sent incomplete response."
+                    )
+                    self.logger.error(error_msg)
+                    self._set_connection_state(ConnectionState.ERROR, error_msg)
+                    # Close the socket as it's no longer usable
+                    if self.socket:
+                        try:
+                            self.socket.close()
+                        except (socket.error, OSError):
+                            pass
+                        self.socket = None
+                    self._set_connection_state(ConnectionState.DISCONNECTED)
+                    raise S7CommunicationError(error_msg)
+                
+                # Check if connection is truly closed (first empty read)
+                if empty_reads == 1:
+                    error_msg = "The connection has been closed by the peer"
+                    self.logger.error(error_msg)
+                    self._set_connection_state(ConnectionState.ERROR, error_msg)
+                    # Close the socket as it's no longer usable
+                    if self.socket:
+                        try:
+                            self.socket.close()
+                        except (socket.error, OSError):
+                            pass
+                        self.socket = None
+                    self._set_connection_state(ConnectionState.DISCONNECTED)
+                    raise S7CommunicationError(error_msg)
+                
+                # Rare case: continue if between first and max retries
+                continue
+            
+            # Reset counter on successful read
+            empty_reads = 0
             data.extend(chunk)
 
         return bytes(data)
