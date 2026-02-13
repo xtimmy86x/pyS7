@@ -521,7 +521,14 @@ class S7Client:
                 length=2
             )
             # Clamp max_length to 254 (safe maximum for STRING)
-            header_max_length = min(max_length, 254)
+            if max_length > 254:
+                self.logger.warning(
+                    f"STRING tag max_length ({max_length}) exceeds protocol limit (254), "
+                    f"clamping to 254. This may indicate a configuration error in tag definition."
+                )
+                header_max_length = 254
+            else:
+                header_max_length = max_length
             header_values = (header_max_length, current_length)
             self.write([header_tag], [header_values])
             
@@ -570,7 +577,14 @@ class S7Client:
                 length=4
             )
             # Pack as big-endian 16-bit values (clamp to 65535 max)
-            header_max_length = min(max_length, 65535)
+            if max_length > 65535:
+                self.logger.warning(
+                    f"WSTRING tag max_length ({max_length}) exceeds protocol limit (65535), "
+                    f"clamping to 65535. This may indicate a configuration error in tag definition."
+                )
+                header_max_length = 65535
+            else:
+                header_max_length = max_length
             header_bytes: tuple[int, int, int, int] = (
                 (header_max_length >> 8) & 0xFF,
                 header_max_length & 0xFF,
