@@ -1746,26 +1746,42 @@ class S7Client:
         
         # Handle arrays (length > 1)
         if tag.length > 1:
-            values: List[Union[int, float]] = []
             item_size = tag.data_type.value
             
-            for i in range(tag.length):
-                item_bytes = data_bytes[i * item_size:(i + 1) * item_size]
-                
-                if tag.data_type == DataType.BYTE:
-                    values.append(int(struct.unpack('>B', item_bytes)[0]))
-                elif tag.data_type == DataType.INT:
-                    values.append(int(struct.unpack('>h', item_bytes)[0]))
-                elif tag.data_type == DataType.WORD:
-                    values.append(int(struct.unpack('>H', item_bytes)[0]))
-                elif tag.data_type == DataType.DINT:
-                    values.append(int(struct.unpack('>i', item_bytes)[0]))
-                elif tag.data_type == DataType.DWORD:
-                    values.append(int(struct.unpack('>I', item_bytes)[0]))
-                elif tag.data_type == DataType.REAL:
-                    values.append(float(struct.unpack('>f', item_bytes)[0]))
+            # Use generator expressions for memory efficiency (no intermediate list)
+            if tag.data_type == DataType.BYTE:
+                return tuple(
+                    int(struct.unpack('>B', data_bytes[i * item_size:(i + 1) * item_size])[0])
+                    for i in range(tag.length)
+                )
+            elif tag.data_type == DataType.INT:
+                return tuple(
+                    int(struct.unpack('>h', data_bytes[i * item_size:(i + 1) * item_size])[0])
+                    for i in range(tag.length)
+                )
+            elif tag.data_type == DataType.WORD:
+                return tuple(
+                    int(struct.unpack('>H', data_bytes[i * item_size:(i + 1) * item_size])[0])
+                    for i in range(tag.length)
+                )
+            elif tag.data_type == DataType.DINT:
+                return tuple(
+                    int(struct.unpack('>i', data_bytes[i * item_size:(i + 1) * item_size])[0])
+                    for i in range(tag.length)
+                )
+            elif tag.data_type == DataType.DWORD:
+                return tuple(
+                    int(struct.unpack('>I', data_bytes[i * item_size:(i + 1) * item_size])[0])
+                    for i in range(tag.length)
+                )
+            elif tag.data_type == DataType.REAL:
+                return tuple(
+                    float(struct.unpack('>f', data_bytes[i * item_size:(i + 1) * item_size])[0])
+                    for i in range(tag.length)
+                )
             
-            return tuple(values)
+            # Fallback (should not reach here with current DataType enum)
+            return tuple()
         
         # Handle single numeric types (length == 1)
         if tag.data_type == DataType.BYTE:
