@@ -283,7 +283,12 @@ class S7Client:
 
     def __exit__(self, exc_type: Optional[Type[BaseException]], exc_val: Optional[BaseException], exc_tb: Optional[TracebackType]) -> None:
         """Context manager exit: disconnect from PLC."""
-        self.disconnect()
+        try:
+            self.disconnect()
+        except AttributeError:
+            # If connect() failed before initializing attributes, disconnect() may fail
+            # This is ok - just means we're already disconnected
+            pass
 
     @property
     def connection_state(self) -> ConnectionState:
