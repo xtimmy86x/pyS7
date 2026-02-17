@@ -770,6 +770,15 @@ class S7Client:
         Raises:
             S7ConnectionError: If negotiated PDU is invalid
         """
+        # 0. Validate requested PDU doesn't exceed protocol maximum
+        if requested > MAX_PDU_SIZE:
+            self.logger.warning(
+                f"Requested PDU size ({requested} bytes) exceeds protocol maximum ({MAX_PDU_SIZE} bytes). "
+                f"Using {MAX_PDU_SIZE} bytes instead. "
+                f"Consider reducing max_pdu parameter in S7Client constructor."
+            )
+            requested = MAX_PDU_SIZE
+        
         # 1. Check protocol limits
         if negotiated <= 0 or negotiated < MIN_PDU_SIZE:
             raise S7ConnectionError(
