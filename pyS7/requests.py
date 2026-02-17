@@ -156,8 +156,11 @@ class ConnectionRequest(Request):
         packet.extend(b"\x00")  # Destination Reference (MSB)
         packet.extend(b"\x00")  # Destination Reference (LSB)
         
-        # Generate a random Source Reference
-        # This prevents connection conflicts when reconnecting
+        # Generate a random Source Reference (16-bit, 0x0000-0xFFFF)
+        # ISO 8073 uses this to identify the connection endpoint. A random value
+        # prevents connection conflicts when reconnecting to the same PLC after
+        # a disconnect, as the PLC may still have the old connection in its table.
+        # The source reference is split into MSB and LSB for network byte order.
         source_ref = random.randint(0, 0xFFFF)
         packet.extend(bytes([(source_ref >> 8) & 0xFF]))  # Source Reference (MSB)
         packet.extend(bytes([source_ref & 0xFF]))         # Source Reference (LSB)
