@@ -979,23 +979,27 @@ class S7Client:
         if self._connection_state != ConnectionState.ERROR:
             self._set_connection_state(ConnectionState.DISCONNECTING)
 
-        if self.socket:
+        # Capture socket reference locally to avoid race conditions where
+        # a concurrent error handler sets self.socket = None between the
+        # check and usage (e.g. "connection closed by peer" callback).
+        sock = self.socket
+        self.socket = None
+
+        if sock:
             self.logger.debug(f"Disconnecting from {self.address}:{self.port}")
             # Shutdown and close socket with proper error handling
             # Always attempt both operations to prevent resource leaks
             try:
-                self.socket.shutdown(socket.SHUT_RDWR)
+                sock.shutdown(socket.SHUT_RDWR)
             except (socket.error, OSError) as e:
                 # Socket may already be closed or in invalid state
                 self.logger.debug(f"Socket shutdown failed (expected if already closed): {e}")
             
             try:
-                self.socket.close()
+                sock.close()
                 self.logger.debug(f"Disconnected from PLC {self.address}:{self.port}")
             except (socket.error, OSError) as e:
                 self.logger.warning(f"Socket close failed: {e}")
-            finally:
-                self.socket = None
         
         # Set to DISCONNECTED unless we were in ERROR state (preserve ERROR)
         if self._connection_state != ConnectionState.ERROR:
