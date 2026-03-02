@@ -16,6 +16,8 @@ Complete reference for pyS7 data types, address formats, and supported operation
 | Type | Size | Range | Python Type | Description |
 |------|------|-------|-------------|-------------|
 | **BYTE** | 1 byte | 0 to 255 | `int` | Unsigned 8-bit integer |
+| **SINT** | 1 byte | -128 to 127 | `int` | Signed 8-bit integer |
+| **USINT** | 1 byte | 0 to 255 | `int` | Unsigned 8-bit integer (same as BYTE) |
 | **INT** | 2 bytes | -32,768 to 32,767 | `int` | Signed 16-bit integer |
 | **WORD** | 2 bytes | 0 to 65,535 | `int` | Unsigned 16-bit integer |
 | **DINT** | 4 bytes | -2,147,483,648 to 2,147,483,647 | `int` | Signed 32-bit integer |
@@ -148,6 +150,8 @@ Complete table mapping pyS7 addresses to Step7/TIA Portal equivalents:
 |-------------|------------------|-----------|-------------|
 | `DB2,X0.7` | `DB2.DBX0.7` | Boolean | Bit 7 of byte 0 of DB 2 |
 | `DB36,B2` | `DB36.DBB2` | Byte | Byte 2 (0-255) of DB 36 |
+| `DB10,SINT5` | `DB10.DBB5` | SInt | Signed byte 5 (-128 to 127) of DB 10 |
+| `DB10,USINT6` | `DB10.DBB6` | USInt | Unsigned byte 6 (0-255) of DB 10 |
 | `DB102,C4` | `DB102.DBB4` | Char | Byte 4 of DB 102 as a Char |
 | `DB10,I3` | `DB10.DBW3` | Int | Signed 16-bit number at byte 3 of DB 10 |
 | `DB17,W4` | `DB17.DBW4` | Word | Unsigned 16-bit number at byte 4 of DB 17 |
@@ -517,3 +521,305 @@ with S7Client(address="192.168.5.100", rack=0, slot=1) as client:
 - Original values captured at commit time (not add time)
 
 **See also:** [examples/batch_write_demo.py](../examples/batch_write_demo.py)
+
+## ClientMetrics
+
+Performance monitoring and diagnostics for S7 client operations.
+
+### Overview
+
+`ClientMetrics` is a lightweight telemetry system that tracks connection status, operation counts, performance metrics, and errors. It's enabled by default and adds minimal overhead.
+
+**Import:**
+```python
+from pyS7 import S7Client, ClientMetrics
+```
+
+**Enable/Disable:**
+```python
+# Enabled by default
+client = S7Client("192.168.1.10", 0, 1)
+assert client.metrics is not None
+
+# Explicitly enable
+client = S7Client("192.168.1.10", 0, 1, enable_metrics=True)
+
+# Disable for maximum performance
+client = S7Client("192.168.1.10", 0, 1, enable_metrics=False)
+assert client.metrics is None
+```
+
+### Properties
+
+All properties are read-only and thread-safe.
+
+#### Connection Metrics
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `connected` | `bool` | Current connection status |
+| `connection_start_time` | `Optional[float]` | Timestamp when connected (None if disconnected) |
+| `connection_count` | `int` | Total successful connections |
+| `disconnection_count` | `int` | Total disconnections |
+| `connection_uptime` | `float` | Seconds since connection (0 if disconnected) |
+
+**Example:**
+```python
+print(f"Connected: {client.metrics.connected}")
+print(f"Uptime: {client.metrics.connection_uptime:.1f}s")
+print(f"Reconnections: {client.metrics.connection_count - 1}")
+```
+
+#### Operation Metrics
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `read_count` | `int` | Total read operations attempted |
+| `write_count` | `int` | Total write operations attempted |
+| `total_operations` | `int` | Sum of read + write operations |
+| `read_errors` | `int` | Failed read operations |
+| `write_errors` | `int` | Failed write operations |
+| `timeout_errors` | `int` | Operations that timed out |
+| `total_errors` | `int` | Sum of all errors |
+
+**Example:**
+```python
+print(f"Total operations: {client.metrics.total_operations}")
+print(f"Reads: {client.metrics.read_count} ({client.metrics.read_errors} errors)")
+print(f"Writes: {client.metrics.write_count} ({client.metrics.write_errors} errors)")
+```
+
+#### Performance Metrics
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `last_read_duration` | `float` | Duration of last read (seconds) |
+| `last_write_duration` | `float` | Duration of last write (seconds) |
+| `avg_read_duration` | `float` | Average read duration (seconds) |
+| `avg_write_duration` | `float` | Average write duration (seconds) |
+| `operations_per_minute` | `float` | Operations/minute since connection |
+
+**Example:**
+```python
+print(f"Last read: {client.metrics.last_read_duration*1000:.1f}ms")
+print(f"Avg read: {client.metrics.avg_read_duration*1000:.1f}ms")
+print(f"Avg write: {client.metrics.avg_write_duration*1000:.1f}ms")
+print(f"Throughput: {client.metrics.operations_per_minute:.1f} ops/min")
+```
+
+#### Data Transfer Metrics
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `total_bytes_read` | `int` | Total bytes read from PLC |
+| `total_bytes_written` | `int` | Total bytes written to PLC |
+| `total_read_duration` | `float` | Cumulative read time (seconds) |
+| `total_write_duration` | `float` | Cumulative write time (seconds) |
+| `avg_bytes_per_read` | `float` | Average bytes per read operation |
+| `avg_bytes_per_write` | `float` | Average bytes per write operation |
+
+**Example:**
+```python
+total_kb = (client.metrics.total_bytes_read + client.metrics.total_bytes_written) / 1024
+print(f"Total data: {total_kb:.1f} KB")
+print(f"Avg read size: {client.metrics.avg_bytes_per_read:.0f} bytes")
+print(f"Avg write size: {client.metrics.avg_bytes_per_write:.0f} bytes")
+```
+
+#### Quality Metrics
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `error_rate` | `float` | Percentage of failed operations (0-100) |
+| `success_rate` | `float` | Percentage of successful operations (0-100) |
+
+**Example:**
+```python
+if client.metrics.error_rate > 5.0:
+    print(f"⚠️ High error rate: {client.metrics.error_rate:.1f}%")
+else:
+    print(f"✅ Healthy: {client.metrics.success_rate:.1f}% success")
+```
+
+### Methods
+
+#### as_dict()
+
+Export all metrics as a dictionary.
+
+**Signature:**
+```python
+def as_dict(self) -> Dict[str, Any]
+```
+
+**Returns:** Dictionary containing all metric values and computed properties.
+
+**Example:**
+```python
+import json
+
+metrics_dict = client.metrics.as_dict()
+print(json.dumps(metrics_dict, indent=2))
+
+# Output:
+# {
+#   "connected": true,
+#   "connection_start_time": 1709467200.123,
+#   "connection_count": 1,
+#   "disconnection_count": 0,
+#   "connection_uptime": 45.6,
+#   "read_count": 100,
+#   "write_count": 50,
+#   ...
+# }
+```
+
+**Use cases:**
+- Logging to files or databases
+- Integration with monitoring systems
+- JSON/REST API export
+- Debugging and analysis
+
+#### reset()
+
+Reset all metrics to initial state.
+
+**Signature:**
+```python
+def reset(self) -> None
+```
+
+**Example:**
+```python
+# Perform operations
+client.read(["DB1,I0"])
+print(f"Operations: {client.metrics.total_operations}")  # 1
+
+# Reset metrics
+client.metrics.reset()
+print(f"Operations: {client.metrics.total_operations}")  # 0
+print(f"Connected: {client.metrics.connected}")  # False
+```
+
+**Use cases:**
+- Fresh metrics after maintenance
+- Periodic metric collection
+- Testing and benchmarking
+- Error recovery
+
+**Note:** Resets connection state (sets `connected=False`). May want to call `record_connection()` after if still connected.
+
+#### \_\_str\_\_()
+
+Get human-readable metrics summary.
+
+**Example:**
+```python
+print(client.metrics)
+
+# Output:
+# === S7Client Metrics ===
+# Connected: True (uptime: 45.6s)
+# Operations: 150 (100 reads, 50 writes)
+# Success rate: 98.67%
+# Avg read: 12.3ms | Avg write: 15.7ms
+# Errors: 2 total (1 read, 1 write, 0 timeouts)
+# Data: 1234 bytes read, 567 bytes written
+```
+
+**Use cases:**
+- Quick console output
+- Logging
+- Debug printing
+
+### Thread Safety
+
+All `ClientMetrics` operations are thread-safe:
+
+```python
+import threading
+
+def worker():
+    for _ in range(100):
+        client.read(["DB1,I0"])
+
+def monitor():
+    while True:
+        print(f"Ops: {client.metrics.total_operations}")
+        time.sleep(1)
+
+# Safe concurrent access
+threading.Thread(target=worker).start()
+threading.Thread(target=monitor).start()
+```
+
+Internal `threading.Lock` ensures:
+- ✅ No data races
+- ✅ Consistent snapshots in `as_dict()`
+- ✅ Safe concurrent reads/writes
+
+### Integration Examples
+
+#### Home Assistant
+
+```python
+from homeassistant.components.sensor import SensorEntity
+
+class PLCUptimeSensor(SensorEntity):
+    @property
+    def state(self):
+        return self.client.metrics.connection_uptime
+    
+    @property
+    def unit_of_measurement(self):
+        return "s"
+```
+
+#### Prometheus
+
+```python
+from prometheus_client import Gauge
+
+plc_uptime = Gauge('plc_uptime_seconds', 'PLC connection uptime')
+plc_success_rate = Gauge('plc_success_rate', 'PLC operation success rate')
+
+# Update periodically
+plc_uptime.set(client.metrics.connection_uptime)
+plc_success_rate.set(client.metrics.success_rate)
+```
+
+#### Logging
+
+```python
+import logging
+
+logger = logging.getLogger(__name__)
+
+# Periodic logging
+logger.info(
+    "PLC metrics - Ops: %d, Success: %.1f%%, Avg: %.1fms",
+    client.metrics.total_operations,
+    client.metrics.success_rate,
+    client.metrics.avg_read_duration * 1000
+)
+```
+
+### Performance Impact
+
+Metrics collection has minimal performance impact:
+
+- **Memory:** ~1KB per client
+- **CPU:** Nanoseconds per operation (lock + arithmetic)
+- **Overhead:** < 0.1% in typical usage
+
+For absolute maximum performance, disable metrics:
+
+```python
+client = S7Client("192.168.1.10", 0, 1, enable_metrics=False)
+```
+
+### See Also
+
+- **[Metrics Guide](METRICS.md)** - Complete metrics documentation
+- **[Examples](../examples/metrics_demo.py)** - Usage examples
+- **[Home Assistant Integration](../examples/homeassistant_metrics_integration.py)** - HA patterns

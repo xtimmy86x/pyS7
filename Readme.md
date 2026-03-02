@@ -54,16 +54,18 @@ from pyS7 import S7Client
 
 with S7Client(address="192.168.5.100", rack=0, slot=1) as client:
     tags = [
-        "DB1,X0.0",  # Bit 0 of DB1
-        "DB1,I30",   # INT at byte 30 of DB1
-        "M54.4",     # Bit 4 of marker memory
-        "IW22",      # WORD at byte 22 of input area
-        "QR24",      # REAL at byte 24 of output area
-        "DB1,S10.5"  # String of 5 characters at byte 10 of DB1
+        "DB1,X0.0",     # Bit 0 of DB1
+        "DB1,SINT20",   # SINT (signed byte -128 to 127) at byte 20 of DB1
+        "DB1,USINT21",  # USINT (unsigned byte 0-255) at byte 21 of DB1
+        "DB1,I30",      # INT at byte 30 of DB1
+        "M54.4",        # Bit 4 of marker memory
+        "IW22",         # WORD at byte 22 of input area
+        "QR24",         # REAL at byte 24 of output area
+        "DB1,S10.5"     # String of 5 characters at byte 10 of DB1
     ]
     
     data = client.read(tags)
-    print(data)  # [True, 123, True, 10, 3.14, 'Hello']
+    print(data)  # [True, -50, 200, 123, True, 10, 3.14, 'Hello']
 ```
 
 ### Writing data
@@ -72,8 +74,8 @@ with S7Client(address="192.168.5.100", rack=0, slot=1) as client:
 from pyS7 import S7Client
 
 with S7Client(address="192.168.5.100", rack=0, slot=1) as client:
-    tags = ["DB1,X0.0", "DB1,I30", "DB1,R40", "DB1,S10.5"]
-    values = [True, 25000, 1.2345, "Hello"]
+    tags = ["DB1,X0.0", "DB1,SINT20", "DB1,USINT21", "DB1,I30", "DB1,R40", "DB1,S10.5"]
+    values = [True, -50, 200, 25000, 1.2345, "Hello"]
     
     client.write(tags, values)
 ```
@@ -169,12 +171,45 @@ tags = ["DB1,S100.254"]  # STRING[254] - handled transparently
 data = client.read(tags)  # Complete string returned
 ```
 
+### Monitoring and Metrics
+
+Built-in metrics collection for monitoring PLC communication performance and diagnostics:
+
+```python
+from pyS7 import S7Client
+
+# Metrics enabled by default
+client = S7Client(address="192.168.5.100", rack=0, slot=1)
+client.connect()
+
+# Perform operations
+client.read(["DB1,I0", "DB1,R4"])
+client.write(["DB1,I0"], [100])
+
+# Access real-time metrics
+print(f"Connected: {client.metrics.connected}")
+print(f"Uptime: {client.metrics.connection_uptime:.1f}s")
+print(f"Total operations: {client.metrics.total_operations}")
+print(f"Success rate: {client.metrics.success_rate}%")
+print(f"Error rate: {client.metrics.error_rate}%")
+print(f"Avg read time: {client.metrics.avg_read_duration*1000:.1f}ms")
+print(f"Throughput: {client.metrics.operations_per_minute:.1f} ops/min")
+
+# Export to dict for logging/monitoring systems
+metrics_dict = client.metrics.as_dict()
+
+# Integration with Home Assistant, Prometheus, Grafana, etc.
+```
+
+See [docs/METRICS.md](docs/METRICS.md) for complete metrics documentation and integration examples.
+
 ## Documentation
 
 ### Guides
 
 - **[API Reference](docs/API_REFERENCE.md)** – Data types, address formats, supported operations
 - **[Advanced Usage](docs/ADVANCED_USAGE.md)** – TSAP connections, PDU tuning, chunking, multi-threading
+- **[Metrics and Telemetry](docs/METRICS.md)** – Performance monitoring, diagnostics, integration patterns
 - **[Best Practices](docs/BEST_PRACTICES.md)** – Connection management, error handling, production deployment
 - **[Troubleshooting](docs/TROUBLESHOOTING.md)** – Common issues and solutions
 
@@ -201,12 +236,14 @@ Example scripts in the [`examples/`](examples/) directory demonstrate:
 - `read_detailed_demo.py` – Graceful error handling for reads
 - `write_detailed_demo.py` – Graceful error handling for writes
 - `batch_write_demo.py` – Transactional batch writes with rollback
+- `metrics_demo.py` – Metrics collection and monitoring
 - `get_cpu_status.py` – CPU status monitoring
 - `get_cpu_info.py` – CPU information retrieval
 - `read_data_tsap.py` – TSAP connection example
 - `bit_read_workaround.py` – Bit operations
 - `manage_reconnection.py` – Connection handling
 - `connection_state_demo.py` – Connection state management
+- `homeassistant_metrics_integration.py` – Home Assistant integration patterns
 
 ## License
 

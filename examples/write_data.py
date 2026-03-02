@@ -12,6 +12,8 @@ if __name__ == "__main__":
     tags = [
         "DB1,X0.0",  # => S7Tag(MemoryArea.DB, 1, DataType.BIT, 0, 0, 1) - BIT 0 (first bit) of DB1
         "DB1,X0.6",  # => S7Tag(MemoryArea.DB, 1, DataType.BIT, 0, 6, 1) - BIT 7 (7th bit) of DB1
+        "DB1,SINT20",  # => S7Tag(MemoryArea.DB, 1, DataType.SINT, 20, 0, 1) - SINT (signed byte -128 to 127) at address 20 of DB1
+        "DB1,USINT21",  # => S7Tag(MemoryArea.DB, 1, DataType.USINT, 21, 0, 1) - USINT (unsigned byte 0-255) at address 21 of DB1
         "DB1,I30",  # => S7Tag(MemoryArea.DB, 1, DataType.INT, 30, 0, 1) - INT at address 30 of DB1
         "M54.4",  # => S7Tag(MemoryArea.MERKER, 0, DataType.BIT, 4, 4, 1) - BIT 4 (fifth bit) in the merker (memento) area
         "IW22",  # => S7Tag(MemoryArea.INPUT, 0, DataType.WORD, 22, 0, 1) - WORD at address 22 in input area
@@ -28,7 +30,7 @@ if __name__ == "__main__":
     ]
 
     # Defines values to write
-    values = [False, True, 25000, True, 120, 1.2345, "Hello", (3.14, 6.28, 9.42)]
+    values = [False, True, -50, 200, 25000, True, 120, 1.2345, "Hello", (3.14, 6.28, 9.42)]
 
     # Write data to the PLC using tags and values
     client.write(tags=tags, values=values)

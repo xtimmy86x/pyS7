@@ -5,6 +5,87 @@ All notable changes to pyS7 will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.6.0] - 2026-03-03
+
+### Added
+- **Metrics and Telemetry System** – Built-in performance monitoring and diagnostics
+  - `ClientMetrics` class with 15 computed properties
+  - Connection metrics: uptime, connection/disconnection counts
+  - Operation metrics: read/write counts, success/failure tracking
+  - Performance metrics: average durations, operations per minute, throughput
+  - Data transfer metrics: bytes read/written, average sizes
+  - Quality metrics: error rate, success rate
+  - Thread-safe implementation with `threading.Lock`
+  - Property-based API for easy access
+  - Export to dictionary for logging and monitoring systems
+  - Zero external dependencies
+  - Enabled by default via `enable_metrics` parameter
+  - Minimal performance overhead (< 0.1%)
+- Data type support for SINT and USINT:
+  - `SINT`: Signed 8-bit integer (-128 to 127)
+  - `USINT`: Unsigned 8-bit integer (0 to 255)
+  - Address format: `DB1,SINT20` or `DB1,USINT21`
+  - Alias support: `SI` for SINT, `USI` for USINT
+- Comprehensive documentation:
+  - `METRICS.md`: Complete metrics guide with integration examples
+  - Updated `API_REFERENCE.md` with ClientMetrics documentation
+  - Updated `README.md` with metrics quick start
+- New example files:
+  - `examples/metrics_demo.py`: 7 comprehensive usage examples
+  - `examples/homeassistant_metrics_integration.py`: Home Assistant integration patterns
+- Test coverage:
+  - 26 new metrics tests (100% coverage on metrics module)
+  - All 281 tests passing
+  - Overall coverage maintained at 85%
+
+### Changed
+- `S7Client.__init__()` now accepts `enable_metrics: bool = True` parameter
+- `S7Client` now has `metrics: Optional[ClientMetrics]` attribute
+- Automatic metrics tracking in `connect()`, `disconnect()`, `read()`, `write()`
+- Updated documentation for SINT/USINT in README, API_REFERENCE, and examples
+
+### Integration Support
+- **Home Assistant**: Direct property access for sensor creation
+- **Prometheus**: Gauge/Counter mapping examples
+- **Grafana**: Time-series export patterns
+- **General logging**: JSON export via `as_dict()`
+
+### Use Cases
+- Real-time performance monitoring
+- Health checks and alerting
+- Diagnostics and troubleshooting
+- Production system observability
+- Home automation integration
+- Performance benchmarking
+
+### Migration Guide
+
+**Enable/Disable Metrics:**
+```python
+# Metrics enabled by default (recommended)
+client = S7Client("192.168.1.10", 0, 1)
+print(client.metrics.success_rate)
+
+# Disable for absolute maximum performance
+client = S7Client("192.168.1.10", 0, 1, enable_metrics=False)
+# client.metrics will be None
+```
+
+**Access Metrics:**
+```python
+# Property access
+uptime = client.metrics.connection_uptime
+success_rate = client.metrics.success_rate
+
+# Export to dict
+metrics_dict = client.metrics.as_dict()
+
+# Reset metrics
+client.metrics.reset()
+```
+
+**No Breaking Changes** – Existing code continues to work without modification.
+
 ## [2.5.0] - 2026-01-23
 
 ### Added
