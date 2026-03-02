@@ -12,6 +12,7 @@ from .errors import (
     S7TimeoutError,
     S7WriteResponseError,
 )
+from .metrics import ClientMetrics
 from .responses import extract_bit_from_byte
 from .tag import S7Tag
 
@@ -21,6 +22,7 @@ __all__ = [
     "WriteResult",
     "ReadResult",
     "BatchWriteTransaction",
+    "ClientMetrics",
     "map_address_to_tag",
     "extract_bit_from_byte",
     "ConnectionState",

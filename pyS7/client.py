@@ -3,12 +3,12 @@ import socket
 import struct
 import threading
 from dataclasses import dataclass
+from time import time
 from types import TracebackType
 from typing import Any, Dict, List, Optional, Sequence, Type, Union, cast
 
 from .address_parser import map_address_to_tag
 from .constants import (
-    COTP_SIZE,
     MAX_JOB_CALLED,
     MAX_JOB_CALLING,
     MAX_PDU,
@@ -25,6 +25,7 @@ from .constants import (
     WRITE_REQ_OVERHEAD,
     WRITE_REQ_PARAM_SIZE_TAG,
 )
+from .metrics import ClientMetrics
 from .errors import (
     S7AddressError,
     S7CommunicationError,
@@ -246,6 +247,7 @@ class S7Client:
         local_tsap: Optional[Union[int, str]] = None,
         remote_tsap: Optional[Union[int, str]] = None,
         max_pdu: int = MAX_PDU,
+        enable_metrics: bool = True,
     ) -> None:
         self.address = address
         self.rack = rack
@@ -271,6 +273,9 @@ class S7Client:
         self.pdu_size: int = max_pdu
         self.max_jobs_calling: int = MAX_JOB_CALLING
         self.max_jobs_called: int = MAX_JOB_CALLED
+        
+        # Initialize metrics tracking
+        self.metrics: Optional[ClientMetrics] = ClientMetrics() if enable_metrics else None
 
         # Validate TSAP values if provided
         if local_tsap is not None or remote_tsap is not None:
@@ -936,10 +941,16 @@ class S7Client:
                 f"Connected to PLC {self.address}:{self.port} - "
                 f"PDU: {self.pdu_size} bytes, Jobs: {self.max_jobs_calling}/{self.max_jobs_called}"
             )
+            
+            # Record successful connection in metrics
+            if self.metrics:
+                self.metrics.record_connection()
         except socket.timeout as e:
             error_msg = f"Connection timeout during COTP/PDU negotiation after {self.timeout}s: {e}"
             self._set_connection_state(ConnectionState.ERROR, error_msg)
             self.logger.error(error_msg)
+            if self.metrics:
+                self.metrics.record_timeout()
             self.disconnect()
             raise S7TimeoutError(error_msg) from e
         except socket.error as e:
@@ -1001,6 +1012,10 @@ class S7Client:
             except (socket.error, OSError) as e:
                 self.logger.warning(f"Socket close failed: {e}")
         
+        # Record disconnection in metrics
+        if self.metrics:
+            self.metrics.record_disconnection()
+        
         # Set to DISCONNECTED unless we were in ERROR state (preserve ERROR)
         if self._connection_state != ConnectionState.ERROR:
             self._set_connection_state(ConnectionState.DISCONNECTED)
@@ -1047,89 +1062,107 @@ class S7Client:
             raise S7CommunicationError(
                 "Not connected to PLC. Call 'connect' before performing read operations."
             )
-
-        # Check for large tags (strings and arrays) and handle them separately
-        regular_tags = []
-        large_string_indices = []
-        large_string_tags = []
         
-        for i, tag in enumerate(list_tags):
-            # Check if tag response exceeds PDU size
-            tag_response_size = READ_RES_OVERHEAD + READ_RES_PARAM_SIZE_TAG + tag.size()
-            if tag_response_size > self.pdu_size:
-                # Only STRING and WSTRING support automatic chunking
-                if tag.data_type in (DataType.STRING, DataType.WSTRING):
-                    # This string is too large, will be read separately with chunking
-                    large_string_indices.append(i)
-                    large_string_tags.append(tag)
+        # Start timing for metrics
+        start_time = time() if self.metrics else None
+        
+        try:
+            # Check for large tags (strings and arrays) and handle them separately
+            regular_tags = []
+            large_string_indices = []
+            large_string_tags = []
+            
+            for i, tag in enumerate(list_tags):
+                # Check if tag response exceeds PDU size
+                tag_response_size = READ_RES_OVERHEAD + READ_RES_PARAM_SIZE_TAG + tag.size()
+                if tag_response_size > self.pdu_size:
+                    # Only STRING and WSTRING support automatic chunking
+                    if tag.data_type in (DataType.STRING, DataType.WSTRING):
+                        # This string is too large, will be read separately with chunking
+                        large_string_indices.append(i)
+                        large_string_tags.append(tag)
+                        self.logger.debug(
+                            f"Tag {tag} exceeds PDU size ({tag_response_size} > {self.pdu_size}), "
+                            f"will be read in chunks automatically"
+                        )
+                        continue
+                    else:
+                        # Other data types cannot be automatically chunked
+                        tag_size = tag.size()
+                        max_data_size = self.pdu_size - READ_RES_OVERHEAD - READ_RES_PARAM_SIZE_TAG
+                        raise S7AddressError(
+                            f"{tag} requires {tag_response_size} bytes but PDU size is {self.pdu_size} bytes. "
+                            f"Maximum data size for this PDU: {max_data_size} bytes (current tag needs {tag_size} bytes). "
+                            f"For {tag.data_type.name} arrays, read in smaller chunks. "
+                            f"For STRING/WSTRING, automatic chunking is supported."
+                        )
+                regular_tags.append((i, tag))
+            
+            # Read regular tags (initialize with Optional[Value])
+            data: List[Optional[Value]] = [None] * len(list_tags)
+
+            # Read large strings separately with chunking
+            for idx, tag in zip(large_string_indices, large_string_tags):
+                data[idx] = self._read_large_string(tag)
+            
+            # Read regular tags if any
+            if regular_tags:
+                tags_only = [tag for _, tag in regular_tags]
+                
+                if optimize:
+                    requests, tags_map = prepare_optimized_requests(
+                        tags=tags_only, max_pdu=self.pdu_size
+                    )
                     self.logger.debug(
-                        f"Tag {tag} exceeds PDU size ({tag_response_size} > {self.pdu_size}), "
-                        f"will be read in chunks automatically"
+                        f"Optimized {len(tags_only)} tags into {len(requests[0])} request(s) "
+                        f"(reduction: {len(tags_only) - len(requests[0])} merges)"
                     )
-                    continue
-                else:
-                    # Other data types cannot be automatically chunked
-                    tag_size = tag.size()
-                    max_data_size = self.pdu_size - READ_RES_OVERHEAD - READ_RES_PARAM_SIZE_TAG
-                    raise S7AddressError(
-                        f"{tag} requires {tag_response_size} bytes but PDU size is {self.pdu_size} bytes. "
-                        f"Maximum data size for this PDU: {max_data_size} bytes (current tag needs {tag_size} bytes). "
-                        f"For {tag.data_type.name} arrays, read in smaller chunks. "
-                        f"For STRING/WSTRING, automatic chunking is supported."
-                    )
-            regular_tags.append((i, tag))
-        
-        # Read regular tags (initialize with Optional[Value])
-        data: List[Optional[Value]] = [None] * len(list_tags)
 
-        # Read large strings separately with chunking
-        for idx, tag in zip(large_string_indices, large_string_tags):
-            data[idx] = self._read_large_string(tag)
-        
-        # Read regular tags if any
-        if regular_tags:
-            tags_only = [tag for _, tag in regular_tags]
-            
-            if optimize:
-                requests, tags_map = prepare_optimized_requests(
-                    tags=tags_only, max_pdu=self.pdu_size
-                )
-                self.logger.debug(
-                    f"Optimized {len(tags_only)} tags into {len(requests[0])} request(s) "
-                    f"(reduction: {len(tags_only) - len(requests[0])} merges)"
-                )
-
-                bytes_reponse = self.__send(ReadRequest(tags=requests[0]))
-                response = ReadOptimizedResponse(
-                    response=bytes_reponse,
-                    tag_map={key: tags_map[key] for key in requests[0]},
-                )
-
-                for i in range(1, len(requests)):
-                    bytes_reponse = self.__send(ReadRequest(tags=requests[i]))
-                    response += ReadOptimizedResponse(
+                    bytes_reponse = self.__send(ReadRequest(tags=requests[0]))
+                    response = ReadOptimizedResponse(
                         response=bytes_reponse,
-                        tag_map={key: tags_map[key] for key in requests[i]},
+                        tag_map={key: tags_map[key] for key in requests[0]},
                     )
 
-                regular_data = response.parse()
+                    for i in range(1, len(requests)):
+                        bytes_reponse = self.__send(ReadRequest(tags=requests[i]))
+                        response += ReadOptimizedResponse(
+                            response=bytes_reponse,
+                            tag_map={key: tags_map[key] for key in requests[i]},
+                        )
 
-            else:
-                requests = prepare_requests(tags=tags_only, max_pdu=self.pdu_size)
-                regular_data = []
+                    regular_data = response.parse()
 
-                for request in requests:
-                    bytes_reponse = self.__send(ReadRequest(tags=request))
-                    read_response = ReadResponse(response=bytes_reponse, tags=request)
-                    regular_data.extend(read_response.parse())
+                else:
+                    requests = prepare_requests(tags=tags_only, max_pdu=self.pdu_size)
+                    regular_data = []
+
+                    for request in requests:
+                        bytes_reponse = self.__send(ReadRequest(tags=request))
+                        read_response = ReadResponse(response=bytes_reponse, tags=request)
+                        regular_data.extend(read_response.parse())
+                
+                # Fill in regular data at correct indices
+                for (orig_idx, _), value in zip(regular_tags, regular_data):
+                    data[orig_idx] = value
+
+            # All elements have been filled at this point (either large strings or regular tags)
+            self.logger.debug(f"Read completed: {len(list_tags)} tag(s) retrieved successfully")
             
-            # Fill in regular data at correct indices
-            for (orig_idx, _), value in zip(regular_tags, regular_data):
-                data[orig_idx] = value
-
-        # All elements have been filled at this point (either large strings or regular tags)
-        self.logger.debug(f"Read completed: {len(list_tags)} tag(s) retrieved successfully")
-        return cast(List[Value], data)
+            # Record successful read in metrics
+            if self.metrics and start_time is not None:
+                duration = time() - start_time
+                bytes_read = sum(tag.size() for tag in list_tags)
+                self.metrics.record_read(duration, bytes_read, success=True)
+            
+            return cast(List[Value], data)
+        
+        except Exception as e:
+            # Record failed read in metrics
+            if self.metrics and start_time is not None:
+                duration = time() - start_time
+                self.metrics.record_read(duration, 0, success=False)
+            raise
 
     def read_detailed(
         self, tags: Sequence[Union[str, S7Tag]], optimize: bool = True
@@ -1390,53 +1423,70 @@ class S7Client:
             raise S7CommunicationError(
                 "Not connected to PLC. Call 'connect' before performing write operations."
             )
-
-        # Check for large tags (strings) and handle them separately
-        regular_tags = []
-        regular_values = []
-        large_string_indices = []
         
-        for i, (tag, value) in enumerate(zip(tags_list, values)):
-            # Check if tag request exceeds PDU size
-            tag_request_size = WRITE_REQ_OVERHEAD + WRITE_REQ_PARAM_SIZE_TAG + tag.size() + 4
-            if tag_request_size > self.pdu_size:
-                # Only STRING and WSTRING support automatic chunking
-                if tag.data_type in (DataType.STRING, DataType.WSTRING):
-                    # This string is too large, will be written separately with chunking
-                    large_string_indices.append(i)
-                    self.logger.debug(
-                        f"Tag {tag} exceeds PDU size ({tag_request_size} > {self.pdu_size}), "
-                        f"will be written in chunks automatically"
-                    )
-                    self._write_large_string(tag, value)  # type: ignore
-                    continue
-                else:
-                    # Other data types cannot be automatically chunked
-                    tag_size = tag.size()
-                    max_data_size = self.pdu_size - WRITE_REQ_OVERHEAD - WRITE_REQ_PARAM_SIZE_TAG - 4
-                    raise S7AddressError(
-                        f"{tag} requires {tag_request_size} bytes but PDU size is {self.pdu_size} bytes. "
-                        f"Maximum data size for this PDU: {max_data_size} bytes (current tag needs {tag_size} bytes). "
-                        f"For {tag.data_type.name} arrays, write in smaller chunks. "
-                        f"For STRING/WSTRING, automatic chunking is supported."
-                    )
-            regular_tags.append(tag)
-            regular_values.append(value)
+        # Start timing for metrics
+        start_time = time() if self.metrics else None
         
-        # Write regular tags if any
-        if regular_tags:
-            requests, requests_values = prepare_write_requests_and_values(
-                tags=regular_tags, values=regular_values, max_pdu=self.pdu_size
-            )
-
-            for i, request in enumerate(requests):
-                bytes_response = self.__send(
-                    WriteRequest(tags=request, values=requests_values[i])
+        try:
+            # Check for large tags (strings) and handle them separately
+            regular_tags = []
+            regular_values = []
+            large_string_indices = []
+            
+            for i, (tag, value) in enumerate(zip(tags_list, values)):
+                # Check if tag request exceeds PDU size
+                tag_request_size = WRITE_REQ_OVERHEAD + WRITE_REQ_PARAM_SIZE_TAG + tag.size() + 4
+                if tag_request_size > self.pdu_size:
+                    # Only STRING and WSTRING support automatic chunking
+                    if tag.data_type in (DataType.STRING, DataType.WSTRING):
+                        # This string is too large, will be written separately with chunking
+                        large_string_indices.append(i)
+                        self.logger.debug(
+                            f"Tag {tag} exceeds PDU size ({tag_request_size} > {self.pdu_size}), "
+                            f"will be written in chunks automatically"
+                        )
+                        self._write_large_string(tag, value)  # type: ignore
+                        continue
+                    else:
+                        # Other data types cannot be automatically chunked
+                        tag_size = tag.size()
+                        max_data_size = self.pdu_size - WRITE_REQ_OVERHEAD - WRITE_REQ_PARAM_SIZE_TAG - 4
+                        raise S7AddressError(
+                            f"{tag} requires {tag_request_size} bytes but PDU size is {self.pdu_size} bytes. "
+                            f"Maximum data size for this PDU: {max_data_size} bytes (current tag needs {tag_size} bytes). "
+                            f"For {tag.data_type.name} arrays, write in smaller chunks. "
+                            f"For STRING/WSTRING, automatic chunking is supported."
+                        )
+                regular_tags.append(tag)
+                regular_values.append(value)
+            
+            # Write regular tags if any
+            if regular_tags:
+                requests, requests_values = prepare_write_requests_and_values(
+                    tags=regular_tags, values=regular_values, max_pdu=self.pdu_size
                 )
-                response = WriteResponse(response=bytes_response, tags=request)
-                response.parse()
+
+                for i, request in enumerate(requests):
+                    bytes_response = self.__send(
+                        WriteRequest(tags=request, values=requests_values[i])
+                    )
+                    response = WriteResponse(response=bytes_response, tags=request)
+                    response.parse()
+            
+            self.logger.debug(f"Write completed: {len(tags_list)} tag(s) written successfully")
+            
+            # Record successful write in metrics
+            if self.metrics and start_time is not None:
+                duration = time() - start_time
+                bytes_written = sum(tag.size() for tag in tags_list)
+                self.metrics.record_write(duration, bytes_written, success=True)
         
-        self.logger.debug(f"Write completed: {len(tags_list)} tag(s) written successfully")
+        except Exception as e:
+            # Record failed write in metrics
+            if self.metrics and start_time is not None:
+                duration = time() - start_time
+                self.metrics.record_write(duration, 0, success=False)
+            raise
 
     def write_detailed(
         self, tags: Sequence[Union[str, S7Tag]], values: Sequence[Value]
