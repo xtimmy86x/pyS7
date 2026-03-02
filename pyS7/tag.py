@@ -15,6 +15,8 @@ _SIZE_CALCULATOR: Dict[DataType, Callable[[int], int]] = {
     DataType.DWORD: lambda length: length * 4,
     DataType.REAL: lambda length: length * 4,
     DataType.LREAL: lambda length: length * 8,
+    DataType.USINT: lambda length: length,
+    DataType.SINT: lambda length: length,
     DataType.STRING: lambda length: length + 2,
     DataType.WSTRING: lambda length: (length * 2) + 4,
 }

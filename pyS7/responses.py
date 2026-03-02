@@ -298,9 +298,17 @@ def parse_read_response(bytes_response: bytes, tags: List[S7Tag]) -> List[Value]
                 # Skip fill byte
                 offset += 0 if i == len(tags) - 1 else 1
 
-            elif tag.data_type == DataType.BYTE:
+            elif tag.data_type == DataType.BYTE or tag.data_type == DataType.USINT:
                 data = struct.unpack_from(
                     f">{tag.length * 'B'}", bytes_response, offset
+                )
+                offset += tag.size()
+                # Skip fill byte
+                offset += 0 if i == len(tags) - 1 else 1
+
+            elif tag.data_type == DataType.SINT:
+                data = struct.unpack_from(
+                    f">{tag.length * 'b'}", bytes_response, offset
                 )
                 offset += tag.size()
                 # Skip fill byte
@@ -396,6 +404,8 @@ def parse_optimized_read_response(
     # Map DataType -> struct format char (always big-endian with '>')
     fmt_map = {
         DataType.BYTE: "B",
+        DataType.USINT: "B",
+        DataType.SINT: "b",
         DataType.INT: "h",
         DataType.WORD: "H",
         DataType.DWORD: "I",

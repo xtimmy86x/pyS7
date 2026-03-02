@@ -1767,9 +1767,14 @@ class S7Client:
             item_size = tag.data_type.value
             
             # Use generator expressions for memory efficiency (no intermediate list)
-            if tag.data_type == DataType.BYTE:
+            if tag.data_type == DataType.BYTE or tag.data_type == DataType.USINT:
                 return tuple(
                     int(struct.unpack('>B', data_bytes[i * item_size:(i + 1) * item_size])[0])
+                    for i in range(tag.length)
+                )
+            elif tag.data_type == DataType.SINT:
+                return tuple(
+                    int(struct.unpack('>b', data_bytes[i * item_size:(i + 1) * item_size])[0])
                     for i in range(tag.length)
                 )
             elif tag.data_type == DataType.INT:
@@ -1802,8 +1807,11 @@ class S7Client:
             return tuple()
         
         # Handle single numeric types (length == 1)
-        if tag.data_type == DataType.BYTE:
+        if tag.data_type == DataType.BYTE or tag.data_type == DataType.USINT:
             return int(struct.unpack('>B', data_bytes)[0])
+        
+        if tag.data_type == DataType.SINT:
+            return int(struct.unpack('>b', data_bytes)[0])
         
         if tag.data_type == DataType.CHAR:
             return str(struct.unpack('>c', data_bytes)[0].decode('ascii'))

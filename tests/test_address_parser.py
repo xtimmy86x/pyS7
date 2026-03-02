@@ -26,6 +26,8 @@ from pyS7.tag import S7Tag
         ("Q300.1", S7Tag(MemoryArea.OUTPUT, 0, DataType.BIT, 300, 1, 1)),
         ("QB20", S7Tag(MemoryArea.OUTPUT, 0, DataType.BYTE, 20, 0, 1)),
         ("MW320", S7Tag(MemoryArea.MERKER, 0, DataType.WORD, 320, 0, 1)),
+        ("DB10,USINT5", S7Tag(MemoryArea.DB, 10, DataType.USINT, 5, 0, 1)),
+        ("DB10,SINT5", S7Tag(MemoryArea.DB, 10, DataType.SINT, 5, 0, 1)),
     ],
 )
 def test_map_address_to_tag(test_input: str, expected: S7Tag) -> None:

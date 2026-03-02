@@ -162,6 +162,8 @@ class DataType(Enum):
     REAL = 8  # FLOAT 32 bit
     STRING = 9  # S7 string (max length + current length header)
     WSTRING = 10  # S7 wide string UTF-16 (max length + current length header, 2 bytes per char)
+    USINT = 11  # unsigned INT 8 bit
+    SINT = 12  # signed INT 8 bit
     LREAL = 0x1F  # FLOAT 64 bit
 
 
@@ -176,6 +178,8 @@ DataTypeSize: Dict[DataType, int] = {
     DataType.REAL: 4,
     DataType.STRING: 1,
     DataType.WSTRING: 2,  # 2 bytes per character (UTF-16)
+    DataType.USINT: 1,
+    DataType.SINT: 1,
     DataType.LREAL: 8,
 }
 

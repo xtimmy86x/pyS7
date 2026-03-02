@@ -253,6 +253,9 @@ class ReadRequest(Request):
             elif tag.data_type == DataType.WSTRING:
                 transport_size = DataTypeData.BYTE_WORD_DWORD.value
                 length = tag.size()
+            elif tag.data_type in (DataType.USINT, DataType.SINT):
+                transport_size = DataType.BYTE.value
+                length = tag.length
             else:
                 transport_size = tag.data_type.value
                 length = tag.length
@@ -414,11 +417,15 @@ class WriteRequest(Request):
                 new_length = tag.length * DataTypeSize[tag.data_type]
                 packed_data = struct.pack(">?", data)
 
-            elif tag.data_type == DataType.BYTE:
+            elif tag.data_type == DataType.BYTE or tag.data_type == DataType.USINT:
                 transport_size = DataTypeData.BYTE_WORD_DWORD
                 new_length = tag.length * DataTypeSize[tag.data_type] * 8
-                # data can be int or tuple of ints for BYTE
                 packed_data = _pack_numeric_data(data, 'B', tag.length)  # type: ignore[arg-type]
+
+            elif tag.data_type == DataType.SINT:
+                transport_size = DataTypeData.BYTE_WORD_DWORD
+                new_length = tag.length * DataTypeSize[tag.data_type] * 8
+                packed_data = _pack_numeric_data(data, 'b', tag.length)  # type: ignore[arg-type]
 
             elif tag.data_type == DataType.CHAR:
                 transport_size = DataTypeData.BYTE_WORD_DWORD

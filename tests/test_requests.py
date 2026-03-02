@@ -217,6 +217,8 @@ def assert_write_data(packet: bytearray, offset: int, tag: S7Tag, value: Value) 
     struct_fmts = {
         DataType.BIT: "?",
         DataType.BYTE: "B",
+        DataType.USINT: "B",
+        DataType.SINT: "b",
         DataType.INT: "h",
         DataType.WORD: "H",
         DataType.DWORD: "I",
@@ -256,6 +258,10 @@ def test_write_request() -> None:
         S7Tag(MemoryArea.MERKER, 0, DataType.REAL, 40, 0, 1),
         S7Tag(MemoryArea.MERKER, 0, DataType.REAL, 60, 0, 2),
         S7Tag(MemoryArea.OUTPUT, 0, DataType.CHAR, 0, 0, 31),
+        S7Tag(MemoryArea.DB, 23, DataType.USINT, 50, 0, 1),
+        S7Tag(MemoryArea.DB, 23, DataType.USINT, 51, 0, 2),
+        S7Tag(MemoryArea.DB, 23, DataType.SINT, 53, 0, 1),
+        S7Tag(MemoryArea.DB, 23, DataType.SINT, 54, 0, 2),
     ]
 
     # Mock up values
@@ -278,6 +284,10 @@ def test_write_request() -> None:
         3.14,
         (6.28, 9.42),
         "a" * 31,
+        200,
+        (201, 202),
+        -50,
+        (-51, -52),
     ]
 
     write_request = WriteRequest(tags=tags, values=values)
