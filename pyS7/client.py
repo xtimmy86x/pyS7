@@ -5,7 +5,7 @@ import threading
 from dataclasses import dataclass
 from time import time
 from types import TracebackType
-from typing import Any, Dict, List, Optional, Sequence, Type, Union, cast
+from typing import Any, Dict, List, Optional, Sequence, Tuple, Type, Union, cast
 
 from .address_parser import map_address_to_tag
 from .constants import (
@@ -1285,11 +1285,11 @@ class S7Client:
                             all_bytes_responses.append(bytes_response)
                             all_requests.append(request)
                         except Exception as e:
-                            # If entire request fails, mark all tags in it as failed
+                            # If entire request fails, mark all original tags in it as failed
                             for req_tag in request:
-                                # Find original tags that match this request tag
-                                for orig_idx, orig_tag in regular_tags:
-                                    if orig_tag == req_tag:
+                                mapped_tags = tags_map.get(req_tag, [])
+                                for orig_idx, orig_tag in mapped_tags:
+                                    if orig_idx not in processed_indices:
                                         results.append(
                                             ReadResult(
                                                 tag=orig_tag,
@@ -1302,24 +1302,18 @@ class S7Client:
                     
                     # Parse responses with detailed error handling
                     for bytes_response, request in zip(all_bytes_responses, all_requests):
-                        # Extract only the original tag from tags_map for each request tag
-                        tag_map: Dict[S7Tag, S7Tag] = {}
-                        for key in request:
-                            mapped = tags_map.get(key)
-                            if mapped:
-                                # Get the first original tag from the list
-                                tag_map[key] = mapped[0][1]
-                        detailed_results = self._parse_read_response_detailed(
-                            bytes_response, request, tag_map
+                        request_map = {
+                            key: tags_map[key] for key in request if key in tags_map
+                        }
+                        detailed_results = self._parse_optimized_read_response_detailed(
+                            bytes_response, request_map
                         )
                         
                         # Map back to original indices
-                        for result in detailed_results:
-                            for orig_idx, orig_tag in regular_tags:
-                                if orig_tag == result.tag and orig_idx not in processed_indices:
-                                    results.append(result)
-                                    processed_indices.add(orig_idx)
-                                    break
+                        for orig_idx, result in detailed_results:
+                            if orig_idx not in processed_indices:
+                                results.append(result)
+                                processed_indices.add(orig_idx)
                 
                 else:
                     requests = prepare_requests(tags=tags_only, max_pdu=self.pdu_size)
@@ -1327,12 +1321,12 @@ class S7Client:
                     for request in requests:
                         try:
                             bytes_response = self.__send(ReadRequest(tags=request))
-                            detailed_results = self._parse_read_response_detailed(
+                            read_results = self._parse_read_response_detailed(
                                 bytes_response, request, None
                             )
                             
                             # Map back to original indices
-                            for result in detailed_results:
+                            for result in read_results:
                                 for orig_idx, orig_tag in regular_tags:
                                     if orig_tag == result.tag and orig_idx not in processed_indices:
                                         results.append(result)
@@ -1688,6 +1682,23 @@ class S7Client:
         
         return results
 
+    @staticmethod
+    def _read_item_data_length(
+        transport_size: int, length_field: int, fallback_size: int
+    ) -> int:
+        """Compute response item payload length in bytes from S7 item header."""
+        # BIT / BYTE|WORD|DWORD / INTEGER are reported in bits in many PLC responses.
+        if transport_size in (0x03, 0x04, 0x05):
+            data_length = (length_field + 7) // 8
+        # REAL and OCTET-STRING style items are typically reported in bytes.
+        elif transport_size in (0x07, 0x09):
+            data_length = length_field
+        else:
+            # Conservative fallback for unknown transport sizes.
+            data_length = (length_field + 7) // 8 if length_field > 0 else 0
+
+        return data_length if data_length > 0 else fallback_size
+
     def _parse_read_response_detailed(
         self,
         bytes_response: bytes,
@@ -1713,36 +1724,35 @@ class S7Client:
         results = []
         offset = READ_RES_OVERHEAD
         
-        for tag in tags:
+        for i, tag in enumerate(tags):
             try:
                 # Read return code
                 return_code = struct.unpack_from(">B", bytes_response, offset)[0]
-                offset += 1
                 
                 if return_code == ReturnCode.SUCCESS.value:
-                    # Read transport size and length
-                    transport_size = struct.unpack_from(">B", bytes_response, offset)[0]
-                    offset += 1
-                    length_bytes = struct.unpack_from(">H", bytes_response, offset)[0]
-                    offset += 2
-                    
-                    # Calculate actual data length
-                    if transport_size in (0x03, 0x04, 0x05):  # BIT, BYTE, CHAR
-                        data_length = (length_bytes + 7) // 8
-                    else:
-                        data_length = length_bytes // 8
-                    
-                    # Extract data bytes
+                    transport_size = struct.unpack_from(">B", bytes_response, offset + 1)[0]
+                    length_field = struct.unpack_from(">H", bytes_response, offset + 2)[0]
+                    # Skip response item header (return code + transport size + length)
+                    offset += 4
+                    data_length = self._read_item_data_length(
+                        transport_size, length_field, tag.size()
+                    )
                     data_bytes = bytes_response[offset:offset + data_length]
+
+                    if len(data_bytes) < data_length:
+                        raise ValueError(
+                            f"Response too short for tag data: expected {data_length} bytes, "
+                            f"got {len(data_bytes)}"
+                        )
                     offset += data_length
-                    
-                    # Handle fill byte for odd lengths
-                    if data_length % 2 != 0:
-                        offset += 1
+
+                    # Alignment fill byte after odd payload length.
+                    offset += data_length & 1
                     
                     # Parse value based on data type
                     try:
-                        value = self._parse_tag_value(tag, data_bytes, tags_map)
+                        parse_bytes = data_bytes[:tag.size()]
+                        value = self._parse_tag_value(tag, parse_bytes, tags_map)
                         results.append(ReadResult(tag=tag, success=True, value=value))
                     except Exception as e:
                         results.append(
@@ -1764,7 +1774,7 @@ class S7Client:
                         )
                     )
                     # Add fill byte for alignment after single-byte return code
-                    offset += 1
+                    offset += 2
             
             except Exception as e:
                 # Parsing error for this tag
@@ -1777,6 +1787,137 @@ class S7Client:
                 )
         
         return results
+
+    def _parse_optimized_read_response_detailed(
+        self,
+        bytes_response: bytes,
+        tags_map: Dict[S7Tag, List[Tuple[int, S7Tag]]],
+    ) -> List[Tuple[int, ReadResult]]:
+        """Parse optimized read response into detailed results per original tag.
+
+        Args:
+            bytes_response: Raw response bytes from PLC.
+            tags_map: Mapping packed_tag -> list of (original_index, original_tag).
+
+        Returns:
+            List of (original_index, ReadResult), sorted by original_index.
+        """
+        from .constants import READ_RES_OVERHEAD, ReturnCode
+        from .responses import _return_code_name, extract_bit_from_byte
+
+        indexed_results: List[Tuple[int, ReadResult]] = []
+        offset = READ_RES_OVERHEAD
+        response_len = len(bytes_response)
+
+        for packed_tag, original_tags in tags_map.items():
+            try:
+                if offset >= response_len:
+                    raise ValueError(
+                        f"Response too short: expected return code at offset {offset}, "
+                        f"got {response_len} bytes"
+                    )
+
+                return_code = bytes_response[offset]
+                if return_code != ReturnCode.SUCCESS.value:
+                    error_name = _return_code_name(return_code)
+                    for idx, original_tag in original_tags:
+                        indexed_results.append(
+                            (
+                                idx,
+                                ReadResult(
+                                    tag=original_tag,
+                                    success=False,
+                                    error=f"PLC returned error: {error_name}",
+                                    error_code=return_code,
+                                ),
+                            )
+                        )
+                    # Error item contains return code + fill byte.
+                    offset += 2
+                    continue
+
+                # Success item header: return code + transport size + length (4 bytes total)
+                if offset + 4 > response_len:
+                    raise ValueError(
+                        f"Response too short while reading item header at offset {offset}"
+                    )
+
+                transport_size = bytes_response[offset + 1]
+                length_field = struct.unpack_from(">H", bytes_response, offset + 2)[0]
+                offset += 4
+                data_start = offset
+                packed_size = self._read_item_data_length(
+                    transport_size, length_field, packed_tag.size()
+                )
+                data_end = data_start + packed_size
+
+                if data_end > response_len:
+                    raise ValueError(
+                        f"Response too short for packed tag data: need {data_end}, "
+                        f"got {response_len}"
+                    )
+
+                packed_data = bytes_response[data_start:data_end]
+
+                for idx, original_tag in original_tags:
+                    try:
+                        rel_offset = original_tag.start - packed_tag.start
+                        tag_size = original_tag.size()
+
+                        if rel_offset < 0 or rel_offset + tag_size > len(packed_data):
+                            raise ValueError(
+                                f"Tag data out of packed bounds (rel={rel_offset}, "
+                                f"size={tag_size}, packed={len(packed_data)})"
+                            )
+
+                        value: Value
+                        if (
+                            original_tag.data_type == DataType.BIT
+                            and packed_tag.data_type == DataType.BYTE
+                        ):
+                            value = extract_bit_from_byte(
+                                packed_data[rel_offset], original_tag.bit_offset
+                            )
+                        else:
+                            tag_bytes = packed_data[rel_offset:rel_offset + tag_size]
+                            value = self._parse_tag_value(original_tag, tag_bytes, None)
+
+                        indexed_results.append(
+                            (
+                                idx,
+                                ReadResult(tag=original_tag, success=True, value=value),
+                            )
+                        )
+                    except Exception as e:
+                        indexed_results.append(
+                            (
+                                idx,
+                                ReadResult(
+                                    tag=original_tag,
+                                    success=False,
+                                    error=f"Failed to parse value: {str(e)}",
+                                ),
+                            )
+                        )
+
+                # Advance to next packed item with protocol alignment padding.
+                offset += packed_size + (packed_size & 1)
+
+            except Exception as e:
+                for idx, original_tag in original_tags:
+                    indexed_results.append(
+                        (
+                            idx,
+                            ReadResult(
+                                tag=original_tag,
+                                success=False,
+                                error=f"Failed to parse response: {str(e)}",
+                            ),
+                        )
+                    )
+
+        indexed_results.sort(key=lambda item: item[0])
+        return indexed_results
 
     def _parse_tag_value(
         self,
@@ -1852,6 +1993,11 @@ class S7Client:
                     float(struct.unpack('>f', data_bytes[i * item_size:(i + 1) * item_size])[0])
                     for i in range(tag.length)
                 )
+            elif tag.data_type == DataType.LREAL:
+                return tuple(
+                    float(struct.unpack('>d', data_bytes[i * item_size:(i + 1) * item_size])[0])
+                    for i in range(tag.length)
+                )
             
             # Fallback (should not reach here with current DataType enum)
             return tuple()
@@ -1880,6 +2026,9 @@ class S7Client:
         
         if tag.data_type == DataType.REAL:
             return float(struct.unpack('>f', data_bytes)[0])
+
+        if tag.data_type == DataType.LREAL:
+            return float(struct.unpack('>d', data_bytes)[0])
         
         raise ValueError(f"Unsupported data type for parsing: {tag.data_type}")
 

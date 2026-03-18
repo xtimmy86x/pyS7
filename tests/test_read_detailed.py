@@ -301,6 +301,137 @@ class TestReadDetailed:
         assert results[2].value == 32000
         assert results[3].value == 100000
 
+    def test_read_detailed_optimized_maps_merged_results_correctly(
+        self, client: S7Client, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Test optimize=True maps merged packed data back to all original tags."""
+        # One optimized packed read (6 data bytes -> 3 INT values).
+        read_response = (
+            b"\x03\x00\x00\x1f"
+            b"\x02\xf0\x80"
+            b"2\x03\x00\x00\x00\x00\x00\x02\x00\x0a\x00\x00"
+            b"\x04\x01"
+            b"\xff\x04\x00\x30\x00\x01\x00\x02\x00\x03"
+        )
+
+        def mock_send(self: S7Client, request: Any) -> bytes:
+            return read_response
+
+        monkeypatch.setattr("pyS7.client.S7Client._S7Client__send", mock_send)
+
+        _set_client_connected(client, MagicMock())
+
+        tags = ["DB1,I0", "DB1,I2", "DB1,I4"]
+        results = client.read_detailed(tags, optimize=True)
+
+        assert len(results) == 3
+        assert all(r.success for r in results)
+        assert [r.value for r in results] == [1, 2, 3]
+
+    def test_read_detailed_optimized_request_failure_marks_all_mapped_tags(
+        self, client: S7Client, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Test optimize=True request failure is reported for every merged tag."""
+
+        def mock_send(self: S7Client, request: Any) -> bytes:
+            raise RuntimeError("simulated communication failure")
+
+        monkeypatch.setattr("pyS7.client.S7Client._S7Client__send", mock_send)
+
+        _set_client_connected(client, MagicMock())
+
+        tags = ["DB1,I0", "DB1,I2", "DB1,I4"]
+        results = client.read_detailed(tags, optimize=True)
+
+        assert len(results) == 3
+        assert all(not r.success for r in results)
+        assert all("request failed" in (r.error or "").lower() for r in results)
+
+    def test_read_detailed_non_optimized_real_uses_tag_size_not_transport_bits(
+        self, client: S7Client, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Regression: REAL parse must not depend on transport-size bit math."""
+        # TS is intentionally set to 0x07 and length to 0x0004 bytes.
+        # Older detailed parser interpreted this as 4 bits -> 0 bytes and failed.
+        read_response = (
+            b"\x03\x00\x00\x1b"
+            b"\x02\xf0\x80"
+            b"2\x03\x00\x00\x00\x00\x00\x02\x00\x06\x00\x00"
+            b"\x04\x01"
+            b"\xff\x07\x00\x04\x3f\x80\x00\x00"
+        )
+
+        def mock_send(self: S7Client, request: Any) -> bytes:
+            return read_response
+
+        monkeypatch.setattr("pyS7.client.S7Client._S7Client__send", mock_send)
+        _set_client_connected(client, MagicMock())
+
+        results = client.read_detailed(["DB1,R4"], optimize=False)
+
+        assert len(results) == 1
+        assert results[0].success is True
+        assert results[0].value == pytest.approx(1.0)
+
+    def test_read_detailed_non_optimized_lreal_success(
+        self, client: S7Client, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Test LREAL parsing in read_detailed optimize=False."""
+        lreal_bytes = struct.pack(">d", 3.141592653589793)
+        read_response = (
+            b"\x03\x00\x00\x1f"
+            b"\x02\xf0\x80"
+            b"2\x03\x00\x00\x00\x00\x00\x02\x00\x0a\x00\x00"
+            b"\x04\x01"
+            b"\xff\x04\x00\x40" + lreal_bytes
+        )
+
+        def mock_send(self: S7Client, request: Any) -> bytes:
+            return read_response
+
+        monkeypatch.setattr("pyS7.client.S7Client._S7Client__send", mock_send)
+        _set_client_connected(client, MagicMock())
+
+        results = client.read_detailed(["DB1,LR36"], optimize=False)
+
+        assert len(results) == 1
+        assert results[0].success is True
+        assert results[0].value == pytest.approx(3.141592653589793)
+
+    def test_read_detailed_optimized_lreal_and_real_both_parse(
+        self, client: S7Client, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Regression for optimize=True with LREAL and REAL in same request."""
+        lreal_bytes = struct.pack(">d", 3.141592653589793)
+        lreal_extra = b"\x11\x22\x33\x44\x55\x66\x77\x88"
+        real_bytes = struct.pack(">f", 78.0)
+        read_response = (
+            b"\x03\x00\x00\x3f"
+            b"\x02\xf0\x80"
+            b"2\x03\x00\x00\x00\x00\x00\x02\x00\x2a\x00\x00"
+            b"\x04\x04"
+            b"\xff\x04\x00\x10\x03\x5c"          # DB1,I4  -> 860
+            b"\xff\x04\x00\x20\x00\x00\x00\x09"  # DB1,DI20 -> 9
+            b"\xff\x04\x00\x80" + lreal_bytes + lreal_extra +  # DB1,LR36 (16 bytes payload)
+            b"\xff\x04\x00\x20" + real_bytes       # DB11,R12
+        )
+
+        def mock_send(self: S7Client, request: Any) -> bytes:
+            return read_response
+
+        monkeypatch.setattr("pyS7.client.S7Client._S7Client__send", mock_send)
+        _set_client_connected(client, MagicMock())
+
+        tags = ["DB11,R12", "DB1,DI20", "DB1,LR36", "DB1,I4"]
+        results = client.read_detailed(tags, optimize=True)
+
+        assert len(results) == 4
+        assert all(r.success for r in results)
+        assert results[0].value == pytest.approx(78.0)
+        assert results[1].value == 9
+        assert results[2].value == pytest.approx(3.141592653589793)
+        assert results[3].value == 860
+
 
 class TestReadResultDataclass:
     """Test ReadResult dataclass properties."""
