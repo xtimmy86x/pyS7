@@ -990,11 +990,11 @@ class S7Client:
         if self._connection_state != ConnectionState.ERROR:
             self._set_connection_state(ConnectionState.DISCONNECTING)
 
-        # Capture socket reference locally to avoid race conditions where
-        # a concurrent error handler sets self.socket = None between the
-        # check and usage (e.g. "connection closed by peer" callback).
-        sock = self.socket
-        self.socket = None
+        # Acquire _io_lock to wait for any in-flight __send() to finish
+        # and atomically nullify the socket so no new I/O can start.
+        with self._io_lock:
+            sock = self.socket
+            self.socket = None
 
         if sock:
             self.logger.debug(f"Disconnecting from {self.address}:{self.port}")
@@ -2146,14 +2146,25 @@ class S7Client:
         szl_response = SZLResponse(response=bytes_response)
         return szl_response.parse_cpu_info()
 
+    def _cleanup_socket_on_error(self) -> None:
+        """Close and nullify the socket under _io_lock after a communication error."""
+        with self._io_lock:
+            if self.socket:
+                try:
+                    self.socket.close()
+                except (socket.error, OSError):
+                    pass
+                self.socket = None
+
     def __send(self, request: Request) -> bytes:
         if not isinstance(request, Request):
             raise ValueError(f"Request type {type(request).__name__} not supported")
 
-        if self.socket is None:
-            raise S7CommunicationError("Socket is not initialized. Call connect() first.")
         try:
             with self._io_lock:
+                if self.socket is None:
+                    raise S7CommunicationError("Socket is not initialized. Call connect() first.")
+
                 request_data = request.serialize()
                 self.logger.debug(
                     f"TX -> PLC: {len(request_data)} bytes "
@@ -2180,26 +2191,14 @@ class S7Client:
             error_msg = f"Communication timeout after {self.timeout}s"
             self.logger.error(error_msg)
             self._set_connection_state(ConnectionState.ERROR, error_msg)
-            # Close the socket as it's no longer usable
-            if self.socket:
-                try:
-                    self.socket.close()
-                except (socket.error, OSError):
-                    pass
-                self.socket = None
+            self._cleanup_socket_on_error()
             self._set_connection_state(ConnectionState.DISCONNECTED)
             raise S7TimeoutError(error_msg) from e
         except socket.error as e:
             error_msg = f"Socket error during communication: {e}"
             self.logger.error(error_msg)
             self._set_connection_state(ConnectionState.ERROR, error_msg)
-            # Close the socket as it's no longer usable
-            if self.socket:
-                try:
-                    self.socket.close()
-                except (socket.error, OSError):
-                    pass
-                self.socket = None
+            self._cleanup_socket_on_error()
             self._set_connection_state(ConnectionState.DISCONNECTED)
             raise S7CommunicationError(error_msg) from e
 
