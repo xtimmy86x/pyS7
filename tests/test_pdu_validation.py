@@ -14,6 +14,43 @@ from pyS7.constants import (
 )
 
 
+class TestMaxPDUInitValidation:
+    """Test max_pdu validation in S7Client.__init__()."""
+
+    def test_valid_max_pdu_default(self) -> None:
+        """Test that default max_pdu is accepted."""
+        client = S7Client("192.168.1.1", 0, 1)
+        assert client.pdu_size == 960
+
+    def test_valid_max_pdu_custom(self) -> None:
+        """Test valid custom max_pdu values."""
+        client = S7Client("192.168.1.1", 0, 1, max_pdu=240)
+        assert client.pdu_size == 240
+
+        client = S7Client("192.168.1.1", 0, 1, max_pdu=MIN_PDU_SIZE)
+        assert client.pdu_size == MIN_PDU_SIZE
+
+        client = S7Client("192.168.1.1", 0, 1, max_pdu=MAX_PDU_SIZE)
+        assert client.pdu_size == MAX_PDU_SIZE
+
+    @pytest.mark.parametrize("value", [0, -1, -100, MIN_PDU_SIZE - 1])
+    def test_rejects_too_small(self, value: int) -> None:
+        """Test that values below MIN_PDU_SIZE are rejected."""
+        with pytest.raises(ValueError, match="max_pdu must be an integer between"):
+            S7Client("192.168.1.1", 0, 1, max_pdu=value)
+
+    def test_rejects_too_large(self) -> None:
+        """Test that values above MAX_PDU_SIZE are rejected."""
+        with pytest.raises(ValueError, match="max_pdu must be an integer between"):
+            S7Client("192.168.1.1", 0, 1, max_pdu=MAX_PDU_SIZE + 1)
+
+    @pytest.mark.parametrize("value", [3.14, "960", None, [960]])
+    def test_rejects_non_int(self, value: object) -> None:
+        """Test that non-integer types are rejected."""
+        with pytest.raises(ValueError, match="max_pdu must be an integer between"):
+            S7Client("192.168.1.1", 0, 1, max_pdu=value)  # type: ignore[arg-type]
+
+
 class TestPDUValidation:
     """Test PDU size validation logic."""
 

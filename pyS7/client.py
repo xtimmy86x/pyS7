@@ -270,6 +270,11 @@ class S7Client:
         self._connection_state = ConnectionState.DISCONNECTED
         self._last_error: Optional[str] = None
 
+        if not isinstance(max_pdu, int) or max_pdu < MIN_PDU_SIZE or max_pdu > MAX_PDU_SIZE:
+            raise ValueError(
+                f"max_pdu must be an integer between {MIN_PDU_SIZE} and {MAX_PDU_SIZE}, "
+                f"got {max_pdu!r}"
+            )
         self.pdu_size: int = max_pdu
         self.max_jobs_calling: int = MAX_JOB_CALLING
         self.max_jobs_called: int = MAX_JOB_CALLED
