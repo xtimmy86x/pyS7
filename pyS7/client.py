@@ -266,7 +266,7 @@ class S7Client:
         self.remote_tsap = remote_tsap
 
         self.socket: Optional[socket.socket] = None
-        self._io_lock = threading.Lock()
+        self._io_lock = threading.RLock()
         self._connection_state = ConnectionState.DISCONNECTED
         self._last_error: Optional[str] = None
 
@@ -1058,111 +1058,112 @@ class S7Client:
             f"PDU={self.pdu_size} bytes"
         )
 
-        if not self.is_connected:
-            raise S7CommunicationError(
-                "Not connected to PLC. Call 'connect' before performing read operations."
-            )
-        
-        # Start timing for metrics
-        start_time = time() if self.metrics else None
-        
-        try:
-            # Check for large tags (strings and arrays) and handle them separately
-            regular_tags = []
-            large_string_indices = []
-            large_string_tags = []
+        with self._io_lock:
+            if not self.is_connected:
+                raise S7CommunicationError(
+                    "Not connected to PLC. Call 'connect' before performing read operations."
+                )
             
-            for i, tag in enumerate(list_tags):
-                # Check if tag response exceeds PDU size
-                tag_response_size = READ_RES_OVERHEAD + READ_RES_PARAM_SIZE_TAG + tag.size()
-                if tag_response_size > self.pdu_size:
-                    # Only STRING and WSTRING support automatic chunking
-                    if tag.data_type in (DataType.STRING, DataType.WSTRING):
-                        # This string is too large, will be read separately with chunking
-                        large_string_indices.append(i)
-                        large_string_tags.append(tag)
+            # Start timing for metrics
+            start_time = time() if self.metrics else None
+            
+            try:
+                # Check for large tags (strings and arrays) and handle them separately
+                regular_tags = []
+                large_string_indices = []
+                large_string_tags = []
+                
+                for i, tag in enumerate(list_tags):
+                    # Check if tag response exceeds PDU size
+                    tag_response_size = READ_RES_OVERHEAD + READ_RES_PARAM_SIZE_TAG + tag.size()
+                    if tag_response_size > self.pdu_size:
+                        # Only STRING and WSTRING support automatic chunking
+                        if tag.data_type in (DataType.STRING, DataType.WSTRING):
+                            # This string is too large, will be read separately with chunking
+                            large_string_indices.append(i)
+                            large_string_tags.append(tag)
+                            self.logger.debug(
+                                f"Tag {tag} exceeds PDU size ({tag_response_size} > {self.pdu_size}), "
+                                f"will be read in chunks automatically"
+                            )
+                            continue
+                        else:
+                            # Other data types cannot be automatically chunked
+                            tag_size = tag.size()
+                            max_data_size = self.pdu_size - READ_RES_OVERHEAD - READ_RES_PARAM_SIZE_TAG
+                            raise S7AddressError(
+                                f"{tag} requires {tag_response_size} bytes but PDU size is {self.pdu_size} bytes. "
+                                f"Maximum data size for this PDU: {max_data_size} bytes (current tag needs {tag_size} bytes). "
+                                f"For {tag.data_type.name} arrays, read in smaller chunks. "
+                                f"For STRING/WSTRING, automatic chunking is supported."
+                            )
+                    regular_tags.append((i, tag))
+                
+                # Read regular tags (initialize with Optional[Value])
+                data: List[Optional[Value]] = [None] * len(list_tags)
+
+                # Read large strings separately with chunking
+                for idx, tag in zip(large_string_indices, large_string_tags):
+                    data[idx] = self._read_large_string(tag)
+                
+                # Read regular tags if any
+                if regular_tags:
+                    tags_only = [tag for _, tag in regular_tags]
+                    
+                    if optimize:
+                        requests, tags_map = prepare_optimized_requests(
+                            tags=tags_only, max_pdu=self.pdu_size
+                        )
                         self.logger.debug(
-                            f"Tag {tag} exceeds PDU size ({tag_response_size} > {self.pdu_size}), "
-                            f"will be read in chunks automatically"
+                            f"Optimized {len(tags_only)} tags into {len(requests[0])} request(s) "
+                            f"(reduction: {len(tags_only) - len(requests[0])} merges)"
                         )
-                        continue
-                    else:
-                        # Other data types cannot be automatically chunked
-                        tag_size = tag.size()
-                        max_data_size = self.pdu_size - READ_RES_OVERHEAD - READ_RES_PARAM_SIZE_TAG
-                        raise S7AddressError(
-                            f"{tag} requires {tag_response_size} bytes but PDU size is {self.pdu_size} bytes. "
-                            f"Maximum data size for this PDU: {max_data_size} bytes (current tag needs {tag_size} bytes). "
-                            f"For {tag.data_type.name} arrays, read in smaller chunks. "
-                            f"For STRING/WSTRING, automatic chunking is supported."
-                        )
-                regular_tags.append((i, tag))
-            
-            # Read regular tags (initialize with Optional[Value])
-            data: List[Optional[Value]] = [None] * len(list_tags)
 
-            # Read large strings separately with chunking
-            for idx, tag in zip(large_string_indices, large_string_tags):
-                data[idx] = self._read_large_string(tag)
-            
-            # Read regular tags if any
-            if regular_tags:
-                tags_only = [tag for _, tag in regular_tags]
-                
-                if optimize:
-                    requests, tags_map = prepare_optimized_requests(
-                        tags=tags_only, max_pdu=self.pdu_size
-                    )
-                    self.logger.debug(
-                        f"Optimized {len(tags_only)} tags into {len(requests[0])} request(s) "
-                        f"(reduction: {len(tags_only) - len(requests[0])} merges)"
-                    )
-
-                    bytes_reponse = self.__send(ReadRequest(tags=requests[0]))
-                    response = ReadOptimizedResponse(
-                        response=bytes_reponse,
-                        tag_map={key: tags_map[key] for key in requests[0]},
-                    )
-
-                    for i in range(1, len(requests)):
-                        bytes_reponse = self.__send(ReadRequest(tags=requests[i]))
-                        response += ReadOptimizedResponse(
+                        bytes_reponse = self.__send(ReadRequest(tags=requests[0]))
+                        response = ReadOptimizedResponse(
                             response=bytes_reponse,
-                            tag_map={key: tags_map[key] for key in requests[i]},
+                            tag_map={key: tags_map[key] for key in requests[0]},
                         )
 
-                    regular_data = response.parse()
+                        for i in range(1, len(requests)):
+                            bytes_reponse = self.__send(ReadRequest(tags=requests[i]))
+                            response += ReadOptimizedResponse(
+                                response=bytes_reponse,
+                                tag_map={key: tags_map[key] for key in requests[i]},
+                            )
 
-                else:
-                    requests = prepare_requests(tags=tags_only, max_pdu=self.pdu_size)
-                    regular_data = []
+                        regular_data = response.parse()
 
-                    for request in requests:
-                        bytes_reponse = self.__send(ReadRequest(tags=request))
-                        read_response = ReadResponse(response=bytes_reponse, tags=request)
-                        regular_data.extend(read_response.parse())
+                    else:
+                        requests = prepare_requests(tags=tags_only, max_pdu=self.pdu_size)
+                        regular_data = []
+
+                        for request in requests:
+                            bytes_reponse = self.__send(ReadRequest(tags=request))
+                            read_response = ReadResponse(response=bytes_reponse, tags=request)
+                            regular_data.extend(read_response.parse())
+                    
+                    # Fill in regular data at correct indices
+                    for (orig_idx, _), value in zip(regular_tags, regular_data):
+                        data[orig_idx] = value
+
+                # All elements have been filled at this point (either large strings or regular tags)
+                self.logger.debug(f"Read completed: {len(list_tags)} tag(s) retrieved successfully")
                 
-                # Fill in regular data at correct indices
-                for (orig_idx, _), value in zip(regular_tags, regular_data):
-                    data[orig_idx] = value
-
-            # All elements have been filled at this point (either large strings or regular tags)
-            self.logger.debug(f"Read completed: {len(list_tags)} tag(s) retrieved successfully")
+                # Record successful read in metrics
+                if self.metrics and start_time is not None:
+                    duration = time() - start_time
+                    bytes_read = sum(tag.size() for tag in list_tags)
+                    self.metrics.record_read(duration, bytes_read, success=True)
+                
+                return cast(List[Value], data)
             
-            # Record successful read in metrics
-            if self.metrics and start_time is not None:
-                duration = time() - start_time
-                bytes_read = sum(tag.size() for tag in list_tags)
-                self.metrics.record_read(duration, bytes_read, success=True)
-            
-            return cast(List[Value], data)
-        
-        except Exception as e:
-            # Record failed read in metrics
-            if self.metrics and start_time is not None:
-                duration = time() - start_time
-                self.metrics.record_read(duration, 0, success=False)
-            raise
+            except Exception as e:
+                # Record failed read in metrics
+                if self.metrics and start_time is not None:
+                    duration = time() - start_time
+                    self.metrics.record_read(duration, 0, success=False)
+                raise
 
     def read_detailed(
         self, tags: Sequence[Union[str, S7Tag]], optimize: bool = True
@@ -1211,172 +1212,173 @@ class S7Client:
             f"optimize={optimize}, PDU={self.pdu_size} bytes"
         )
         
-        if not self.is_connected:
-            raise S7CommunicationError(
-                "Not connected to PLC. Call 'connect' before performing read operations."
-            )
-        
-        # Initialize results list
-        results: List[ReadResult] = []
-        
-        # Track which tags have been processed
-        processed_indices = set()
-        
-        # Handle large strings separately
-        for i, tag in enumerate(list_tags):
-            tag_response_size = READ_RES_OVERHEAD + READ_RES_PARAM_SIZE_TAG + tag.size()
-            if tag_response_size > self.pdu_size:
-                if tag.data_type in (DataType.STRING, DataType.WSTRING):
-                    # Read large string with chunking
-                    try:
-                        value = self._read_large_string(tag)
-                        results.append(ReadResult(tag=tag, success=True, value=value))
-                        processed_indices.add(i)
-                        self.logger.debug(f"Large string read succeeded: {tag}")
-                    except Exception as e:
+        with self._io_lock:
+            if not self.is_connected:
+                raise S7CommunicationError(
+                    "Not connected to PLC. Call 'connect' before performing read operations."
+                )
+            
+            # Initialize results list
+            results: List[ReadResult] = []
+            
+            # Track which tags have been processed
+            processed_indices = set()
+            
+            # Handle large strings separately
+            for i, tag in enumerate(list_tags):
+                tag_response_size = READ_RES_OVERHEAD + READ_RES_PARAM_SIZE_TAG + tag.size()
+                if tag_response_size > self.pdu_size:
+                    if tag.data_type in (DataType.STRING, DataType.WSTRING):
+                        # Read large string with chunking
+                        try:
+                            value = self._read_large_string(tag)
+                            results.append(ReadResult(tag=tag, success=True, value=value))
+                            processed_indices.add(i)
+                            self.logger.debug(f"Large string read succeeded: {tag}")
+                        except Exception as e:
+                            results.append(
+                                ReadResult(
+                                    tag=tag,
+                                    success=False,
+                                    error=f"Large string read failed: {str(e)}"
+                                )
+                            )
+                            processed_indices.add(i)
+                            self.logger.warning(f"Large string read failed: {tag} - {e}")
+                    else:
+                        # Tag too large for PDU
+                        tag_size = tag.size()
+                        max_data_size = self.pdu_size - READ_RES_OVERHEAD - READ_RES_PARAM_SIZE_TAG
                         results.append(
                             ReadResult(
                                 tag=tag,
                                 success=False,
-                                error=f"Large string read failed: {str(e)}"
+                                error=f"Tag exceeds PDU size: {tag_response_size} bytes > {self.pdu_size} bytes. "
+                                      f"Maximum: {max_data_size} bytes. Read in smaller chunks."
                             )
                         )
                         processed_indices.add(i)
-                        self.logger.warning(f"Large string read failed: {tag} - {e}")
-                else:
-                    # Tag too large for PDU
-                    tag_size = tag.size()
-                    max_data_size = self.pdu_size - READ_RES_OVERHEAD - READ_RES_PARAM_SIZE_TAG
-                    results.append(
-                        ReadResult(
-                            tag=tag,
-                            success=False,
-                            error=f"Tag exceeds PDU size: {tag_response_size} bytes > {self.pdu_size} bytes. "
-                                  f"Maximum: {max_data_size} bytes. Read in smaller chunks."
-                        )
-                    )
-                    processed_indices.add(i)
-        
-        # Collect regular tags (not yet processed)
-        regular_tags = [
-            (i, tag) for i, tag in enumerate(list_tags) if i not in processed_indices
-        ]
-        
-        # Read regular tags if any
-        if regular_tags:
-            tags_only = [tag for _, tag in regular_tags]
             
-            try:
-                if optimize:
-                    requests, tags_map = prepare_optimized_requests(
-                        tags=tags_only, max_pdu=self.pdu_size
-                    )
-                    self.logger.debug(
-                        f"Optimized {len(tags_only)} tags into {len(requests[0])} request(s)"
-                    )
-                    
-                    # Process all requests and parse with detailed error handling
-                    all_bytes_responses = []
-                    all_requests = []
-                    
-                    for request in requests:
-                        try:
-                            bytes_response = self.__send(ReadRequest(tags=request))
-                            all_bytes_responses.append(bytes_response)
-                            all_requests.append(request)
-                        except Exception as e:
-                            # If entire request fails, mark all original tags in it as failed
-                            for req_tag in request:
-                                mapped_tags = tags_map.get(req_tag, [])
-                                for orig_idx, orig_tag in mapped_tags:
-                                    if orig_idx not in processed_indices:
-                                        results.append(
-                                            ReadResult(
-                                                tag=orig_tag,
-                                                success=False,
-                                                error=f"Request failed: {str(e)}"
-                                            )
-                                        )
-                                        processed_indices.add(orig_idx)
-                            self.logger.warning(f"Read request failed: {e}")
-                    
-                    # Parse responses with detailed error handling
-                    for bytes_response, request in zip(all_bytes_responses, all_requests):
-                        request_map = {
-                            key: tags_map[key] for key in request if key in tags_map
-                        }
-                        detailed_results = self._parse_optimized_read_response_detailed(
-                            bytes_response, request_map
+            # Collect regular tags (not yet processed)
+            regular_tags = [
+                (i, tag) for i, tag in enumerate(list_tags) if i not in processed_indices
+            ]
+            
+            # Read regular tags if any
+            if regular_tags:
+                tags_only = [tag for _, tag in regular_tags]
+                
+                try:
+                    if optimize:
+                        requests, tags_map = prepare_optimized_requests(
+                            tags=tags_only, max_pdu=self.pdu_size
+                        )
+                        self.logger.debug(
+                            f"Optimized {len(tags_only)} tags into {len(requests[0])} request(s)"
                         )
                         
-                        # Map back to original indices
-                        for orig_idx, result in detailed_results:
-                            if orig_idx not in processed_indices:
-                                results.append(result)
-                                processed_indices.add(orig_idx)
-                
-                else:
-                    requests = prepare_requests(tags=tags_only, max_pdu=self.pdu_size)
-                    
-                    for request in requests:
-                        try:
-                            bytes_response = self.__send(ReadRequest(tags=request))
-                            read_results = self._parse_read_response_detailed(
-                                bytes_response, request, None
+                        # Process all requests and parse with detailed error handling
+                        all_bytes_responses = []
+                        all_requests = []
+                        
+                        for request in requests:
+                            try:
+                                bytes_response = self.__send(ReadRequest(tags=request))
+                                all_bytes_responses.append(bytes_response)
+                                all_requests.append(request)
+                            except Exception as e:
+                                # If entire request fails, mark all original tags in it as failed
+                                for req_tag in request:
+                                    mapped_tags = tags_map.get(req_tag, [])
+                                    for orig_idx, orig_tag in mapped_tags:
+                                        if orig_idx not in processed_indices:
+                                            results.append(
+                                                ReadResult(
+                                                    tag=orig_tag,
+                                                    success=False,
+                                                    error=f"Request failed: {str(e)}"
+                                                )
+                                            )
+                                            processed_indices.add(orig_idx)
+                                self.logger.warning(f"Read request failed: {e}")
+                        
+                        # Parse responses with detailed error handling
+                        for bytes_response, request in zip(all_bytes_responses, all_requests):
+                            request_map = {
+                                key: tags_map[key] for key in request if key in tags_map
+                            }
+                            detailed_results = self._parse_optimized_read_response_detailed(
+                                bytes_response, request_map
                             )
                             
                             # Map back to original indices
-                            for result in read_results:
-                                for orig_idx, orig_tag in regular_tags:
-                                    if orig_tag == result.tag and orig_idx not in processed_indices:
-                                        results.append(result)
-                                        processed_indices.add(orig_idx)
-                                        break
+                            for orig_idx, result in detailed_results:
+                                if orig_idx not in processed_indices:
+                                    results.append(result)
+                                    processed_indices.add(orig_idx)
+                    
+                    else:
+                        requests = prepare_requests(tags=tags_only, max_pdu=self.pdu_size)
                         
-                        except Exception as e:
-                            # Mark all tags in failed request as failed
-                            for req_tag in request:
-                                for orig_idx, orig_tag in regular_tags:
-                                    if orig_tag == req_tag and orig_idx not in processed_indices:
-                                        results.append(
-                                            ReadResult(
-                                                tag=orig_tag,
-                                                success=False,
-                                                error=f"Request failed: {str(e)}"
+                        for request in requests:
+                            try:
+                                bytes_response = self.__send(ReadRequest(tags=request))
+                                read_results = self._parse_read_response_detailed(
+                                    bytes_response, request, None
+                                )
+                                
+                                # Map back to original indices
+                                for result in read_results:
+                                    for orig_idx, orig_tag in regular_tags:
+                                        if orig_tag == result.tag and orig_idx not in processed_indices:
+                                            results.append(result)
+                                            processed_indices.add(orig_idx)
+                                            break
+                            
+                            except Exception as e:
+                                # Mark all tags in failed request as failed
+                                for req_tag in request:
+                                    for orig_idx, orig_tag in regular_tags:
+                                        if orig_tag == req_tag and orig_idx not in processed_indices:
+                                            results.append(
+                                                ReadResult(
+                                                    tag=orig_tag,
+                                                    success=False,
+                                                    error=f"Request failed: {str(e)}"
+                                                )
                                             )
-                                        )
-                                        processed_indices.add(orig_idx)
-                            self.logger.warning(f"Read request failed: {e}")
-            
-            except Exception as e:
-                # Unexpected error, mark all remaining tags as failed
-                self.logger.error(f"Unexpected error during read_detailed: {e}")
-                for orig_idx, orig_tag in regular_tags:
-                    if orig_idx not in processed_indices:
-                        results.append(
-                            ReadResult(
-                                tag=orig_tag,
-                                success=False,
-                                error=f"Unexpected error: {str(e)}"
+                                            processed_indices.add(orig_idx)
+                                self.logger.warning(f"Read request failed: {e}")
+                
+                except Exception as e:
+                    # Unexpected error, mark all remaining tags as failed
+                    self.logger.error(f"Unexpected error during read_detailed: {e}")
+                    for orig_idx, orig_tag in regular_tags:
+                        if orig_idx not in processed_indices:
+                            results.append(
+                                ReadResult(
+                                    tag=orig_tag,
+                                    success=False,
+                                    error=f"Unexpected error: {str(e)}"
+                                )
                             )
-                        )
-        
-        # Sort results by original order
-        results_dict = {}
-        for result in results:
-            for i, tag in enumerate(list_tags):
-                if tag == result.tag and i not in results_dict:
-                    results_dict[i] = result
-                    break
-        
-        sorted_results = [results_dict[i] for i in sorted(results_dict.keys())]
-        
-        success_count = sum(1 for r in sorted_results if r.success)
-        self.logger.debug(
-            f"Read detailed completed: {success_count}/{len(list_tags)} tags succeeded"
-        )
-        
-        return sorted_results
+            
+            # Sort results by original order
+            results_dict = {}
+            for result in results:
+                for i, tag in enumerate(list_tags):
+                    if tag == result.tag and i not in results_dict:
+                        results_dict[i] = result
+                        break
+            
+            sorted_results = [results_dict[i] for i in sorted(results_dict.keys())]
+            
+            success_count = sum(1 for r in sorted_results if r.success)
+            self.logger.debug(
+                f"Read detailed completed: {success_count}/{len(list_tags)} tags succeeded"
+            )
+            
+            return sorted_results
 
     def write(self, tags: Sequence[Union[str, S7Tag]], values: Sequence[Value]) -> None:
         """Writes data to an S7 PLC at the specified addresses.
@@ -1413,74 +1415,75 @@ class S7Client:
         
         self.logger.debug(f"Writing {len(tags_list)} tag(s) to PLC")
 
-        if not self.is_connected:
-            raise S7CommunicationError(
-                "Not connected to PLC. Call 'connect' before performing write operations."
-            )
-        
-        # Start timing for metrics
-        start_time = time() if self.metrics else None
-        
-        try:
-            # Check for large tags (strings) and handle them separately
-            regular_tags = []
-            regular_values = []
-            large_string_indices = []
-            
-            for i, (tag, value) in enumerate(zip(tags_list, values)):
-                # Check if tag request exceeds PDU size
-                tag_request_size = WRITE_REQ_OVERHEAD + WRITE_REQ_PARAM_SIZE_TAG + tag.size() + 4
-                if tag_request_size > self.pdu_size:
-                    # Only STRING and WSTRING support automatic chunking
-                    if tag.data_type in (DataType.STRING, DataType.WSTRING):
-                        # This string is too large, will be written separately with chunking
-                        large_string_indices.append(i)
-                        self.logger.debug(
-                            f"Tag {tag} exceeds PDU size ({tag_request_size} > {self.pdu_size}), "
-                            f"will be written in chunks automatically"
-                        )
-                        self._write_large_string(tag, value)  # type: ignore
-                        continue
-                    else:
-                        # Other data types cannot be automatically chunked
-                        tag_size = tag.size()
-                        max_data_size = self.pdu_size - WRITE_REQ_OVERHEAD - WRITE_REQ_PARAM_SIZE_TAG - 4
-                        raise S7AddressError(
-                            f"{tag} requires {tag_request_size} bytes but PDU size is {self.pdu_size} bytes. "
-                            f"Maximum data size for this PDU: {max_data_size} bytes (current tag needs {tag_size} bytes). "
-                            f"For {tag.data_type.name} arrays, write in smaller chunks. "
-                            f"For STRING/WSTRING, automatic chunking is supported."
-                        )
-                regular_tags.append(tag)
-                regular_values.append(value)
-            
-            # Write regular tags if any
-            if regular_tags:
-                requests, requests_values = prepare_write_requests_and_values(
-                    tags=regular_tags, values=regular_values, max_pdu=self.pdu_size
+        with self._io_lock:
+            if not self.is_connected:
+                raise S7CommunicationError(
+                    "Not connected to PLC. Call 'connect' before performing write operations."
                 )
-
-                for i, request in enumerate(requests):
-                    bytes_response = self.__send(
-                        WriteRequest(tags=request, values=requests_values[i])
+            
+            # Start timing for metrics
+            start_time = time() if self.metrics else None
+            
+            try:
+                # Check for large tags (strings) and handle them separately
+                regular_tags = []
+                regular_values = []
+                large_string_indices = []
+                
+                for i, (tag, value) in enumerate(zip(tags_list, values)):
+                    # Check if tag request exceeds PDU size
+                    tag_request_size = WRITE_REQ_OVERHEAD + WRITE_REQ_PARAM_SIZE_TAG + tag.size() + 4
+                    if tag_request_size > self.pdu_size:
+                        # Only STRING and WSTRING support automatic chunking
+                        if tag.data_type in (DataType.STRING, DataType.WSTRING):
+                            # This string is too large, will be written separately with chunking
+                            large_string_indices.append(i)
+                            self.logger.debug(
+                                f"Tag {tag} exceeds PDU size ({tag_request_size} > {self.pdu_size}), "
+                                f"will be written in chunks automatically"
+                            )
+                            self._write_large_string(tag, value)  # type: ignore
+                            continue
+                        else:
+                            # Other data types cannot be automatically chunked
+                            tag_size = tag.size()
+                            max_data_size = self.pdu_size - WRITE_REQ_OVERHEAD - WRITE_REQ_PARAM_SIZE_TAG - 4
+                            raise S7AddressError(
+                                f"{tag} requires {tag_request_size} bytes but PDU size is {self.pdu_size} bytes. "
+                                f"Maximum data size for this PDU: {max_data_size} bytes (current tag needs {tag_size} bytes). "
+                                f"For {tag.data_type.name} arrays, write in smaller chunks. "
+                                f"For STRING/WSTRING, automatic chunking is supported."
+                            )
+                    regular_tags.append(tag)
+                    regular_values.append(value)
+                
+                # Write regular tags if any
+                if regular_tags:
+                    requests, requests_values = prepare_write_requests_and_values(
+                        tags=regular_tags, values=regular_values, max_pdu=self.pdu_size
                     )
-                    response = WriteResponse(response=bytes_response, tags=request)
-                    response.parse()
+
+                    for i, request in enumerate(requests):
+                        bytes_response = self.__send(
+                            WriteRequest(tags=request, values=requests_values[i])
+                        )
+                        response = WriteResponse(response=bytes_response, tags=request)
+                        response.parse()
+                
+                self.logger.debug(f"Write completed: {len(tags_list)} tag(s) written successfully")
+                
+                # Record successful write in metrics
+                if self.metrics and start_time is not None:
+                    duration = time() - start_time
+                    bytes_written = sum(tag.size() for tag in tags_list)
+                    self.metrics.record_write(duration, bytes_written, success=True)
             
-            self.logger.debug(f"Write completed: {len(tags_list)} tag(s) written successfully")
-            
-            # Record successful write in metrics
-            if self.metrics and start_time is not None:
-                duration = time() - start_time
-                bytes_written = sum(tag.size() for tag in tags_list)
-                self.metrics.record_write(duration, bytes_written, success=True)
-        
-        except Exception as e:
-            # Record failed write in metrics
-            if self.metrics and start_time is not None:
-                duration = time() - start_time
-                self.metrics.record_write(duration, 0, success=False)
-            raise
+            except Exception as e:
+                # Record failed write in metrics
+                if self.metrics and start_time is not None:
+                    duration = time() - start_time
+                    self.metrics.record_write(duration, 0, success=False)
+                raise
 
     def write_detailed(
         self, tags: Sequence[Union[str, S7Tag]], values: Sequence[Value]
@@ -1530,114 +1533,115 @@ class S7Client:
         
         self.logger.debug(f"Writing {len(tags_list)} tag(s) to PLC with detailed results")
 
-        if not self.is_connected:
-            raise ConnectionError("Not connected to PLC")
+        with self._io_lock:
+            if not self.is_connected:
+                raise ConnectionError("Not connected to PLC")
 
-        # Initialize results list
-        results: List[WriteResult] = []
-        
-        # Track which tags have been processed
-        processed_indices = set()
-        
-        # Handle large strings separately
-        for i, (tag, value) in enumerate(zip(tags_list, values)):
-            tag_request_size = WRITE_REQ_OVERHEAD + WRITE_REQ_PARAM_SIZE_TAG + tag.size() + 4
-            if tag_request_size > self.pdu_size:
-                if tag.data_type in (DataType.STRING, DataType.WSTRING):
-                    # Write large string with chunking
-                    try:
-                        self._write_large_string(tag, value)  # type: ignore
-                        results.append(WriteResult(tag=tag, success=True))
-                        processed_indices.add(i)
-                        self.logger.debug(f"Large string write succeeded: {tag}")
-                    except Exception as e:
+            # Initialize results list
+            results: List[WriteResult] = []
+            
+            # Track which tags have been processed
+            processed_indices = set()
+            
+            # Handle large strings separately
+            for i, (tag, value) in enumerate(zip(tags_list, values)):
+                tag_request_size = WRITE_REQ_OVERHEAD + WRITE_REQ_PARAM_SIZE_TAG + tag.size() + 4
+                if tag_request_size > self.pdu_size:
+                    if tag.data_type in (DataType.STRING, DataType.WSTRING):
+                        # Write large string with chunking
+                        try:
+                            self._write_large_string(tag, value)  # type: ignore
+                            results.append(WriteResult(tag=tag, success=True))
+                            processed_indices.add(i)
+                            self.logger.debug(f"Large string write succeeded: {tag}")
+                        except Exception as e:
+                            results.append(
+                                WriteResult(
+                                    tag=tag,
+                                    success=False,
+                                    error=f"Large string write failed: {str(e)}"
+                                )
+                            )
+                            processed_indices.add(i)
+                            self.logger.warning(f"Large string write failed: {tag} - {e}")
+                    else:
+                        # Tag too large for PDU
+                        tag_size = tag.size()
+                        max_data_size = self.pdu_size - WRITE_REQ_OVERHEAD - WRITE_REQ_PARAM_SIZE_TAG - 4
                         results.append(
                             WriteResult(
                                 tag=tag,
                                 success=False,
-                                error=f"Large string write failed: {str(e)}"
+                                error=f"Tag exceeds PDU size: {tag_request_size} bytes > {self.pdu_size} bytes. "
+                                      f"Maximum: {max_data_size} bytes. Split into smaller chunks."
                             )
                         )
                         processed_indices.add(i)
-                        self.logger.warning(f"Large string write failed: {tag} - {e}")
-                else:
-                    # Tag too large for PDU
-                    tag_size = tag.size()
-                    max_data_size = self.pdu_size - WRITE_REQ_OVERHEAD - WRITE_REQ_PARAM_SIZE_TAG - 4
-                    results.append(
-                        WriteResult(
-                            tag=tag,
-                            success=False,
-                            error=f"Tag exceeds PDU size: {tag_request_size} bytes > {self.pdu_size} bytes. "
-                                  f"Maximum: {max_data_size} bytes. Split into smaller chunks."
-                        )
-                    )
-                    processed_indices.add(i)
-        
-        # Collect regular tags (not yet processed)
-        regular_tags = []
-        regular_values = []
-        regular_indices = []
-        
-        for i, (tag, value) in enumerate(zip(tags_list, values)):
-            if i not in processed_indices:
-                regular_tags.append(tag)
-                regular_values.append(value)
-                regular_indices.append(i)
-        
-        # Write regular tags in batches
-        if regular_tags:
-            requests, requests_values = prepare_write_requests_and_values(
-                tags=regular_tags, values=regular_values, max_pdu=self.pdu_size
-            )
+            
+            # Collect regular tags (not yet processed)
+            regular_tags = []
+            regular_values = []
+            regular_indices = []
+            
+            for i, (tag, value) in enumerate(zip(tags_list, values)):
+                if i not in processed_indices:
+                    regular_tags.append(tag)
+                    regular_values.append(value)
+                    regular_indices.append(i)
+            
+            # Write regular tags in batches
+            if regular_tags:
+                requests, requests_values = prepare_write_requests_and_values(
+                    tags=regular_tags, values=regular_values, max_pdu=self.pdu_size
+                )
 
-            # Track results for each batch
-            tag_offset = 0
-            for batch_idx, request in enumerate(requests):
-                try:
-                    bytes_response = self.__send(
-                        WriteRequest(tags=request, values=requests_values[batch_idx])
-                    )
-                    # Parse with detailed results (don't raise on error)
-                    batch_results = self._parse_write_response_detailed(
-                        bytes_response, request
-                    )
-                    
-                    # Map batch results back to original indices
-                    for j, batch_result in enumerate(batch_results):
-                        orig_idx = regular_indices[tag_offset + j]
-                        results.append(batch_result)
-                    
-                    tag_offset += len(request)
-                    
-                except Exception as e:
-                    # Communication error - mark all tags in this batch as failed
-                    self.logger.error(f"Batch {batch_idx + 1} communication error: {e}")
-                    for j in range(len(request)):
-                        orig_idx = regular_indices[tag_offset + j]
-                        results.append(
-                            WriteResult(
-                                tag=request[j],
-                                success=False,
-                                error=f"Communication error: {str(e)}"
-                            )
+                # Track results for each batch
+                tag_offset = 0
+                for batch_idx, request in enumerate(requests):
+                    try:
+                        bytes_response = self.__send(
+                            WriteRequest(tags=request, values=requests_values[batch_idx])
                         )
-                    tag_offset += len(request)
-        
-        # Sort results by original tag order
-        # Create mapping of tag to original index
-        tag_to_index = {id(tag): i for i, tag in enumerate(tags_list)}
-        results_sorted = sorted(results, key=lambda r: tag_to_index.get(id(r.tag), 0))
-        
-        # Log summary
-        success_count = sum(1 for r in results_sorted if r.success)
-        failure_count = len(results_sorted) - success_count
-        self.logger.info(
-            f"Write detailed completed: {success_count} succeeded, {failure_count} failed "
-            f"(total: {len(results_sorted)} tags)"
-        )
-        
-        return results_sorted
+                        # Parse with detailed results (don't raise on error)
+                        batch_results = self._parse_write_response_detailed(
+                            bytes_response, request
+                        )
+                        
+                        # Map batch results back to original indices
+                        for j, batch_result in enumerate(batch_results):
+                            orig_idx = regular_indices[tag_offset + j]
+                            results.append(batch_result)
+                        
+                        tag_offset += len(request)
+                        
+                    except Exception as e:
+                        # Communication error - mark all tags in this batch as failed
+                        self.logger.error(f"Batch {batch_idx + 1} communication error: {e}")
+                        for j in range(len(request)):
+                            orig_idx = regular_indices[tag_offset + j]
+                            results.append(
+                                WriteResult(
+                                    tag=request[j],
+                                    success=False,
+                                    error=f"Communication error: {str(e)}"
+                                )
+                            )
+                        tag_offset += len(request)
+            
+            # Sort results by original tag order
+            # Create mapping of tag to original index
+            tag_to_index = {id(tag): i for i, tag in enumerate(tags_list)}
+            results_sorted = sorted(results, key=lambda r: tag_to_index.get(id(r.tag), 0))
+            
+            # Log summary
+            success_count = sum(1 for r in results_sorted if r.success)
+            failure_count = len(results_sorted) - success_count
+            self.logger.info(
+                f"Write detailed completed: {success_count} succeeded, {failure_count} failed "
+                f"(total: {len(results_sorted)} tags)"
+            )
+            
+            return results_sorted
 
     def _parse_write_response_detailed(
         self, bytes_response: bytes, tags: List[S7Tag]
@@ -2094,21 +2098,22 @@ class S7Client:
             >>> print(f"CPU is in {status} mode")
             CPU is in RUN mode
         """
-        if not self.is_connected:
-            raise S7CommunicationError(
-                "Not connected to PLC. Call 'connect' before getting CPU status."
-            )
+        with self._io_lock:
+            if not self.is_connected:
+                raise S7CommunicationError(
+                    "Not connected to PLC. Call 'connect' before getting CPU status."
+                )
 
-        # Request SZL ID 0x0424 (CPU diagnostic status)
-        self.logger.debug("Requesting CPU diagnostic status (SZL ID 0x0424)")
-        szl_request = SZLRequest(szl_id=SZLId.CPU_DIAGNOSTIC_STATUS, szl_index=0x0000)
-        bytes_response = self.__send(szl_request)
+            # Request SZL ID 0x0424 (CPU diagnostic status)
+            self.logger.debug("Requesting CPU diagnostic status (SZL ID 0x0424)")
+            szl_request = SZLRequest(szl_id=SZLId.CPU_DIAGNOSTIC_STATUS, szl_index=0x0000)
+            bytes_response = self.__send(szl_request)
 
-        # Parse the response and extract CPU status
-        szl_response = SZLResponse(response=bytes_response)
-        cpu_status = szl_response.parse_cpu_status()
-        self.logger.debug(f"CPU status: {cpu_status}")
-        return cpu_status
+            # Parse the response and extract CPU status
+            szl_response = SZLResponse(response=bytes_response)
+            cpu_status = szl_response.parse_cpu_status()
+            self.logger.debug(f"CPU status: {cpu_status}")
+            return cpu_status
 
     def get_cpu_info(self) -> Dict[str, Any]:
         """Get detailed CPU information including model, hardware/firmware versions.
@@ -2133,18 +2138,19 @@ class S7Client:
             CPU Model: 6ES7 211-1BE40-0XB0
             Firmware: V32.32
         """
-        if not self.is_connected:
-            raise S7CommunicationError(
-                "Not connected to PLC. Call 'connect' before getting CPU info."
-            )
+        with self._io_lock:
+            if not self.is_connected:
+                raise S7CommunicationError(
+                    "Not connected to PLC. Call 'connect' before getting CPU info."
+                )
 
-        # Request SZL ID 0x0011 (Module Identification)
-        szl_request = SZLRequest(szl_id=SZLId.MODULE_IDENTIFICATION, szl_index=0x0000)
-        bytes_response = self.__send(szl_request)
+            # Request SZL ID 0x0011 (Module Identification)
+            szl_request = SZLRequest(szl_id=SZLId.MODULE_IDENTIFICATION, szl_index=0x0000)
+            bytes_response = self.__send(szl_request)
 
-        # Parse the response and extract CPU info
-        szl_response = SZLResponse(response=bytes_response)
-        return szl_response.parse_cpu_info()
+            # Parse the response and extract CPU info
+            szl_response = SZLResponse(response=bytes_response)
+            return szl_response.parse_cpu_info()
 
     def _cleanup_socket_on_error(self) -> None:
         """Close and nullify the socket under _io_lock after a communication error."""
