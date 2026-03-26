@@ -361,7 +361,7 @@ class AsyncS7Client:
             ) = pdu_resp.parse()
 
             self.pdu_size = S7Client._validate_and_adjust_pdu(
-                self, requested_pdu, negotiated_pdu
+                cast(S7Client, self), requested_pdu, negotiated_pdu
             )
 
             self._set_connection_state(ConnectionState.CONNECTED)
@@ -519,13 +519,17 @@ class AsyncS7Client:
     async def _cleanup_on_error(self) -> None:
         """Close streams after a communication error."""
         async with self._io_lock:
-            if self._writer:
-                try:
-                    self._writer.close()
-                except Exception:
-                    pass
-            self._writer = None
-            self._reader = None
+            self._cleanup_streams()
+
+    def _cleanup_streams(self) -> None:
+        """Close streams without acquiring the lock (caller must hold it)."""
+        if self._writer:
+            try:
+                self._writer.close()
+            except Exception:
+                pass
+        self._writer = None
+        self._reader = None
 
     # -- Read ------------------------------------------------------------------
 
@@ -611,7 +615,7 @@ class AsyncS7Client:
                         regular_data = response.parse()
                     else:
                         reqs = prepare_requests(tags=tags_only, max_pdu=self.pdu_size)
-                        regular_data: list = []
+                        regular_data = []
                         for req in reqs:
                             resp_bytes = await self._send_unlocked(
                                 ReadRequest(tags=req)
@@ -659,7 +663,7 @@ class AsyncS7Client:
                 )
 
             results: List[ReadResult] = []
-            processed: set = set()
+            processed: set[int] = set()
 
             for i, tag in enumerate(list_tags):
                 resp_size = READ_RES_OVERHEAD + READ_RES_PARAM_SIZE_TAG + tag.size()
@@ -710,7 +714,7 @@ class AsyncS7Client:
                                     k: tags_map[k] for k in batch if k in tags_map
                                 }
                                 detailed = S7Client._parse_optimized_read_response_detailed(
-                                    self, resp_bytes, batch_map
+                                    cast(S7Client, self), resp_bytes, batch_map
                                 )
                                 for orig_idx, result in detailed:
                                     if orig_idx not in processed:
@@ -737,7 +741,7 @@ class AsyncS7Client:
                                     ReadRequest(tags=req)
                                 )
                                 read_results = S7Client._parse_read_response_detailed(
-                                    self, resp_bytes, req, None
+                                    cast(S7Client, self), resp_bytes, req, None
                                 )
                                 for result in read_results:
                                     for orig_idx, orig_tag in regular_tags:
@@ -878,7 +882,7 @@ class AsyncS7Client:
                 )
 
             results: List[WriteResult] = []
-            processed: set = set()
+            processed: set[int] = set()
 
             # Large strings
             for i, (tag, value) in enumerate(zip(tags_list, values)):
@@ -930,7 +934,7 @@ class AsyncS7Client:
                             WriteRequest(tags=req, values=reqs_vals[batch_idx])
                         )
                         batch_results = S7Client._parse_write_response_detailed(
-                            self, resp, req
+                            cast(S7Client, self), resp, req
                         )
                         for br in batch_results:
                             results.append(br)
@@ -1278,13 +1282,13 @@ class AsyncS7Client:
             self.logger.error(msg)
             self._set_connection_state(ConnectionState.ERROR, msg)
             # Cleanup without acquiring the lock (caller already holds it)
-            await self._cleanup_on_error_unlocked()
+            self._cleanup_streams()
             self._set_connection_state(ConnectionState.DISCONNECTED)
             raise S7TimeoutError(msg) from e
         except OSError as e:
             msg = f"Socket error during communication: {e}"
             self.logger.error(msg)
             self._set_connection_state(ConnectionState.ERROR, msg)
-            await self._cleanup_on_error_unlocked()
+            self._cleanup_streams()
             self._set_connection_state(ConnectionState.DISCONNECTED)
             raise S7CommunicationError(msg) from e
