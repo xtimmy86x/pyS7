@@ -1,4 +1,5 @@
 from .address_parser import map_address_to_tag
+from .async_client import AsyncBatchWriteTransaction, AsyncS7Client
 from .client import BatchWriteTransaction, ReadResult, S7Client, WriteResult
 from .constants import ConnectionState, ConnectionType, DataType, MemoryArea, SZLId
 from .errors import (
@@ -17,6 +18,8 @@ from .responses import extract_bit_from_byte
 from .tag import S7Tag
 
 __all__ = [
+    "AsyncS7Client",
+    "AsyncBatchWriteTransaction",
     "S7Client",
     "S7Tag",
     "WriteResult",

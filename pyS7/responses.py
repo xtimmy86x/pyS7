@@ -432,15 +432,28 @@ def parse_optimized_read_response(
                     f"{packed_tag}: {_return_code_name(return_code)}"
                 )
 
-            # Response header is 4 bytes (status + 3 length bytes)
+            # Response header is 4 bytes (status + transport_size + length)
             if offset + 4 > len(mv):
                 raise S7ReadResponseError(
                     f"{packed_tag}: response too short while reading header"
                 )
+            transport_size = mv[offset + 1]
+            length_field = unpack_from(">H", mv, offset + 2)[0]
             offset += 4
             base_off = offset  # start of actual data
             packed_size = packed_tag.size()
-            if base_off + packed_size > len(mv):
+            # Compute response payload length from the item header.
+            # BIT / BYTE|WORD|DWORD / INTEGER report lengths in bits;
+            # REAL and OCTET-STRING report lengths in bytes.
+            if transport_size in (0x03, 0x04, 0x05):
+                data_length = (length_field + 7) // 8
+            elif transport_size in (0x07, 0x09):
+                data_length = length_field
+            else:
+                data_length = (length_field + 7) // 8 if length_field > 0 else 0
+            if data_length <= 0:
+                data_length = packed_size
+            if base_off + data_length > len(mv):
                 raise S7ReadResponseError(
                     f"{packed_tag}: response too short for packed data"
                 )
@@ -494,9 +507,8 @@ def parse_optimized_read_response(
 
                 parsed_data.append((idx, value))
 
-            # Advance to the end of this packed block, align to 2 bytes
-            # packed_size = packed_tag.size()
-            offset += packed_size + (packed_size & 1)
+            # Advance past the actual response payload, with alignment padding
+            offset += data_length + (data_length & 1)
 
     # Sort values by original tag index and return only the values
     parsed_data.sort(key=lambda t: t[0])
