@@ -8,6 +8,7 @@ This guide covers advanced features and configurations for pyS7.
 - [Automatic String Chunking](#automatic-string-chunking)
 - [Connection Types](#connection-types)
 - [Multi-threaded Usage](#multi-threaded-usage)
+- [Async Client](#async-client)
 
 ## TSAP Connection
 
@@ -459,3 +460,148 @@ The timeout applies to:
 - Socket connection establishment
 - Data send operations
 - Data receive operations
+
+## Async Client
+
+`AsyncS7Client` provides a full asyncio-based alternative to `S7Client`. It is ideal for SCADA dashboards, IoT applications, Home Assistant integrations, and any asyncio-based system.
+
+### Basic usage
+
+```python
+import asyncio
+from pyS7 import AsyncS7Client
+
+async def main():
+    async with AsyncS7Client('192.168.0.1', 0, 1) as client:
+        values = await client.read(['DB1,I0', 'DB1,R4'])
+        print(values)
+
+asyncio.run(main())
+```
+
+### Reading and writing
+
+```python
+async with AsyncS7Client('192.168.0.1', 0, 1) as client:
+    # Read multiple tags
+    values = await client.read(['DB1,X0.0', 'DB1,I2', 'DB1,R4', 'DB1,S10.20'])
+
+    # Write multiple tags
+    await client.write(['DB1,I0', 'DB1,R4'], [42, 3.14])
+
+    # Detailed read with per-tag error handling
+    results = await client.read_detailed(['DB1,I0', 'DB99,I0'])
+    for r in results:
+        if r.success:
+            print(f"{r.tag}: {r.value}")
+        else:
+            print(f"{r.tag} failed: {r.error}")
+
+    # Detailed write with per-tag results
+    write_results = await client.write_detailed(['DB1,I0', 'DB1,I2'], [100, 200])
+```
+
+### Async batch writes
+
+```python
+async with AsyncS7Client('192.168.0.1', 0, 1) as client:
+    # Auto-commit with rollback on error
+    async with client.batch_write() as batch:
+        batch.add('DB1,I0', 100)
+        batch.add('DB1,I2', 200)
+        batch.add('DB1,R4', 3.14)
+        # Commits on exit, rolls back if any write fails
+
+    # Manual control
+    batch = client.batch_write(auto_commit=False)
+    batch.add('DB1,I0', 100).add('DB1,I2', 200)
+    try:
+        results = await batch.commit()
+    except Exception:
+        await batch.rollback()
+```
+
+### CPU diagnostics
+
+```python
+async with AsyncS7Client('192.168.0.1', 0, 1) as client:
+    status = await client.get_cpu_status()  # "RUN" or "STOP"
+    info = await client.get_cpu_info()
+    print(f"{info['module_type_name']} - FW {info['firmware_version']}")
+```
+
+### Concurrent reads with asyncio.gather
+
+Multiple coroutines can safely share a single `AsyncS7Client` — an internal `asyncio.Lock` serialises all I/O:
+
+```python
+async def poll_tag(client, tag, interval=1.0):
+    while True:
+        value = (await client.read([tag]))[0]
+        print(f"{tag} = {value}")
+        await asyncio.sleep(interval)
+
+async def main():
+    async with AsyncS7Client('192.168.0.1', 0, 1) as client:
+        await asyncio.gather(
+            poll_tag(client, 'DB1,I0'),
+            poll_tag(client, 'DB1,R4'),
+            poll_tag(client, 'DB1,X0.0'),
+        )
+```
+
+### Multiple PLC connections
+
+For reading from multiple PLCs concurrently, create one client per PLC:
+
+```python
+async def read_plc(address, tags):
+    async with AsyncS7Client(address, 0, 1) as client:
+        return await client.read(tags)
+
+async def main():
+    results = await asyncio.gather(
+        read_plc('192.168.0.1', ['DB1,I0']),
+        read_plc('192.168.0.2', ['DB1,I0']),
+        read_plc('192.168.0.3', ['DB1,I0']),
+    )
+    for i, values in enumerate(results):
+        print(f"PLC {i+1}: {values}")
+```
+
+### TSAP connection
+
+```python
+client = AsyncS7Client(
+    address='192.168.0.1',
+    local_tsap='03.00',
+    remote_tsap='03.01',
+)
+await client.connect()
+```
+
+### Metrics
+
+Metrics work the same as with `S7Client`:
+
+```python
+async with AsyncS7Client('192.168.0.1', 0, 1, enable_metrics=True) as client:
+    await client.read(['DB1,I0'])
+    print(f"Success rate: {client.metrics.success_rate}%")
+    print(f"Avg read: {client.metrics.avg_read_duration*1000:.1f}ms")
+```
+
+### When to use AsyncS7Client vs S7Client
+
+| Use `AsyncS7Client` when... | Use `S7Client` when... |
+|------------------------------|------------------------|
+| Your application uses `asyncio` | Your application is synchronous |
+| You need concurrent PLC connections | Single PLC, single thread |
+| Building SCADA/IoT dashboards | Simple scripts and CLI tools |
+| Integrating with async frameworks (aiohttp, FastAPI) | Integrating with sync frameworks (Flask, Django) |
+| Home Assistant async platform | Blocking workers / threads |
+
+### See Also
+
+- **[API Reference: AsyncS7Client](API_REFERENCE.md#asyncs7client)** - Full API documentation
+- **[Example](../examples/async_client_demo.py)** - Complete async example

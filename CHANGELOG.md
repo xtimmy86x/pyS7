@@ -5,6 +5,47 @@ All notable changes to pyS7 will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.7.0] - 2026-03-26
+
+### Added
+- **AsyncS7Client** – Full asyncio-based S7 PLC client for non-blocking I/O
+  - Drop-in async replacement for `S7Client` with identical API
+  - Async context manager (`async with AsyncS7Client(...) as client`)
+  - `await client.read()` / `await client.write()` – async tag read/write
+  - `await client.read_detailed()` / `await client.write_detailed()` – async per-tag error handling
+  - `await client.get_cpu_status()` / `await client.get_cpu_info()` – async CPU diagnostics
+  - Internal `asyncio.Lock` serialises concurrent coroutines sharing a single client
+  - Automatic large STRING/WSTRING chunking (same as sync client)
+  - Full metrics integration (`enable_metrics` parameter)
+  - Connection state management with `ConnectionState` enum
+- **AsyncBatchWriteTransaction** – Async batch write with automatic rollback
+  - `async with client.batch_write() as batch` context manager
+  - `batch.add(tag, value)` with method chaining
+  - `await batch.commit()` / `await batch.rollback()`
+  - Automatic rollback on error (configurable)
+- New example: `examples/async_client_demo.py`
+- Test suite for async client: 331 lines covering all async operations
+
+### Changed
+- `__init__.py` now exports `AsyncS7Client` and `AsyncBatchWriteTransaction`
+
+### Migration Guide
+
+**Using AsyncS7Client:**
+```python
+import asyncio
+from pyS7 import AsyncS7Client
+
+async def main():
+    async with AsyncS7Client('192.168.0.1', 0, 1) as client:
+        values = await client.read(['DB1,I0', 'DB1,R4'])
+        print(values)
+
+asyncio.run(main())
+```
+
+**No Breaking Changes** – Existing synchronous code continues to work without modification.
+
 ## [2.6.0] - 2026-03-03
 
 ### Added

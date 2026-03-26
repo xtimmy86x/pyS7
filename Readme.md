@@ -18,6 +18,7 @@ pyS7 is a lightweight, pure Python library that implements the Siemens S7 commun
 
 - **Pure Python** – No external dependencies, easy installation across platforms
 - **Intuitive API** – Clean, readable code with full typing support for IDE assistance
+- **Async Support** – Full asyncio client (`AsyncS7Client`) for non-blocking I/O
 - **High Performance** – Optimized hot paths, 2x faster request preparation (v2.5.0)
 - **Graceful error handling** – read_detailed() and write_detailed() provide per-tag success/failure info
 - **Transactional writes** – Batch write with automatic rollback on read verification failure
@@ -151,6 +152,42 @@ with S7Client(address="192.168.5.100", rack=0, slot=1) as client:
 
 See [docs/CPU_STATUS_READING.md](docs/CPU_STATUS_READING.md) for details.
 
+### Async client
+
+For asyncio-based applications (SCADA dashboards, IoT, Home Assistant, FastAPI):
+
+```python
+import asyncio
+from pyS7 import AsyncS7Client
+
+async def main():
+    async with AsyncS7Client(address="192.168.5.100", rack=0, slot=1) as client:
+        # Read
+        values = await client.read(["DB1,I0", "DB1,R4"])
+        print(values)
+
+        # Write
+        await client.write(["DB1,I0"], [42])
+
+        # Detailed read with per-tag error handling
+        results = await client.read_detailed(["DB1,I0", "DB99,I0"])
+        for r in results:
+            print(f"{r.tag}: {r.value if r.success else r.error}")
+
+        # Async batch write with rollback
+        async with client.batch_write() as batch:
+            batch.add("DB1,I0", 100)
+            batch.add("DB1,I2", 200)
+
+        # CPU diagnostics
+        status = await client.get_cpu_status()
+        print(f"CPU: {status}")
+
+asyncio.run(main())
+```
+
+See [docs/ADVANCED_USAGE.md](docs/ADVANCED_USAGE.md#async-client) for concurrent patterns and advanced usage.
+
 ### String data types
 
 pyS7 supports both ASCII and Unicode strings:
@@ -208,7 +245,7 @@ See [docs/METRICS.md](docs/METRICS.md) for complete metrics documentation and in
 ### Guides
 
 - **[API Reference](docs/API_REFERENCE.md)** – Data types, address formats, supported operations
-- **[Advanced Usage](docs/ADVANCED_USAGE.md)** – TSAP connections, PDU tuning, chunking, multi-threading
+- **[Advanced Usage](docs/ADVANCED_USAGE.md)** – TSAP connections, PDU tuning, chunking, async client, multi-threading
 - **[Metrics and Telemetry](docs/METRICS.md)** – Performance monitoring, diagnostics, integration patterns
 - **[Best Practices](docs/BEST_PRACTICES.md)** – Connection management, error handling, production deployment
 - **[Troubleshooting](docs/TROUBLESHOOTING.md)** – Common issues and solutions
@@ -243,6 +280,7 @@ Example scripts in the [`examples/`](examples/) directory demonstrate:
 - `bit_read_workaround.py` – Bit operations
 - `manage_reconnection.py` – Connection handling
 - `connection_state_demo.py` – Connection state management
+- `async_client_demo.py` – Async client usage with asyncio
 - `homeassistant_metrics_integration.py` – Home Assistant integration patterns
 
 ## License

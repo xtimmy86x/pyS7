@@ -823,3 +823,230 @@ client = S7Client("192.168.1.10", 0, 1, enable_metrics=False)
 - **[Metrics Guide](METRICS.md)** - Complete metrics documentation
 - **[Examples](../examples/metrics_demo.py)** - Usage examples
 - **[Home Assistant Integration](../examples/homeassistant_metrics_integration.py)** - HA patterns
+
+## AsyncS7Client
+
+Asyncio-based S7 PLC client. Drop-in async replacement for `S7Client` — all I/O methods are coroutines, request-building and response-parsing reuse the synchronous helpers (pure computation, no blocking I/O).
+
+### Overview
+
+**Import:**
+```python
+from pyS7 import AsyncS7Client, AsyncBatchWriteTransaction
+```
+
+**Constructor:**
+```python
+AsyncS7Client(
+    address: str,
+    rack: int = 0,
+    slot: int = 0,
+    connection_type: ConnectionType = ConnectionType.S7Basic,
+    port: int = 102,
+    timeout: float = 5.0,
+    local_tsap: Optional[Union[int, str]] = None,
+    remote_tsap: Optional[Union[int, str]] = None,
+    max_pdu: int = 960,
+    enable_metrics: bool = True,
+)
+```
+
+All constructor parameters match `S7Client`. The client supports both rack/slot and TSAP-based connections.
+
+### Context Manager
+
+```python
+async with AsyncS7Client('192.168.0.1', 0, 1) as client:
+    values = await client.read(['DB1,I0', 'DB1,R4'])
+```
+
+Automatically calls `connect()` on entry and `disconnect()` on exit.
+
+### Properties
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `connection_state` | `ConnectionState` | Current connection state |
+| `last_error` | `Optional[str]` | Last error message (None if no error) |
+| `is_connected` | `bool` | True if connected |
+| `pdu_size` | `int` | Negotiated PDU size |
+| `metrics` | `Optional[ClientMetrics]` | Metrics instance (None if disabled) |
+
+### Methods
+
+#### connect()
+
+```python
+async def connect() -> None
+```
+
+Establish an async TCP connection to the PLC and negotiate COTP/PDU parameters. Raises `S7ConnectionError` or `S7TimeoutError` on failure.
+
+#### disconnect()
+
+```python
+async def disconnect() -> None
+```
+
+Close the async TCP connection.
+
+#### read()
+
+```python
+async def read(
+    tags: Sequence[Union[str, S7Tag]],
+    optimize: bool = True
+) -> List[Value]
+```
+
+Read tags from the PLC. Identical API to `S7Client.read()`.
+
+```python
+values = await client.read(['DB1,X0.0', 'DB1,I2', 'DB1,R4'])
+```
+
+#### read_detailed()
+
+```python
+async def read_detailed(
+    tags: Sequence[Union[str, S7Tag]],
+    optimize: bool = True
+) -> List[ReadResult]
+```
+
+Read tags with per-tag success/error details. Does not raise on individual tag failures.
+
+```python
+results = await client.read_detailed(['DB1,I0', 'DB99,I0', 'DB1,R4'])
+for r in results:
+    if r.success:
+        print(f"{r.tag}: {r.value}")
+    else:
+        print(f"{r.tag} failed: {r.error}")
+```
+
+#### write()
+
+```python
+async def write(
+    tags: Sequence[Union[str, S7Tag]],
+    values: Sequence[Value]
+) -> None
+```
+
+Write values to PLC tags. Identical API to `S7Client.write()`.
+
+```python
+await client.write(['DB1,I0', 'DB1,R4'], [42, 3.14])
+```
+
+#### write_detailed()
+
+```python
+async def write_detailed(
+    tags: Sequence[Union[str, S7Tag]],
+    values: Sequence[Value]
+) -> List[WriteResult]
+```
+
+Write values with per-tag success/error details.
+
+```python
+results = await client.write_detailed(['DB1,I0', 'DB1,I2'], [100, 200])
+for r in results:
+    print(f"{r.tag}: {'OK' if r.success else r.error}")
+```
+
+#### get_cpu_status()
+
+```python
+async def get_cpu_status() -> str
+```
+
+Returns `"RUN"` or `"STOP"`.
+
+```python
+status = await client.get_cpu_status()
+```
+
+#### get_cpu_info()
+
+```python
+async def get_cpu_info() -> Dict[str, Any]
+```
+
+Returns dict with `module_type_name`, `hardware_version`, `firmware_version`, `index`, `modules`.
+
+```python
+info = await client.get_cpu_info()
+print(info['module_type_name'])
+```
+
+#### batch_write()
+
+```python
+def batch_write(
+    auto_commit: bool = True,
+    rollback_on_error: bool = True
+) -> AsyncBatchWriteTransaction
+```
+
+Create an async batch write transaction. See [AsyncBatchWriteTransaction](#asyncbatchwritetransaction).
+
+### AsyncBatchWriteTransaction
+
+Async context manager for atomic multi-tag writes with automatic rollback.
+
+**Methods:**
+- `add(tag, value)` → returns self for chaining
+- `await commit()` → execute all writes, returns `List[WriteResult]`
+- `await rollback()` → restore original values
+
+**Example:**
+```python
+async with client.batch_write() as batch:
+    batch.add('DB1,I0', 100)
+    batch.add('DB1,I2', 200)
+    batch.add('DB1,R4', 3.14)
+    # Auto-commits on exit, rolls back on error
+
+# Manual control
+batch = client.batch_write(auto_commit=False)
+batch.add('DB1,I0', 100).add('DB1,I2', 200)
+
+try:
+    results = await batch.commit()
+except Exception:
+    await batch.rollback()
+```
+
+### Concurrency
+
+`AsyncS7Client` uses an internal `asyncio.Lock` to serialise all send/receive cycles. Multiple coroutines can safely share a single client instance:
+
+```python
+async def read_loop(client: AsyncS7Client, tag: str):
+    while True:
+        value = await client.read([tag])
+        print(f"{tag} = {value[0]}")
+        await asyncio.sleep(1)
+
+async def main():
+    async with AsyncS7Client('192.168.0.1', 0, 1) as client:
+        await asyncio.gather(
+            read_loop(client, 'DB1,I0'),
+            read_loop(client, 'DB1,R4'),
+        )
+```
+
+### Static Helpers
+
+Delegated from `S7Client`:
+- `AsyncS7Client.tsap_from_string(s)` – Convert TIA Portal TSAP string to int
+- `AsyncS7Client.tsap_to_string(v)` – Convert int to TIA Portal TSAP string
+- `AsyncS7Client.tsap_from_rack_slot(rack, slot)` – Calculate TSAP from rack/slot
+
+### See Also
+
+- **[Advanced Usage: Async Client](ADVANCED_USAGE.md#async-client)** - Patterns and use cases
+- **[Example](../examples/async_client_demo.py)** - Complete async example
