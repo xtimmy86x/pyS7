@@ -1089,9 +1089,18 @@ class AsyncS7Client:
                 raise S7CommunicationError(
                     f"Invalid WSTRING header: expected tuple ≥4, got {type(header_bytes).__name__}"
                 )
+            max_length = (int(header_bytes[0]) << 8) | int(header_bytes[1])
             current_length = (int(header_bytes[2]) << 8) | int(header_bytes[3])
             if current_length == 0:
                 return ""
+
+            # Validate current_length does not exceed max_length
+            if current_length > max_length:
+                self.logger.warning(
+                    "WSTRING current_length (%d) exceeds max_length (%d), clamping",
+                    current_length, max_length,
+                )
+                current_length = max_length
 
             max_data = self.pdu_size - READ_RES_OVERHEAD - READ_RES_PARAM_SIZE_TAG
             bytes_to_read = current_length * 2

@@ -85,16 +85,25 @@ def _parse_wstring(bytes_data: Union[bytes, memoryview], offset: int, tag_length
     # Validate header: max_length should be reasonable and current_length <= max_length
     if max_length <= 16383 and 0 <= current_length <= max_length:
         string_start = offset + 4
-        # Read the full string data area (max_length * 2 bytes)
+        # Calculate available bytes after the header
+        available_bytes = len(bytes_data) - string_start
+        # Clamp to the smaller of max_length*2 and actually available bytes
+        data_bytes_len = min(max_length * 2, available_bytes)
+        if data_bytes_len <= 0:
+            return ""
+        # Ensure even byte count for UTF-16
+        data_bytes_len -= data_bytes_len % 2
         if isinstance(bytes_data, memoryview):
-            string_bytes = bytes_data[string_start:string_start + (max_length * 2)].tobytes()
+            string_bytes = bytes_data[string_start:string_start + data_bytes_len].tobytes()
         else:
-            string_bytes = bytes_data[string_start:string_start + (max_length * 2)]
+            string_bytes = bytes_data[string_start:string_start + data_bytes_len]
         # Decode and find the actual string (stop at null terminator)
         decoded_full = string_bytes.decode("utf-16-be")
-        # Find null terminator or use current_length as hint
+        # Clamp current_length to actual decoded length to prevent overflow
+        safe_length = min(current_length, len(decoded_full))
+        # Find null terminator or use clamped current_length
         null_pos = decoded_full.find('\x00')
-        return decoded_full[:null_pos] if null_pos >= 0 else decoded_full[:current_length]
+        return decoded_full[:null_pos] if null_pos >= 0 else decoded_full[:safe_length]
     else:
         # Fallback: treat as raw UTF-16 data without header
         string_end = offset + (tag_length * 2)

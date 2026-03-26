@@ -458,6 +458,14 @@ class S7Client:
             if current_length == 0:
                 return ""
             
+            # Validate current_length does not exceed max_length
+            if current_length > max_length:
+                self.logger.warning(
+                    "WSTRING current_length (%d) exceeds max_length (%d), clamping",
+                    current_length, max_length,
+                )
+                current_length = max_length
+            
             # Calculate chunk size (in bytes, not characters)
             max_data_per_read = self.pdu_size - READ_RES_OVERHEAD - READ_RES_PARAM_SIZE_TAG
             # WSTRING uses 2 bytes per character
