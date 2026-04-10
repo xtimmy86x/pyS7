@@ -10,6 +10,9 @@ on:
         required: true
         default: "v0.2.0"
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   publish:
     # Consenti:
