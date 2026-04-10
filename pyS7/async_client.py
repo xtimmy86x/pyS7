@@ -827,7 +827,7 @@ class AsyncS7Client:
                     req_size = WRITE_REQ_OVERHEAD + WRITE_REQ_PARAM_SIZE_TAG + tag.size() + 4
                     if req_size > self.pdu_size:
                         if tag.data_type in (DataType.STRING, DataType.WSTRING):
-                            await self._write_large_string(tag, value)  # type: ignore
+                            await self._write_large_string_unlocked(tag, value)  # type: ignore
                             continue
                         max_data = self.pdu_size - WRITE_REQ_OVERHEAD - WRITE_REQ_PARAM_SIZE_TAG - 4
                         raise S7AddressError(
@@ -890,7 +890,7 @@ class AsyncS7Client:
                 if req_size > self.pdu_size:
                     if tag.data_type in (DataType.STRING, DataType.WSTRING):
                         try:
-                            await self._write_large_string(tag, value)  # type: ignore
+                            await self._write_large_string_unlocked(tag, value)  # type: ignore
                             results.append(WriteResult(tag=tag, success=True))
                         except Exception as e:
                             results.append(
