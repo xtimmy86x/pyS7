@@ -165,6 +165,23 @@ def test_read_request() -> None:
         offset += 12
 
 
+def test_read_request_string_uses_byte_transport() -> None:
+    tags = [
+        S7Tag(MemoryArea.DB, 1, DataType.STRING, 60, 0, 10),
+        S7Tag(MemoryArea.DB, 1, DataType.WSTRING, 100, 0, 8),
+    ]
+
+    packet = ReadRequest(tags=tags).request
+
+    # First tag starts at byte 19. Offset +3 = transport size, +4:+6 = length.
+    assert packet[22] == DataType.BYTE.value
+    assert packet[23:25] == tags[0].size().to_bytes(2, byteorder="big")
+
+    # Second tag starts at byte 31.
+    assert packet[34] == DataType.BYTE.value
+    assert packet[35:37] == tags[1].size().to_bytes(2, byteorder="big")
+
+
 def assert_write_header(packet: bytearray) -> None:
     assert packet[0] == 0x03
     assert packet[1] == 0x00

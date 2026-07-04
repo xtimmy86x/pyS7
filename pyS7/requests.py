@@ -248,10 +248,13 @@ class ReadRequest(Request):
                 transport_size = DataTypeData.BYTE_WORD_DWORD.value
                 length = tag.length * DataTypeSize[tag.data_type]
             elif tag.data_type == DataType.STRING:
-                transport_size = DataTypeData.BYTE_WORD_DWORD.value
+                # STRING payload is addressed as raw bytes (header + data).
+                # Using WORD transport may cause PLC side OUT_OF_RANGE near DB boundaries.
+                transport_size = DataType.BYTE.value
                 length = tag.size()
             elif tag.data_type == DataType.WSTRING:
-                transport_size = DataTypeData.BYTE_WORD_DWORD.value
+                # WSTRING payload is addressed as raw bytes (header + UTF-16 data).
+                transport_size = DataType.BYTE.value
                 length = tag.size()
             elif tag.data_type in (DataType.USINT, DataType.SINT):
                 transport_size = DataType.BYTE.value
