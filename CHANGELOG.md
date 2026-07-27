@@ -5,6 +5,33 @@ All notable changes to pyS7 will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+
+## [2.8.2]
+
+### Fixed
+- Encode STRING and WSTRING read requests with BYTE transport while preserving their
+  full byte length, preventing PLC `OUT_OF_RANGE` errors when strings are located
+  near the end of a data block.
+
+## [2.8.1] - 2026-04-18
+
+### Fixed
+- Resolve an `asyncio.Lock` deadlock when `AsyncS7Client.write()` chunks large
+  STRING or WSTRING values.
+
+## [2.8.0] - 2026-04-10
+
+### Changed
+- Rewrite detailed-read response parsing and add an optimized mapper for grouped
+  reads.
+- Synchronize connection-state checks and socket I/O to eliminate TOCTOU races
+  between public operations and disconnects.
+
+### Fixed
+- Validate `max_pdu` during `S7Client` initialization.
+- Reject corrupted WSTRING headers whose current length exceeds the declared
+  maximum length.
+
 ## [2.7.0] - 2026-03-26
 
 ### Added

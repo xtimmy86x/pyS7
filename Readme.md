@@ -26,7 +26,7 @@ pyS7 is a lightweight, pure Python library that implements the Siemens S7 commun
 - **Automatic chunking** – Transparently splits large STRING/WSTRING reads exceeding PDU size
 - **CPU diagnostics** – Read PLC status (RUN/STOP) and information (model, firmware) via SZL protocol
 - **Broad compatibility** – Supports S7-200/300/400/1200/1500 series
-- **Production Ready** – 253 tests, 85% coverage, strict type checking
+- **Production Ready** – 322 tests, 82% coverage, strict type checking
 
 ## Safety Notice
 
