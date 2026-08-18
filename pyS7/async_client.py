@@ -54,6 +54,7 @@ from .constants import (
     SZLId,
 )
 from .errors import (
+    BatchWriteError,
     S7AddressError,
     S7CommunicationError,
     S7ConnectionError,
@@ -87,7 +88,10 @@ from .tag import S7Tag
 
 @dataclass
 class AsyncBatchWriteTransaction:
-    """Async batch write transaction for atomic multi-tag writes.
+    """Strict async batch write with optional best-effort rollback.
+
+    The operation is not atomic: writes can partially succeed before a failure
+    is known, and rollback is only an attempted restoration.
 
     Example:
         >>> async with client.batch_write() as batch:
@@ -133,24 +137,36 @@ class AsyncBatchWriteTransaction:
         if self.rollback_on_error:
             try:
                 self._original_values = await self._client.read(self._tags)
-            except Exception as e:
-                self._client.logger.warning(
-                    f"Could not read original values for rollback: {e}"
-                )
-                self._original_values = None
+            except Exception as exc:
+                raise BatchWriteError(
+                    "Batch write aborted: could not capture rollback snapshot"
+                ) from exc
 
         results = await self._client.write_detailed(self._tags, self._values)
 
-        if self.rollback_on_error:
-            failed = [r for r in results if not r.success]
-            if failed and self._original_values is not None:
-                self._client.logger.warning(
-                    f"Batch write had {len(failed)} failures, rolling back"
-                )
+        failed = [result for result in results if not result.success]
+        if failed:
+            self._client.logger.warning("Batch write had %d failure(s)", len(failed))
+            if self.rollback_on_error:
+                self._client.logger.warning("Starting best-effort batch rollback")
                 try:
-                    await self._client.write(self._tags, self._original_values)
-                except Exception as e:
-                    self._client.logger.error(f"Rollback failed: {e}")
+                    await self._client.write(self._tags, self._original_values or [])
+                except Exception as exc:
+                    self._client.logger.error("Batch rollback failed: %s", exc)
+                    raise BatchWriteError(
+                        "Batch write failed and rollback also failed",
+                        results,
+                        rollback_attempted=True,
+                        rollback_succeeded=False,
+                        rollback_error=exc,
+                    ) from exc
+                raise BatchWriteError(
+                    "Batch write failed; best-effort rollback completed",
+                    results,
+                    rollback_attempted=True,
+                    rollback_succeeded=True,
+                )
+            raise BatchWriteError("Batch write failed", results)
 
         return results
 
@@ -994,7 +1010,7 @@ class AsyncS7Client:
         auto_commit: bool = True,
         rollback_on_error: bool = True,
     ) -> AsyncBatchWriteTransaction:
-        """Create an async batch write transaction.
+        """Create a strict async batch write with best-effort rollback.
 
         Example:
             >>> async with client.batch_write() as batch:

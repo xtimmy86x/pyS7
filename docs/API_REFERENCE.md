@@ -441,84 +441,27 @@ with S7Client(address="192.168.5.100", rack=0, slot=1) as client:
 
 ### batch_write()
 
-Transactional batch write with automatic rollback on failure. Reads original values before writing, then verifies the write. If verification fails, automatically restores original values.
+Create a strict multi-tag batch write with optional best-effort rollback. This is
+not a PLC-side or ACID transaction. Before protected writes pyS7 snapshots the
+original values; snapshot failure aborts without writing. Any failed `WriteResult`
+raises `BatchWriteError`, whether or not rollback is enabled.
 
-**Signature:**
 ```python
-@contextmanager
-def batch_write(
-    auto_commit: bool = True,
-    rollback_on_error: bool = True
-) -> BatchWriteTransaction
-```
+from pyS7 import BatchWriteError
 
-**Parameters:**
-- `auto_commit`: If True, automatically commit on context exit (default: True)
-- `rollback_on_error`: If True, rollback on commit failure (default: True)
-
-**Returns:**
-- `BatchWriteTransaction` object (context manager)
-
-**BatchWriteTransaction methods:**
-- `add(tag, value)`: Add a tag/value pair to the batch
-- `commit()`: Execute the write and verify
-- `rollback()`: Restore original values (if commit failed)
-
-**Example:**
-```python
-from pyS7 import S7Client
-
-with S7Client(address="192.168.5.100", rack=0, slot=1) as client:
-    # Auto-commit mode (recommended)
+try:
     with client.batch_write() as batch:
-        batch.add("DB1,I0", 100)
-        batch.add("DB1,I2", 200)
-        batch.add("DB1,R4", 3.14)
-        # Automatically commits on exit
-        # Rolls back on any error
-
-    # Manual mode (explicit control)
-    batch = client.batch_write(auto_commit=False)
-    batch.add("DB1,I0", 100)
-    batch.add("DB1,I2", 200)
-
-    try:
-        batch.commit()  # Write and verify
-        print("Batch write successful")
-    except Exception as e:
-        print(f"Batch write failed: {e}")
-        batch.rollback()  # Restore original values
-        print("Rolled back to original values")
-
-    # Method chaining
-    batch = client.batch_write(auto_commit=False)
-    (batch
-        .add("DB1,I0", 100)
-        .add("DB1,I2", 200)
-        .add("DB1,R4", 3.14))
-
-    batch.commit()
+        batch.add("DB1,I0", 100).add("DB1,I2", 200)
+except BatchWriteError as exc:
+    print(exc.results)
+    print(exc.rollback_attempted, exc.rollback_succeeded)
 ```
 
-**Behavior:**
-1. `add()`: Stores tag/value pairs (no PLC communication)
-2. `commit()`:
-   - Reads original values from PLC
-   - Writes new values to PLC
-   - Reads back to verify
-   - If verification fails and `rollback_on_error=True`, writes original values
-3. `rollback()`: Explicitly restore original values (only after commit)
-
-**Use cases:**
-- Critical writes that must succeed or revert
-- Multi-tag updates that must be atomic
-- Production systems requiring data consistency
-- Testing/debugging with automatic cleanup
-
-**Limitations:**
-- Cannot rollback after context exit
-- Empty batch raises ValueError on commit
-- Original values captured at commit time (not add time)
+`commit()` returns ordered `WriteResult` objects only when all responses report
+success. This is response status, not read-back verification. `rollback()` remains
+available for manual best-effort restoration when a snapshot exists. Rollback
+cannot guarantee atomicity: PLC logic and other clients may run between operations,
+communication can be lost, and the restoration write can fail.
 
 **See also:** [examples/batch_write_demo.py](../examples/batch_write_demo.py)
 
@@ -995,7 +938,7 @@ Create an async batch write transaction. See [AsyncBatchWriteTransaction](#async
 
 ### AsyncBatchWriteTransaction
 
-Async context manager for atomic multi-tag writes with automatic rollback.
+Async strict batch write with optional best-effort rollback. It has the same failure metadata and non-atomic semantics as the synchronous API.
 
 **Methods:**
 - `add(tag, value)` → returns self for chaining

@@ -38,6 +38,7 @@ from .constants import (
     SZLId,
 )
 from .errors import (
+    BatchWriteError,
     S7AddressError,
     S7CommunicationError,
     S7ConnectionError,
@@ -72,10 +73,10 @@ from .tag import S7Tag
 
 @dataclass
 class BatchWriteTransaction:
-    """Batch write transaction for atomic multi-tag writes.
+    """Strict multi-tag batch write with optional best-effort rollback.
 
-    Allows grouping multiple write operations into a single transaction
-    with rollback support if any write fails.
+    This compatibility-named transaction is not atomic. PLC values may change
+    before a failure is reported, and restoration can itself fail.
 
     Attributes:
         tags: List of tags to write
@@ -133,36 +134,47 @@ class BatchWriteTransaction:
 
         Raises:
             ValueError: If no tags have been added
-            S7CommunicationError: If communication fails
+            BatchWriteError: If snapshot preparation or any write fails
         """
         if not self._tags:
             raise ValueError("No tags added to batch")
 
-        # Save original values if rollback is enabled
         if self.rollback_on_error:
             try:
                 self._original_values = self._client.read(self._tags)
-            except Exception as e:
-                self._client.logger.warning(
-                    f"Could not read original values for rollback: {e}"
-                )
-                self._original_values = None
+            except Exception as exc:
+                raise BatchWriteError(
+                    "Batch write aborted: could not capture rollback snapshot"
+                ) from exc
 
         # Execute writes
         results = self._client.write_detailed(self._tags, self._values)
 
-        # Check for failures and rollback if needed
-        if self.rollback_on_error:
-            failed_results = [r for r in results if not r.success]
-            if failed_results and self._original_values is not None:
-                self._client.logger.warning(
-                    f"Batch write had {len(failed_results)} failures, rolling back"
-                )
+        failed_results = [result for result in results if not result.success]
+        if failed_results:
+            self._client.logger.warning(
+                "Batch write had %d failure(s)", len(failed_results)
+            )
+            if self.rollback_on_error:
+                self._client.logger.warning("Starting best-effort batch rollback")
                 try:
-                    # Restore original values
-                    self._client.write(self._tags, self._original_values)
-                except Exception as e:
-                    self._client.logger.error(f"Rollback failed: {e}")
+                    self._client.write(self._tags, self._original_values or [])
+                except Exception as exc:
+                    self._client.logger.error("Batch rollback failed: %s", exc)
+                    raise BatchWriteError(
+                        "Batch write failed and rollback also failed",
+                        results,
+                        rollback_attempted=True,
+                        rollback_succeeded=False,
+                        rollback_error=exc,
+                    ) from exc
+                raise BatchWriteError(
+                    "Batch write failed; best-effort rollback completed",
+                    results,
+                    rollback_attempted=True,
+                    rollback_succeeded=True,
+                )
+            raise BatchWriteError("Batch write failed", results)
 
         return results
 
@@ -1553,7 +1565,7 @@ class S7Client:
     def batch_write(
         self, auto_commit: bool = True, rollback_on_error: bool = True
     ) -> BatchWriteTransaction:
-        """Create a batch write transaction for atomic multi-tag writes.
+        """Create a strict batch write with optional best-effort rollback.
 
         Allows grouping multiple write operations with optional automatic
         rollback on failure.

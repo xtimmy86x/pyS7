@@ -1,6 +1,11 @@
 """Custom exceptions for the pyS7 package."""
 
-from typing import Optional
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Optional
+
+if TYPE_CHECKING:
+    from .results import WriteResult
 
 
 class S7Error(Exception):
@@ -9,6 +14,31 @@ class S7Error(Exception):
     def __init__(self, message: Optional[str] = None) -> None:  # noqa: D401
         """Initialize the exception with an optional *message*."""
         super().__init__(message)
+
+
+class BatchWriteError(S7Error):
+    """Raised when a strict batch write cannot complete successfully.
+
+    ``results`` contains the per-tag write responses, and is empty when the
+    operation was aborted before writing (for example, if its rollback
+    snapshot failed). Rollback metadata describes a best-effort restoration;
+    it does not imply PLC-level atomicity.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        results: list[WriteResult] | None = None,
+        *,
+        rollback_attempted: bool = False,
+        rollback_succeeded: bool | None = None,
+        rollback_error: BaseException | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.results = list(results or [])
+        self.rollback_attempted = rollback_attempted
+        self.rollback_succeeded = rollback_succeeded
+        self.rollback_error = rollback_error
 
 
 class S7ConnectionError(S7Error):

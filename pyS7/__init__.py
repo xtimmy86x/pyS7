@@ -3,6 +3,7 @@ from .async_client import AsyncBatchWriteTransaction, AsyncS7Client
 from .client import BatchWriteTransaction, ReadResult, S7Client, WriteResult
 from .constants import ConnectionState, ConnectionType, DataType, MemoryArea, SZLId
 from .errors import (
+    BatchWriteError,
     S7AddressError,
     S7CommunicationError,
     S7ConnectionError,
@@ -25,6 +26,7 @@ __all__ = [
     "WriteResult",
     "ReadResult",
     "BatchWriteTransaction",
+    "BatchWriteError",
     "ClientMetrics",
     "map_address_to_tag",
     "extract_bit_from_byte",

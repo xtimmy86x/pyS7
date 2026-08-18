@@ -21,7 +21,7 @@ pyS7 is a lightweight, pure Python library that implements the Siemens S7 commun
 - **Async Support** – Full asyncio client (`AsyncS7Client`) for non-blocking I/O
 - **High Performance** – Optimized hot paths, 2x faster request preparation (v2.5.0)
 - **Graceful error handling** – read_detailed() and write_detailed() provide per-tag success/failure info
-- **Transactional writes** – Batch write with automatic rollback on read verification failure
+- **Strict batch writes** – Batch execution with structured failures and optional best-effort rollback
 - **Optimized multi-variable reads** – Automatically groups contiguous tags to reduce network requests
 - **Automatic chunking** – Transparently splits large STRING/WSTRING reads exceeding PDU size
 - **CPU diagnostics** – Read PLC status (RUN/STOP) and information (model, firmware) via SZL protocol
@@ -51,7 +51,7 @@ pip install git+https://github.com/xtimmy86x/pyS7
 ### Reading data
 
 ```python
-from pyS7 import S7Client
+from pyS7 import BatchWriteError, S7Client
 
 with S7Client(address="192.168.5.100", rack=0, slot=1) as client:
     tags = [
@@ -108,13 +108,19 @@ with S7Client(address="192.168.5.100", rack=0, slot=1) as client:
             print(f"✗ {result.tag}: {result.error}")
 ```
 
-### Transactional batch writes
+### Strict batch writes with best-effort rollback
+
+Batch writes are **not atomic**. A successful result means the PLC write response
+reported success; pyS7 does not perform post-write read-back verification. If any
+result fails, commit raises `BatchWriteError`. Optional rollback only attempts to
+restore a pre-write snapshot and can fail. PLC logic, concurrent clients, or a lost
+connection may observe or alter partially written values before restoration.
 
 ```python
-from pyS7 import S7Client
+from pyS7 import BatchWriteError, S7Client
 
 with S7Client(address="192.168.5.100", rack=0, slot=1) as client:
-    # Batch write with automatic rollback on verification failure
+    # Batch write with best-effort rollback after a reported write failure
     with client.batch_write() as batch:
         batch.add("DB1,I0", 100)
         batch.add("DB1,I2", 200)
@@ -127,10 +133,10 @@ with S7Client(address="192.168.5.100", rack=0, slot=1) as client:
     batch.add("DB1,I2", 200)
 
     try:
-        batch.commit()  # Write and verify
-    except Exception as e:
-        batch.rollback()  # Restore original values
-        print(f"Write failed: {e}")
+        results = batch.commit()  # Returns only when every write succeeded
+    except BatchWriteError as exc:
+        print(f"Write failed: {exc}")
+        print(exc.rollback_attempted, exc.rollback_succeeded)
 ```
 
 ### Reading CPU status
@@ -272,7 +278,7 @@ Example scripts in the [`examples/`](examples/) directory demonstrate:
 - `write_data.py` – Basic writing operations
 - `read_detailed_demo.py` – Graceful error handling for reads
 - `write_detailed_demo.py` – Graceful error handling for writes
-- `batch_write_demo.py` – Transactional batch writes with rollback
+- `batch_write_demo.py` – Strict batch writes with best-effort rollback
 - `metrics_demo.py` – Metrics collection and monitoring
 - `get_cpu_status.py` – CPU status monitoring
 - `get_cpu_info.py` – CPU information retrieval

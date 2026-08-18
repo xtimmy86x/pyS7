@@ -8,7 +8,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from pyS7 import BatchWriteTransaction, S7Client, WriteResult
+from pyS7 import BatchWriteError, BatchWriteTransaction, S7Client, WriteResult
 from pyS7.constants import ConnectionState, ConnectionType, DataType, MemoryArea
 from pyS7.tag import S7Tag
 
@@ -184,7 +184,11 @@ class TestBatchWriteTransaction:
             batch.add("DB1,I0", 100)
             batch.add("DB1,I2", 200)
             batch.add("DB1,I4", 300)
-            batch.commit()
+            with pytest.raises(BatchWriteError) as caught:
+                batch.commit()
+
+        assert caught.value.rollback_attempted is True
+        assert caught.value.rollback_succeeded is True
 
         # Should have write_detailed call and rollback write call
         assert len(write_calls) == 2
@@ -221,7 +225,11 @@ class TestBatchWriteTransaction:
         with client.batch_write(auto_commit=False, rollback_on_error=False) as batch:
             batch.add("DB1,I0", 100)
             batch.add("DB1,I2", 200)
-            batch.commit()
+            with pytest.raises(BatchWriteError) as caught:
+                batch.commit()
+
+        assert caught.value.rollback_attempted is False
+        assert caught.value.rollback_succeeded is None
 
         # Should only have write_detailed call, no rollback
         assert len(write_calls) == 1
@@ -375,10 +383,10 @@ class TestBatchWriteTransaction:
         assert len(results) == 3
         assert all(r.success for r in results)
 
-    def test_batch_write_read_failure_no_rollback(
+    def test_batch_write_read_failure_aborts_before_write(
         self, client: S7Client, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Test that batch write continues if read for rollback fails."""
+        """Test that snapshot failure aborts before any write."""
         write_calls = []
 
         def mock_write_detailed(
@@ -403,11 +411,12 @@ class TestBatchWriteTransaction:
 
         with client.batch_write(auto_commit=False, rollback_on_error=True) as batch:
             batch.add("DB1,I0", 100)
-            results = batch.commit()
+            with pytest.raises(BatchWriteError) as caught:
+                batch.commit()
 
-        # Write should have been attempted even though read failed
-        assert len(write_calls) == 1
-        assert not results[0].success
+        assert write_calls == []
+        assert caught.value.results == []
+        assert caught.value.__cause__ is not None
 
 
 class TestBatchWriteDataclass:

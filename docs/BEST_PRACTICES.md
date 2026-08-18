@@ -326,17 +326,22 @@ with S7Client("192.168.5.100", 0, 1) as client:
 - Resilient data collection in production
 
 #### Use `batch_write()` when:
-- **Atomicity is required** (all writes must succeed or all revert)
-- Need **automatic rollback** on failure
+
+`batch_write()` is not atomic and does not read values back to verify them. Its
+rollback is a best-effort restoration: PLC logic or another client can act between
+the write and rollback, communication can fail, and rollback itself can fail. Catch
+`BatchWriteError` and inspect both the write results and rollback metadata.
+- Related writes need strict failure reporting
+- Need optional **best-effort rollback** after a reported failure
 - Writing related data that must stay consistent
 - Testing with automatic cleanup
-- Critical operations requiring verification
+- Operations where every PLC response must report success
 
 ```python
-from pyS7 import S7Client
+from pyS7 import BatchWriteError, S7Client
 
 with S7Client("192.168.5.100", 0, 1) as client:
-    # Transactional write with automatic rollback
+    # Strict batch write with best-effort rollback
     try:
         with client.batch_write() as batch:
             batch.add("DB1,I0", 100)
@@ -356,7 +361,7 @@ with S7Client("192.168.5.100", 0, 1) as client:
 - Multi-step processes requiring data consistency
 - Critical setpoint updates
 - Testing/debugging with automatic cleanup
-- Configuration updates that must be atomic
+- Related configuration updates where partial failure must raise
 
 **Comparison table:**
 
@@ -364,7 +369,7 @@ with S7Client("192.168.5.100", 0, 1) as client:
 |----------|-------------------|-----|
 | Read sensor values (all required) | `read()` | Fail-fast, simple |
 | Read multiple DBs (some may not exist) | `read_detailed()` | Partial success OK |
-| Write production setpoints | `batch_write()` | Atomicity required |
+| Write production setpoints | `batch_write()` | Strict failure reporting |
 | Write to various PLCs/areas | `write_detailed()` | Individual error handling |
 | Update recipe (all values related) | `batch_write()` | Rollback on failure |
 | Diagnostic data collection | `read_detailed()` | Continue on errors |
