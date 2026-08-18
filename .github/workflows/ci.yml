@@ -4,10 +4,35 @@ on:
   push:
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
+  lint-and-type-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install project and development dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+
+      - name: Lint
+        run: ruff check .
+
+      - name: Type check
+        run: mypy pyS7
+
   test:
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         python-version: ["3.8", "3.9", "3.10", "3.11", "3.12"]
     steps:
@@ -18,23 +43,39 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
-      - name: Install build deps
+      - name: Install project and test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+
+      - name: Test
+        run: pytest
+
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install build dependencies
         run: |
           python -m pip install --upgrade pip
           python -m pip install build twine
 
-      - name: Build sdist+wheel
+      - name: Build sdist and wheel
         run: python -m build
 
-      - name: Twine check
+      - name: Check distributions
         run: python -m twine check dist/*
 
-      - name: Smoke test import
+      - name: Install and smoke test wheel
         run: |
-          python - << 'PY'
-          import subprocess, sys, glob
-          wheel = sorted(glob.glob("dist/*.whl"))[-1]
-          subprocess.check_call([sys.executable, "-m", "pip", "install", wheel])
-          import pyS7
-          print("Imported:", pyS7.__name__)
-          PY
+          wheel="$(readlink -f dist/*.whl)"
+          python -m pip install "$wheel"
+          temp_dir="$(mktemp -d)"
+          cd "$temp_dir"
+          python -c 'import pyS7; print("Imported:", pyS7.__name__)'
