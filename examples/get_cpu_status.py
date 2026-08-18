@@ -4,9 +4,10 @@ Example demonstrating how to read CPU status from an S7 PLC.
 This example shows how to use the get_cpu_status() method to check
 if the PLC CPU is in RUN or STOP mode.
 """
+
 import sys
 
-sys.path.insert(0, '/home/ale/pys7/pyS7')
+sys.path.insert(0, "/home/ale/pys7/pyS7")
 from pyS7 import S7Client
 
 if __name__ == "__main__":

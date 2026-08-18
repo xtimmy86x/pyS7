@@ -1,6 +1,5 @@
 """Tests for edge cases and boundary conditions in pyS7."""
 
-
 import pytest
 
 from pyS7.constants import DataType, MemoryArea
@@ -220,8 +219,8 @@ class TestTagContainment:
 
     def test_tag_overlapping_start(self) -> None:
         """Test tag overlapping at start."""
-        tag1 = S7Tag(MemoryArea.DB, 1, DataType.BYTE, 0, 0, 5)   # bytes 0-4
-        tag2 = S7Tag(MemoryArea.DB, 1, DataType.BYTE, 4, 0, 2)   # bytes 4-5
+        tag1 = S7Tag(MemoryArea.DB, 1, DataType.BYTE, 0, 0, 5)  # bytes 0-4
+        tag2 = S7Tag(MemoryArea.DB, 1, DataType.BYTE, 4, 0, 2)  # bytes 4-5
         # tag2 starts inside tag1 but extends beyond
         assert tag2 not in tag1
 

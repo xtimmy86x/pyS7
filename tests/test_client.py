@@ -32,7 +32,9 @@ def _set_client_connected(client: S7Client, sock: socket.socket) -> None:
 @pytest.fixture(autouse=True)
 def mock_socket_getpeername(monkeypatch: pytest.MonkeyPatch) -> None:
     """Automatically mock socket.getpeername() for all tests."""
-    monkeypatch.setattr("socket.socket.getpeername", lambda self: ("192.168.100.10", 102))
+    monkeypatch.setattr(
+        "socket.socket.getpeername", lambda self: ("192.168.100.10", 102)
+    )
 
 
 def _mock_recv_factory(*messages: bytes) -> Callable[[Any, int], bytes]:
@@ -84,12 +86,8 @@ def test_client_connect(client: S7Client, monkeypatch: pytest.MonkeyPatch) -> No
     def mock_sendall(self: Any, bytes_request: bytes) -> None:
         return None
 
-    connection_response = (
-        b"\x03\x00\x00\x1b\x02\xf0\x802\x03\x00\x00\x00\x00\x00\x08\x00\x00\x00\x00\xf0\x00\x00\x08\x00\x08\x03\xc0"
-    )
-    pdu_response = (
-        b"\x03\x00\x00\x1b\x02\xf0\x802\x07\x00\x00\x00\x00\x00\x08\x00\x00\x00\x00\xf0\x00\x01\x00\x01\x03\xc0\x00"
-    )
+    connection_response = b"\x03\x00\x00\x1b\x02\xf0\x802\x03\x00\x00\x00\x00\x00\x08\x00\x00\x00\x00\xf0\x00\x00\x08\x00\x08\x03\xc0"
+    pdu_response = b"\x03\x00\x00\x1b\x02\xf0\x802\x07\x00\x00\x00\x00\x00\x08\x00\x00\x00\x00\xf0\x00\x01\x00\x01\x03\xc0\x00"
 
     monkeypatch.setattr("socket.socket.connect", mock_connect)
     monkeypatch.setattr("socket.socket.sendall", mock_sendall)
@@ -115,12 +113,8 @@ def test_client_is_connected_property(
     def mock_sendall(self: Any, bytes_request: bytes) -> None:
         return None
 
-    connection_response = (
-        b"\x03\x00\x00\x1b\x02\xf0\x802\x03\x00\x00\x00\x00\x00\x08\x00\x00\x00\x00\xf0\x00\x00\x08\x00\x08\x03\xc0"
-    )
-    pdu_response = (
-        b"\x03\x00\x00\x1b\x02\xf0\x802\x07\x00\x00\x00\x00\x00\x08\x00\x00\x00\x00\xf0\x00\x01\x00\x01\x03\xc0\x00"
-    )
+    connection_response = b"\x03\x00\x00\x1b\x02\xf0\x802\x03\x00\x00\x00\x00\x00\x08\x00\x00\x00\x00\xf0\x00\x00\x08\x00\x08\x03\xc0"
+    pdu_response = b"\x03\x00\x00\x1b\x02\xf0\x802\x07\x00\x00\x00\x00\x00\x08\x00\x00\x00\x00\xf0\x00\x01\x00\x01\x03\xc0\x00"
 
     monkeypatch.setattr("socket.socket.connect", mock_connect)
     monkeypatch.setattr("socket.socket.sendall", mock_sendall)
@@ -171,12 +165,8 @@ def test_client_connect_pdu_negotiation_limit(
     def mock_sendall(self: Any, bytes_request: bytes) -> None:
         return None
 
-    connection_response = (
-        b"\x03\x00\x00\x1b\x02\xf0\x802\x03\x00\x00\x00\x00\x00\x08\x00\x00\x00\x00\xf0\x00\x00\x08\x00\x08\x03\xc0"
-    )
-    tight_pdu_response = (
-        b"\x03\x00\x00\x1b\x02\xf0\x802\x07\x00\x00\x00\x00\x00\x08\x00\x00\x00\x00\xf0\x00\x00\x01\x00\x01\x00\xf0"
-    )
+    connection_response = b"\x03\x00\x00\x1b\x02\xf0\x802\x03\x00\x00\x00\x00\x00\x08\x00\x00\x00\x00\xf0\x00\x00\x08\x00\x08\x03\xc0"
+    tight_pdu_response = b"\x03\x00\x00\x1b\x02\xf0\x802\x07\x00\x00\x00\x00\x00\x08\x00\x00\x00\x00\xf0\x00\x00\x01\x00\x01\x00\xf0"
 
     monkeypatch.setattr("socket.socket.connect", mock_connect)
     monkeypatch.setattr("socket.socket.sendall", mock_sendall)
@@ -229,9 +219,7 @@ def test_read(client: S7Client, monkeypatch: pytest.MonkeyPatch) -> None:
     def mock_sendall(self: Any, bytes_request: bytes) -> None:
         return None
 
-    read_response = (
-        b"\x03\x00\x00'\x02\xf0\x802\x03\x00\x00\x00\x00\x00\x02\x00\x12\x00\x00\x04\x03\xff\x03\x00\x01\x01\x00\xff\x03\x00\x01\x01\x00\xff\x05\x00\x10\x00\x00"
-    )
+    read_response = b"\x03\x00\x00'\x02\xf0\x802\x03\x00\x00\x00\x00\x00\x02\x00\x12\x00\x00\x04\x03\xff\x03\x00\x01\x01\x00\xff\x03\x00\x01\x01\x00\xff\x05\x00\x10\x00\x00"
 
     monkeypatch.setattr("socket.socket.sendall", mock_sendall)
     monkeypatch.setattr("socket.socket.recv", _mock_recv_factory(read_response))
@@ -245,9 +233,12 @@ def test_read(client: S7Client, monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_read_returns_empty_list_for_no_tags(
-    client: S7Client, monkeypatch: pytest.MonkeyPatch) -> None:
+    client: S7Client, monkeypatch: pytest.MonkeyPatch
+) -> None:
     def unexpected(*_: Any, **__: Any) -> Any:
-        raise AssertionError("read should not prepare requests when no tags are provided")
+        raise AssertionError(
+            "read should not prepare requests when no tags are provided"
+        )
 
     _set_client_connected(client, cast(socket.socket, object()))
 
@@ -263,9 +254,7 @@ def test_read_optimized(client: S7Client, monkeypatch: pytest.MonkeyPatch) -> No
     def mock_sendall(self: Any, bytes_request: bytes) -> None:
         return None
 
-    read_response = (
-        b"\x03\x00\x00!\x02\xf0\x802\x03\x00\x00\x00\x00\x00\x02\x00\x0c\x00\x00\x04\x02\xff\x03\x00\x01\x01\x00\xff\x05\x00\x10\x00\x00"
-    )
+    read_response = b"\x03\x00\x00!\x02\xf0\x802\x03\x00\x00\x00\x00\x00\x02\x00\x0c\x00\x00\x04\x02\xff\x03\x00\x01\x01\x00\xff\x05\x00\x10\x00\x00"
 
     monkeypatch.setattr("socket.socket.sendall", mock_sendall)
     monkeypatch.setattr("socket.socket.recv", _mock_recv_factory(read_response))
@@ -282,13 +271,13 @@ def test_write(client: S7Client, monkeypatch: pytest.MonkeyPatch) -> None:
     def mock_sendall(self: Any, bytes_request: bytes) -> None:
         return None
 
-    write_response = (
-        b"\x03\x00\x00\x18\x02\xf0\x802\x03\x00\x00\x00\x00\x00\x02\x00\x03\x00\x00\x05\x03\xff\xff\xff"
-    )
+    write_response = b"\x03\x00\x00\x18\x02\xf0\x802\x03\x00\x00\x00\x00\x00\x02\x00\x03\x00\x00\x05\x03\xff\xff\xff"
 
     monkeypatch.setattr("socket.socket.sendall", mock_sendall)
     monkeypatch.setattr("socket.socket.recv", _mock_recv_factory(write_response))
-    monkeypatch.setattr("socket.socket.getpeername", lambda self: ("192.168.100.10", 102))
+    monkeypatch.setattr(
+        "socket.socket.getpeername", lambda self: ("192.168.100.10", 102)
+    )
 
     # Ensure socket is initialized and state is connected
     _set_client_connected(client, socket.socket(socket.AF_INET, socket.SOCK_STREAM))
@@ -368,9 +357,7 @@ def test_write_empty_tags(client: S7Client, monkeypatch: pytest.MonkeyPatch) -> 
 def test_write_bit_values_pack_bits_correctly(
     client: S7Client, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    write_response = (
-        b"\x03\x00\x00\x18\x02\xf0\x802\x03\x00\x00\x00\x00\x00\x02\x00\x03\x00\x00\x05\x03\xff\xff\xff"
-    )
+    write_response = b"\x03\x00\x00\x18\x02\xf0\x802\x03\x00\x00\x00\x00\x00\x02\x00\x03\x00\x00\x05\x03\xff\xff\xff"
 
     serialized_payloads: list[bytes] = []
 
@@ -392,9 +379,7 @@ def test_write_bit_values_pack_bits_correctly(
     client.write(["DB1,X0.0", "DB1,X0.7"], [True, False])
 
     assert serialized_payloads
-    assert serialized_payloads[0].endswith(
-        b"\x03\x00\x01\x01\x00\x00\x03\x00\x01\x00"
-    )
+    assert serialized_payloads[0].endswith(b"\x03\x00\x01\x01\x00\x00\x03\x00\x01\x00")
 
 
 class _DummyRequest:
@@ -435,7 +420,10 @@ class _ResponseStream:
 
 class _SerializingFakeSocket:
     def __init__(self, responses: Dict[bytes, bytes]) -> None:
-        self._streams = {request: _ResponseStream(response) for request, response in responses.items()}
+        self._streams = {
+            request: _ResponseStream(response)
+            for request, response in responses.items()
+        }
         self._current_request: bytes | None = None
         self._current_stream: _ResponseStream | None = None
         self._lock = threading.Lock()
@@ -486,7 +474,9 @@ def test_client_serializes_socket_access(client: S7Client) -> None:
         b"req-2": _tpkt(b"resp-2"),
     }
 
-    _set_client_connected(client, cast(socket.socket, _SerializingFakeSocket(responses)))
+    _set_client_connected(
+        client, cast(socket.socket, _SerializingFakeSocket(responses))
+    )
 
     barrier = threading.Barrier(len(responses))
     results: Dict[bytes, bytes] = {}
@@ -497,14 +487,14 @@ def test_client_serializes_socket_access(client: S7Client) -> None:
 
         try:
             barrier.wait()
-            response = cast(
-                Callable[[Any], bytes], client._S7Client__send
-            )(request)
+            response = cast(Callable[[Any], bytes], client._S7Client__send)(request)
             results[payload] = response
         except BaseException as exc:  # pragma: no cover - surfaced via errors list
             errors.append(exc)
 
-    threads = [threading.Thread(target=worker, args=(payload,)) for payload in responses]
+    threads = [
+        threading.Thread(target=worker, args=(payload,)) for payload in responses
+    ]
 
     for thread in threads:
         thread.start()

@@ -25,7 +25,7 @@ def basic_metrics_example():
         address="192.168.5.100",
         rack=0,
         slot=1,
-        enable_metrics=True  # Metrics are enabled by default
+        enable_metrics=True,  # Metrics are enabled by default
     )
 
     try:
@@ -77,7 +77,9 @@ def basic_metrics_example():
 
     finally:
         client.disconnect()
-        print(f"\nDisconnected. Total disconnections: {client.metrics.disconnection_count}")
+        print(
+            f"\nDisconnected. Total disconnections: {client.metrics.disconnection_count}"
+        )
 
 
 # Example 2: Export metrics as dictionary
@@ -212,7 +214,9 @@ def error_tracking_example():
 
         # Check error metrics
         print(f"\nTotal Operations: {client.metrics.total_operations}")
-        print(f"Successful: {client.metrics.total_operations - client.metrics.total_errors}")
+        print(
+            f"Successful: {client.metrics.total_operations - client.metrics.total_errors}"
+        )
         print(f"Failed: {client.metrics.total_errors}")
         print(f"Error Rate: {client.metrics.error_rate:.2f}%")
 
@@ -233,7 +237,7 @@ def disabled_metrics_example():
         address="192.168.5.100",
         rack=0,
         slot=1,
-        enable_metrics=False  # Disable metrics for minimal overhead
+        enable_metrics=False,  # Disable metrics for minimal overhead
     )
 
     print(f"Metrics enabled: {client.metrics is not None}")

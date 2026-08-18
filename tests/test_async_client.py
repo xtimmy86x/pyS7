@@ -154,20 +154,20 @@ async def test_context_manager(client: AsyncS7Client) -> None:
 # Build a well-formed S7 read-response for a single INT tag (value = 42).
 # TPKT(4) + COTP(3) + S7 header(12) + param(2) + data-item(4+2) = 27 bytes
 _READ_INT_42 = (
-    b"\x03\x00\x00\x1b"          # TPKT: version=3, reserved=0, length=27
-    b"\x02\xf0\x80"              # COTP DT
-    b"\x32\x03"                   # S7: response
-    b"\x00\x00"                   # reserved
-    b"\x00\x00"                   # sequence
-    b"\x00\x02"                   # param length = 2
-    b"\x00\x06"                   # data length = 6 (1 return code + 1 transport + 2 length + 2 data)
-    b"\x00"                       # error class
-    b"\x00"                       # error code
-    b"\x04\x01"                   # param: function=read, item-count=1
-    b"\xff"                       # return code: success
-    b"\x04"                       # transport size: BYTE/WORD
-    b"\x00\x10"                   # length in bits = 16
-    b"\x00\x2a"                   # data: 42 as signed 16-bit big-endian
+    b"\x03\x00\x00\x1b"  # TPKT: version=3, reserved=0, length=27
+    b"\x02\xf0\x80"  # COTP DT
+    b"\x32\x03"  # S7: response
+    b"\x00\x00"  # reserved
+    b"\x00\x00"  # sequence
+    b"\x00\x02"  # param length = 2
+    b"\x00\x06"  # data length = 6 (1 return code + 1 transport + 2 length + 2 data)
+    b"\x00"  # error class
+    b"\x00"  # error code
+    b"\x04\x01"  # param: function=read, item-count=1
+    b"\xff"  # return code: success
+    b"\x04"  # transport size: BYTE/WORD
+    b"\x00\x10"  # length in bits = 16
+    b"\x00\x2a"  # data: 42 as signed 16-bit big-endian
 )
 
 

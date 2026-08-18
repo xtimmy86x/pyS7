@@ -57,10 +57,7 @@ def benchmark_prepare_single_request(iterations: int = 1000) -> None:
 
 def benchmark_prepare_multiple_requests(iterations: int = 1000) -> None:
     """Benchmark prepare_requests with multiple tags."""
-    tags = [
-        S7Tag(MemoryArea.DB, 1, DataType.INT, i * 2, 0, 1)
-        for i in range(50)
-    ]
+    tags = [S7Tag(MemoryArea.DB, 1, DataType.INT, i * 2, 0, 1) for i in range(50)]
     pdu_size = 480
 
     for _ in range(iterations):
@@ -69,10 +66,7 @@ def benchmark_prepare_multiple_requests(iterations: int = 1000) -> None:
 
 def benchmark_prepare_write_requests(iterations: int = 1000) -> None:
     """Benchmark prepare_write_requests_and_values."""
-    tags = [
-        S7Tag(MemoryArea.DB, 1, DataType.INT, i * 2, 0, 1)
-        for i in range(20)
-    ]
+    tags = [S7Tag(MemoryArea.DB, 1, DataType.INT, i * 2, 0, 1) for i in range(20)]
     values = [(100 + i,) for i in range(20)]
     pdu_size = 480
 
@@ -91,24 +85,24 @@ def benchmark_parse_read_response(iterations: int = 1000) -> None:
     # Valid response with 3 BYTE values (return_code 0xFF = success)
     response = (
         b"\x03\x00\x00\x24"  # TPKT: length=36
-        b"\x02\xf0\x80"      # COTP
+        b"\x02\xf0\x80"  # COTP
         b"\x32\x03\x00\x00"  # S7 header
         b"\x00\x00"
-        b"\x00\x02"          # Parameter length
-        b"\x00\x0f"          # Data length = 15 (3*5)
-        b"\x00\x03"          # Parameter: item_count=3
+        b"\x00\x02"  # Parameter length
+        b"\x00\x0f"  # Data length = 15 (3*5)
+        b"\x00\x03"  # Parameter: item_count=3
         # Tag 1 data
-        b"\xff"              # return_code (0xFF = SUCCESS)
-        b"\x04\x00\x08"      # transport_size=BYTE, length=8 bits
-        b"\x42"              # data: BYTE = 0x42
+        b"\xff"  # return_code (0xFF = SUCCESS)
+        b"\x04\x00\x08"  # transport_size=BYTE, length=8 bits
+        b"\x42"  # data: BYTE = 0x42
         # Tag 2 data
-        b"\xff"              # return_code (SUCCESS)
-        b"\x04\x00\x08"      # transport_size, length=8 bits
-        b"\x55"              # data: BYTE = 0x55
+        b"\xff"  # return_code (SUCCESS)
+        b"\x04\x00\x08"  # transport_size, length=8 bits
+        b"\x55"  # data: BYTE = 0x55
         # Tag 3 data
-        b"\xff"              # return_code (SUCCESS)
-        b"\x04\x00\x08"      # transport_size, length=8 bits
-        b"\xaa"              # data: BYTE = 0xAA
+        b"\xff"  # return_code (SUCCESS)
+        b"\x04\x00\x08"  # transport_size, length=8 bits
+        b"\xaa"  # data: BYTE = 0xAA
     )
 
     for _ in range(iterations):
@@ -145,7 +139,7 @@ def run_benchmark(name: str, func, *args) -> Tuple[float, pstats.Stats]:
     s = io.StringIO()
     stats = pstats.Stats(profiler, stream=s)
     stats.strip_dirs()
-    stats.sort_stats('cumulative')
+    stats.sort_stats("cumulative")
     stats.print_stats(15)  # Top 15 functions
 
     print(f"\nTotal time: {elapsed:.4f}s")
@@ -157,48 +151,38 @@ def run_benchmark(name: str, func, *args) -> Tuple[float, pstats.Stats]:
 
 def main() -> None:
     """Run all benchmarks."""
-    print("="*60)
+    print("=" * 60)
     print("pyS7 Performance Benchmark")
-    print("="*60)
+    print("=" * 60)
 
     results = {}
 
     # Tag operations
-    results['tag_creation'] = run_benchmark(
-        "Tag Creation (10k iterations)",
-        benchmark_tag_creation,
-        10000
+    results["tag_creation"] = run_benchmark(
+        "Tag Creation (10k iterations)", benchmark_tag_creation, 10000
     )
 
-    results['tag_size'] = run_benchmark(
-        "Tag Size Calculation (10k iterations)",
-        benchmark_tag_size_calculation,
-        10000
+    results["tag_size"] = run_benchmark(
+        "Tag Size Calculation (10k iterations)", benchmark_tag_size_calculation, 10000
     )
 
-    results['tag_containment'] = run_benchmark(
-        "Tag Containment Checks (10k iterations)",
-        benchmark_tag_containment,
-        10000
+    results["tag_containment"] = run_benchmark(
+        "Tag Containment Checks (10k iterations)", benchmark_tag_containment, 10000
     )
 
     # Request preparation
-    results['single_request'] = run_benchmark(
-        "Prepare Single Request (1k iterations)",
-        benchmark_prepare_single_request,
-        1000
+    results["single_request"] = run_benchmark(
+        "Prepare Single Request (1k iterations)", benchmark_prepare_single_request, 1000
     )
 
-    results['multiple_requests'] = run_benchmark(
+    results["multiple_requests"] = run_benchmark(
         "Prepare Multiple Requests (1k iterations)",
         benchmark_prepare_multiple_requests,
-        1000
+        1000,
     )
 
-    results['write_requests'] = run_benchmark(
-        "Prepare Write Requests (1k iterations)",
-        benchmark_prepare_write_requests,
-        1000
+    results["write_requests"] = run_benchmark(
+        "Prepare Write Requests (1k iterations)", benchmark_prepare_write_requests, 1000
     )
 
     # Response parsing
@@ -216,15 +200,15 @@ def main() -> None:
     # )
 
     # Summary
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print("SUMMARY")
-    print("="*60)
+    print("=" * 60)
     for name, (elapsed, _) in results.items():
         print(f"{name:30s}: {elapsed:8.4f}s")
 
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print("BOTTLENECK ANALYSIS")
-    print("="*60)
+    print("=" * 60)
     print("\nCheck the detailed profiling output above to identify:")
     print("- Functions with highest cumulative time")
     print("- Functions called most frequently")

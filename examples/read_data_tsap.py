@@ -5,6 +5,7 @@
 #
 #######################################################################
 """
+
 from pyS7 import S7Client
 
 if __name__ == "__main__":
@@ -14,16 +15,16 @@ if __name__ == "__main__":
     # In over words, remote TSAP is the TSAP of PLC you want to connect to.
     client = S7Client(
         address="192.168.5.100",
-        local_tsap="03.00",   # TIA Portal format (equivalent to 0x0300)
-        remote_tsap="03.01"   # TIA Portal format (equivalent to 0x0301)
+        local_tsap="03.00",  # TIA Portal format (equivalent to 0x0300)
+        remote_tsap="03.01",  # TIA Portal format (equivalent to 0x0301)
     )
     # Establish connection with the PLC
     client.connect()
 
     # Define area tags to read.
     tags = [
-        'DB1,X0.0',
-        'DB1,WORD17',
+        "DB1,X0.0",
+        "DB1,WORD17",
     ]
     result = client.read(tags)
     print(result)

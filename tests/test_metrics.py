@@ -340,23 +340,23 @@ class TestClientMetrics:
         data = metrics.as_dict()
 
         # Verify dict contains expected keys
-        assert 'connected' in data
-        assert 'connection_uptime' in data
-        assert 'read_count' in data
-        assert 'write_count' in data
-        assert 'total_operations' in data
-        assert 'total_errors' in data
-        assert 'error_rate' in data
-        assert 'success_rate' in data
-        assert 'avg_read_duration' in data
-        assert 'avg_write_duration' in data
-        assert 'operations_per_minute' in data
+        assert "connected" in data
+        assert "connection_uptime" in data
+        assert "read_count" in data
+        assert "write_count" in data
+        assert "total_operations" in data
+        assert "total_errors" in data
+        assert "error_rate" in data
+        assert "success_rate" in data
+        assert "avg_read_duration" in data
+        assert "avg_write_duration" in data
+        assert "operations_per_minute" in data
 
         # Verify values
-        assert data['connected'] is True
-        assert data['read_count'] == 1
-        assert data['write_count'] == 1
-        assert data['total_operations'] == 2
+        assert data["connected"] is True
+        assert data["read_count"] == 1
+        assert data["write_count"] == 1
+        assert data["total_operations"] == 2
 
     def test_str_representation(self):
         """Test string representation of metrics."""
@@ -398,6 +398,7 @@ class TestS7ClientMetricsIntegration:
 
     def test_connect_tracks_metrics(self, monkeypatch: pytest.MonkeyPatch):
         """Test that connect() updates metrics."""
+
         def mock_connect(self: Any, *args: Any) -> None:
             return None
 
@@ -405,17 +406,17 @@ class TestS7ClientMetricsIntegration:
             return None
 
         # Mock successful connection responses (same as in test_client.py)
-        connection_response = (
-            b"\x03\x00\x00\x1b\x02\xf0\x802\x03\x00\x00\x00\x00\x00\x08\x00\x00\x00\x00\xf0\x00\x00\x08\x00\x08\x03\xc0"
-        )
-        pdu_response = (
-            b"\x03\x00\x00\x1b\x02\xf0\x802\x07\x00\x00\x00\x00\x00\x08\x00\x00\x00\x00\xf0\x00\x01\x00\x01\x03\xc0\x00"
-        )
+        connection_response = b"\x03\x00\x00\x1b\x02\xf0\x802\x03\x00\x00\x00\x00\x00\x08\x00\x00\x00\x00\xf0\x00\x00\x08\x00\x08\x03\xc0"
+        pdu_response = b"\x03\x00\x00\x1b\x02\xf0\x802\x07\x00\x00\x00\x00\x00\x08\x00\x00\x00\x00\xf0\x00\x01\x00\x01\x03\xc0\x00"
 
         monkeypatch.setattr("socket.socket.connect", mock_connect)
         monkeypatch.setattr("socket.socket.sendall", mock_sendall)
-        monkeypatch.setattr("socket.socket.recv", _mock_recv_factory(connection_response, pdu_response))
-        monkeypatch.setattr("socket.socket.getpeername", lambda self: ("192.168.5.100", 102))
+        monkeypatch.setattr(
+            "socket.socket.recv", _mock_recv_factory(connection_response, pdu_response)
+        )
+        monkeypatch.setattr(
+            "socket.socket.getpeername", lambda self: ("192.168.5.100", 102)
+        )
 
         client = S7Client("192.168.5.100", 0, 1, enable_metrics=True)
 

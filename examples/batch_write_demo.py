@@ -103,8 +103,7 @@ def example_3_method_chaining():
         # Method chaining for compact syntax
         with client.batch_write(auto_commit=False) as batch:
             results = (
-                batch
-                .add("DB1,I0", 10)
+                batch.add("DB1,I0", 10)
                 .add("DB1,I2", 20)
                 .add("DB1,I4", 30)
                 .add("DB1,I6", 40)
@@ -221,20 +220,19 @@ def example_6_batch_write_different_datatypes():
         client.connect()
 
         with client.batch_write() as batch:
-            batch.add("DB1,X0.0", True)      # Boolean
-            batch.add("DB1,B2", 255)         # Byte
-            batch.add("DB1,I4", 32000)       # Integer
-            batch.add("DB1,DI6", 100000)     # Double Integer
-            batch.add("DB1,R10", 3.14159)    # Real (Float)
-            batch.add("DB1,S14.20", "Hello") # String
+            batch.add("DB1,X0.0", True)  # Boolean
+            batch.add("DB1,B2", 255)  # Byte
+            batch.add("DB1,I4", 32000)  # Integer
+            batch.add("DB1,DI6", 100000)  # Double Integer
+            batch.add("DB1,R10", 3.14159)  # Real (Float)
+            batch.add("DB1,S14.20", "Hello")  # String
 
         print("✓ Mixed data types batch write completed")
 
         # Read back values
-        values = client.read([
-            "DB1,X0.0", "DB1,B2", "DB1,I4",
-            "DB1,DI6", "DB1,R10", "DB1,S14.20"
-        ])
+        values = client.read(
+            ["DB1,X0.0", "DB1,B2", "DB1,I4", "DB1,DI6", "DB1,R10", "DB1,S14.20"]
+        )
         print(f"Values: {values}")
 
     except Exception as e:

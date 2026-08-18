@@ -24,20 +24,20 @@ def main():
 
         # Tags to write
         tags = [
-            "DB1,I0",      # Integer at DB1.DBW0
-            "DB1,R4",      # Real at DB1.DBD4
-            "DB99,I0",     # This might fail if DB99 doesn't exist
-            "DB1,X8.0",    # Bit at DB1.DBX8.0
+            "DB1,I0",  # Integer at DB1.DBW0
+            "DB1,R4",  # Real at DB1.DBD4
+            "DB99,I0",  # This might fail if DB99 doesn't exist
+            "DB1,X8.0",  # Bit at DB1.DBX8.0
             "DB1,S10.20",  # String at DB1 starting at byte 10, max 20 chars
         ]
 
         # Values to write
         values = [
-            42,                    # INT value
-            3.14159,              # REAL value
-            100,                  # INT value (may fail if DB doesn't exist)
-            True,                 # BIT value
-            "Hello PLC",          # STRING value
+            42,  # INT value
+            3.14159,  # REAL value
+            100,  # INT value (may fail if DB doesn't exist)
+            True,  # BIT value
+            "Hello PLC",  # STRING value
         ]
 
         # Perform write with detailed results

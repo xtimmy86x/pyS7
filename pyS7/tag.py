@@ -29,7 +29,9 @@ class S7Tag:
     start: int
     bit_offset: int
     length: int
-    _cached_size: Optional[int] = field(default=None, init=False, repr=False, compare=False)
+    _cached_size: Optional[int] = field(
+        default=None, init=False, repr=False, compare=False
+    )
 
     def __post_init__(self) -> None:
         self._validate_memory_area()
@@ -111,7 +113,7 @@ class S7Tag:
         calculated_size = _SIZE_CALCULATOR[self.data_type](self.length)
 
         # Cache result (use object.__setattr__ for frozen dataclass)
-        object.__setattr__(self, '_cached_size', calculated_size)
+        object.__setattr__(self, "_cached_size", calculated_size)
 
         return calculated_size
 

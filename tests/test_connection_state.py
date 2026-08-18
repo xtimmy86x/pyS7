@@ -81,6 +81,7 @@ class TestConnectionState:
         self, client: S7Client, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Test state transitions when connection times out."""
+
         # Mock socket to raise timeout
         def mock_socket_create(*args, **kwargs):
             mock = MagicMock()
@@ -103,6 +104,7 @@ class TestConnectionState:
         self, client: S7Client, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Test state transitions when socket error occurs."""
+
         # Mock socket to raise error
         def mock_socket_create(*args, **kwargs):
             mock = MagicMock()

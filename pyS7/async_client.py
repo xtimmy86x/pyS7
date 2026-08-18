@@ -224,7 +224,11 @@ class AsyncS7Client:
         self._connection_state = ConnectionState.DISCONNECTED
         self._last_error: Optional[str] = None
 
-        if not isinstance(max_pdu, int) or max_pdu < MIN_PDU_SIZE or max_pdu > MAX_PDU_SIZE:
+        if (
+            not isinstance(max_pdu, int)
+            or max_pdu < MIN_PDU_SIZE
+            or max_pdu > MAX_PDU_SIZE
+        ):
             raise ValueError(
                 f"max_pdu must be an integer between {MIN_PDU_SIZE} and {MAX_PDU_SIZE}, "
                 f"got {max_pdu!r}"
@@ -233,7 +237,9 @@ class AsyncS7Client:
         self.max_jobs_calling: int = MAX_JOB_CALLING
         self.max_jobs_called: int = MAX_JOB_CALLED
 
-        self.metrics: Optional[ClientMetrics] = ClientMetrics() if enable_metrics else None
+        self.metrics: Optional[ClientMetrics] = (
+            ClientMetrics() if enable_metrics else None
+        )
 
         if local_tsap is not None or remote_tsap is not None:
             S7Client._validate_tsap(local_tsap, remote_tsap)
@@ -424,9 +430,7 @@ class AsyncS7Client:
             try:
                 writer.close()
                 await writer.wait_closed()
-                self.logger.debug(
-                    f"Disconnected from PLC {self.address}:{self.port}"
-                )
+                self.logger.debug(f"Disconnected from PLC {self.address}:{self.port}")
             except Exception as e:
                 self.logger.debug(f"Writer close error: {e}")
 
@@ -457,9 +461,7 @@ class AsyncS7Client:
                 data = request.serialize()
                 self.logger.debug(f"TX -> PLC: {len(data)} bytes [TPKT+COTP+S7]")
                 self._writer.write(data)
-                await asyncio.wait_for(
-                    self._writer.drain(), timeout=self.timeout
-                )
+                await asyncio.wait_for(self._writer.drain(), timeout=self.timeout)
 
                 header = await self._recv_exact(TPKT_SIZE)
                 if len(header) < 4:
@@ -578,7 +580,9 @@ class AsyncS7Client:
                             large_string_indices.append(i)
                             large_string_tags.append(tag)
                             continue
-                        max_data = self.pdu_size - READ_RES_OVERHEAD - READ_RES_PARAM_SIZE_TAG
+                        max_data = (
+                            self.pdu_size - READ_RES_OVERHEAD - READ_RES_PARAM_SIZE_TAG
+                        )
                         raise S7AddressError(
                             f"{tag} requires {resp_size} bytes but PDU is {self.pdu_size}. "
                             f"Max data: {max_data} bytes."
@@ -681,7 +685,9 @@ class AsyncS7Client:
                                 )
                             )
                     else:
-                        max_data = self.pdu_size - READ_RES_OVERHEAD - READ_RES_PARAM_SIZE_TAG
+                        max_data = (
+                            self.pdu_size - READ_RES_OVERHEAD - READ_RES_PARAM_SIZE_TAG
+                        )
                         results.append(
                             ReadResult(
                                 tag=tag,
@@ -713,8 +719,10 @@ class AsyncS7Client:
                                 batch_map = {
                                     k: tags_map[k] for k in batch if k in tags_map
                                 }
-                                detailed = S7Client._parse_optimized_read_response_detailed(
-                                    cast(S7Client, self), resp_bytes, batch_map
+                                detailed = (
+                                    S7Client._parse_optimized_read_response_detailed(
+                                        cast(S7Client, self), resp_bytes, batch_map
+                                    )
                                 )
                                 for orig_idx, result in detailed:
                                     if orig_idx not in processed:
@@ -824,12 +832,19 @@ class AsyncS7Client:
                 regular_values: List[Value] = []
 
                 for tag, value in zip(tags_list, values):
-                    req_size = WRITE_REQ_OVERHEAD + WRITE_REQ_PARAM_SIZE_TAG + tag.size() + 4
+                    req_size = (
+                        WRITE_REQ_OVERHEAD + WRITE_REQ_PARAM_SIZE_TAG + tag.size() + 4
+                    )
                     if req_size > self.pdu_size:
                         if tag.data_type in (DataType.STRING, DataType.WSTRING):
                             await self._write_large_string_unlocked(tag, value)  # type: ignore
                             continue
-                        max_data = self.pdu_size - WRITE_REQ_OVERHEAD - WRITE_REQ_PARAM_SIZE_TAG - 4
+                        max_data = (
+                            self.pdu_size
+                            - WRITE_REQ_OVERHEAD
+                            - WRITE_REQ_PARAM_SIZE_TAG
+                            - 4
+                        )
                         raise S7AddressError(
                             f"{tag} requires {req_size} bytes but PDU is {self.pdu_size}. "
                             f"Max data: {max_data} bytes."
@@ -886,7 +901,9 @@ class AsyncS7Client:
 
             # Large strings
             for i, (tag, value) in enumerate(zip(tags_list, values)):
-                req_size = WRITE_REQ_OVERHEAD + WRITE_REQ_PARAM_SIZE_TAG + tag.size() + 4
+                req_size = (
+                    WRITE_REQ_OVERHEAD + WRITE_REQ_PARAM_SIZE_TAG + tag.size() + 4
+                )
                 if req_size > self.pdu_size:
                     if tag.data_type in (DataType.STRING, DataType.WSTRING):
                         try:
@@ -901,7 +918,12 @@ class AsyncS7Client:
                                 )
                             )
                     else:
-                        max_data = self.pdu_size - WRITE_REQ_OVERHEAD - WRITE_REQ_PARAM_SIZE_TAG - 4
+                        max_data = (
+                            self.pdu_size
+                            - WRITE_REQ_OVERHEAD
+                            - WRITE_REQ_PARAM_SIZE_TAG
+                            - 4
+                        )
                         results.append(
                             WriteResult(
                                 tag=tag,
@@ -981,9 +1003,7 @@ class AsyncS7Client:
                 raise S7CommunicationError(
                     "Not connected to PLC. Call 'connect' before getting CPU status."
                 )
-            szl_req = SZLRequest(
-                szl_id=SZLId.CPU_DIAGNOSTIC_STATUS, szl_index=0x0000
-            )
+            szl_req = SZLRequest(szl_id=SZLId.CPU_DIAGNOSTIC_STATUS, szl_index=0x0000)
             resp = await self._send_unlocked(szl_req)
             szl_resp = SZLResponse(response=resp)
             status = szl_resp.parse_cpu_status()
@@ -1002,9 +1022,7 @@ class AsyncS7Client:
                 raise S7CommunicationError(
                     "Not connected to PLC. Call 'connect' before getting CPU info."
                 )
-            szl_req = SZLRequest(
-                szl_id=SZLId.MODULE_IDENTIFICATION, szl_index=0x0000
-            )
+            szl_req = SZLRequest(szl_id=SZLId.MODULE_IDENTIFICATION, szl_index=0x0000)
             resp = await self._send_unlocked(szl_req)
             szl_resp = SZLResponse(response=resp)
             return szl_resp.parse_cpu_info()
@@ -1014,19 +1032,13 @@ class AsyncS7Client:
     async def _read_large_string(self, tag: S7Tag) -> str:
         """Read large string acquiring _io_lock for each sub-read."""
         # This variant is safe to call from outside the lock.
-        return await self._read_large_string_inner(
-            tag, self._send
-        )
+        return await self._read_large_string_inner(tag, self._send)
 
     async def _read_large_string_unlocked(self, tag: S7Tag) -> str:
         """Read large string when caller already holds _io_lock."""
-        return await self._read_large_string_inner(
-            tag, self._send_unlocked
-        )
+        return await self._read_large_string_inner(tag, self._send_unlocked)
 
-    async def _read_large_string_inner(
-        self, tag: S7Tag, send_fn: Any
-    ) -> str:
+    async def _read_large_string_inner(self, tag: S7Tag, send_fn: Any) -> str:
         """Shared implementation for large string reads."""
         chunks: List[str] = []
 
@@ -1098,7 +1110,8 @@ class AsyncS7Client:
             if current_length > max_length:
                 self.logger.warning(
                     "WSTRING current_length (%d) exceeds max_length (%d), clamping",
-                    current_length, max_length,
+                    current_length,
+                    max_length,
                 )
                 current_length = max_length
 
@@ -1128,7 +1141,9 @@ class AsyncS7Client:
                 offset += chunk_size
             return "".join(chunks)
 
-        raise ValueError(f"Unsupported data type for large string read: {tag.data_type}")
+        raise ValueError(
+            f"Unsupported data type for large string read: {tag.data_type}"
+        )
 
     async def _write_large_string(self, tag: S7Tag, value: str) -> None:
         """Write large string acquiring _io_lock for each sub-write."""
@@ -1165,7 +1180,8 @@ class AsyncS7Client:
             )
             hdr_max = min(max_length, 254)
             reqs, reqs_vals = prepare_write_requests_and_values(
-                tags=[header_tag], values=[(hdr_max, current_length)],
+                tags=[header_tag],
+                values=[(hdr_max, current_length)],
                 max_pdu=self.pdu_size,
             )
             for i, req in enumerate(reqs):
@@ -1188,7 +1204,9 @@ class AsyncS7Client:
                 )
                 chunk_val = encoded[offset : offset + chunk_size].decode("ascii")
                 reqs, reqs_vals = prepare_write_requests_and_values(
-                    tags=[chunk_tag], values=[chunk_val], max_pdu=self.pdu_size,
+                    tags=[chunk_tag],
+                    values=[chunk_val],
+                    max_pdu=self.pdu_size,
                 )
                 for i, req in enumerate(reqs):
                     resp = await send_fn(WriteRequest(tags=req, values=reqs_vals[i]))
@@ -1218,7 +1236,9 @@ class AsyncS7Client:
                 current_length & 0xFF,
             )
             reqs, reqs_vals = prepare_write_requests_and_values(
-                tags=[header_tag], values=[hdr], max_pdu=self.pdu_size,
+                tags=[header_tag],
+                values=[hdr],
+                max_pdu=self.pdu_size,
             )
             for i, req in enumerate(reqs):
                 resp = await send_fn(WriteRequest(tags=req, values=reqs_vals[i]))
@@ -1244,7 +1264,8 @@ class AsyncS7Client:
                 )
                 chunk_bytes = encoded_ws[offset : offset + chunk_size]
                 reqs, reqs_vals = prepare_write_requests_and_values(
-                    tags=[chunk_tag], values=[tuple(b for b in chunk_bytes)],
+                    tags=[chunk_tag],
+                    values=[tuple(b for b in chunk_bytes)],
                     max_pdu=self.pdu_size,
                 )
                 for i, req in enumerate(reqs):
@@ -1280,9 +1301,7 @@ class AsyncS7Client:
                 )
             tpkt_length = int.from_bytes(header[2:4], byteorder="big")
             if tpkt_length < 4:
-                raise S7CommunicationError(
-                    "Invalid TPKT length received from the PLC."
-                )
+                raise S7CommunicationError("Invalid TPKT length received from the PLC.")
             body = await self._recv_exact(tpkt_length - 4)
             return header + body
 

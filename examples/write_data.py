@@ -30,7 +30,18 @@ if __name__ == "__main__":
     ]
 
     # Defines values to write
-    values = [False, True, -50, 200, 25000, True, 120, 1.2345, "Hello", (3.14, 6.28, 9.42)]
+    values = [
+        False,
+        True,
+        -50,
+        200,
+        25000,
+        True,
+        120,
+        1.2345,
+        "Hello",
+        (3.14, 6.28, 9.42),
+    ]
 
     # Write data to the PLC using tags and values
     client.write(tags=tags, values=values)

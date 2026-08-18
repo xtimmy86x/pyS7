@@ -14,15 +14,33 @@ if __name__ == "__main__":
     # datablock number, data type, start index, bit index and length.
     tags = [
         S7Tag(MemoryArea.DB, 1, DataType.BIT, 0, 6, 1),  # Read bit 6 of DB1
-        S7Tag(MemoryArea.DB, 1, DataType.INT, 30, 0, 1),  # Read INT at address 30 of DB1
-        S7Tag(MemoryArea.DB, 1, DataType.INT, 32, 0, 1),  # Read INT at address 32 of DB1
-        S7Tag(MemoryArea.DB, 1, DataType.INT, 34, 0, 1),  # Read INT at address 34 of DB1
-        S7Tag(MemoryArea.DB, 1, DataType.INT, 36, 0, 1),  # Read INT at address 36 of DB1
-        S7Tag(MemoryArea.DB, 1, DataType.INT, 38, 0, 1),  # Read INT at address 38 of DB1
-        S7Tag(MemoryArea.DB, 1, DataType.REAL, 64, 0, 1),  # Read REAL at address 64 of DB1
-        S7Tag(MemoryArea.DB, 1, DataType.REAL, 68, 0, 1),  # Read REAL at address 68 of DB1
-        S7Tag(MemoryArea.DB, 1, DataType.REAL, 72, 0, 4),  # Read array of 4 REAL at address 72 of DB1
-        S7Tag(MemoryArea.DB, 1, DataType.CHAR, 102, 0, 37),  # Read string of 37 CHARs starting at address 102 of DB1
+        S7Tag(
+            MemoryArea.DB, 1, DataType.INT, 30, 0, 1
+        ),  # Read INT at address 30 of DB1
+        S7Tag(
+            MemoryArea.DB, 1, DataType.INT, 32, 0, 1
+        ),  # Read INT at address 32 of DB1
+        S7Tag(
+            MemoryArea.DB, 1, DataType.INT, 34, 0, 1
+        ),  # Read INT at address 34 of DB1
+        S7Tag(
+            MemoryArea.DB, 1, DataType.INT, 36, 0, 1
+        ),  # Read INT at address 36 of DB1
+        S7Tag(
+            MemoryArea.DB, 1, DataType.INT, 38, 0, 1
+        ),  # Read INT at address 38 of DB1
+        S7Tag(
+            MemoryArea.DB, 1, DataType.REAL, 64, 0, 1
+        ),  # Read REAL at address 64 of DB1
+        S7Tag(
+            MemoryArea.DB, 1, DataType.REAL, 68, 0, 1
+        ),  # Read REAL at address 68 of DB1
+        S7Tag(
+            MemoryArea.DB, 1, DataType.REAL, 72, 0, 4
+        ),  # Read array of 4 REAL at address 72 of DB1
+        S7Tag(
+            MemoryArea.DB, 1, DataType.CHAR, 102, 0, 37
+        ),  # Read string of 37 CHARs starting at address 102 of DB1
     ]
 
     # Read the data from the PLC using the specified tags list

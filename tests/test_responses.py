@@ -30,7 +30,11 @@ def test_connection_response_parse_success() -> None:
     parsed_response = ConnectionResponse(response=bytes_response).parse()
 
     assert parsed_response["success"] is True
-    assert parsed_response["tpkt"] == {"version": 0x03, "reserved": 0x00, "length": 0x16}
+    assert parsed_response["tpkt"] == {
+        "version": 0x03,
+        "reserved": 0x00,
+        "length": 0x16,
+    }
 
     cotp = parsed_response["cotp"]
     assert cotp["pdu_type"] == 0xD0
@@ -50,7 +54,11 @@ def test_connection_response_parse_failure() -> None:
     parsed_response = ConnectionResponse(response=bytes_response).parse()
 
     assert parsed_response["success"] is False
-    assert parsed_response["tpkt"] == {"version": 0x03, "reserved": 0x00, "length": 0x0B}
+    assert parsed_response["tpkt"] == {
+        "version": 0x03,
+        "reserved": 0x00,
+        "length": 0x0B,
+    }
 
     cotp = parsed_response["cotp"]
     assert cotp["pdu_type"] == 0x80
@@ -264,9 +272,7 @@ def test_parse_read_response(test_case: ReadResponseTestCase) -> None:
 
 @pytest.mark.parametrize("test_case", read_response_test_cases)
 def test_read_response(test_case: ReadResponseTestCase) -> None:
-    read_response = ReadResponse(
-        response=test_case.bytes_response, tags=test_case.tags
-    )
+    read_response = ReadResponse(response=test_case.bytes_response, tags=test_case.tags)
 
     assert read_response.response == test_case.bytes_response
     assert read_response.tags == test_case.tags

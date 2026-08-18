@@ -1,6 +1,7 @@
 """
 Tests for handling of large arrays that exceed PDU size.
 """
+
 from typing import Any
 
 import pytest
@@ -25,15 +26,12 @@ class TestLargeArrayHandling:
         def mock_sendall(self: Any, bytes_request: bytes) -> None:
             return None
 
-        connection_response = (
-            b"\x03\x00\x00\x1b\x02\xf0\x802\x03\x00\x00\x00\x00\x00\x08\x00\x00\x00\x00\xf0\x00\x00\x08\x00\x08\x03\xc0"
-        )
-        pdu_response = (
-            b"\x03\x00\x00\x1b\x02\xf0\x802\x07\x00\x00\x00\x00\x00\x08\x00\x00\x00\x00\xf0\x00\x01\x00\x01\x03\xc0\x00"
-        )
+        connection_response = b"\x03\x00\x00\x1b\x02\xf0\x802\x03\x00\x00\x00\x00\x00\x08\x00\x00\x00\x00\xf0\x00\x00\x08\x00\x08\x03\xc0"
+        pdu_response = b"\x03\x00\x00\x1b\x02\xf0\x802\x07\x00\x00\x00\x00\x00\x08\x00\x00\x00\x00\xf0\x00\x01\x00\x01\x03\xc0\x00"
 
         def _mock_recv_factory(*responses: bytes):
             from array import array
+
             buffers = [array("B", r) for r in responses]
             current: Any = None
 
@@ -63,7 +61,9 @@ class TestLargeArrayHandling:
         )
         monkeypatch.setattr("socket.socket.shutdown", lambda *args, **kwargs: None)
         monkeypatch.setattr("socket.socket.close", lambda *args, **kwargs: None)
-        monkeypatch.setattr("socket.socket.getpeername", lambda *args, **kwargs: ("192.168.1.1", 102))
+        monkeypatch.setattr(
+            "socket.socket.getpeername", lambda *args, **kwargs: ("192.168.1.1", 102)
+        )
 
         client.connect()
         client.pdu_size = 240  # Set small PDU for testing
@@ -75,7 +75,7 @@ class TestLargeArrayHandling:
             data_type=DataType.BYTE,
             start=0,
             bit_offset=0,
-            length=242
+            length=242,
         )
 
         with pytest.raises(S7AddressError) as exc_info:
@@ -98,15 +98,12 @@ class TestLargeArrayHandling:
         def mock_sendall(self: Any, bytes_request: bytes) -> None:
             return None
 
-        connection_response = (
-            b"\x03\x00\x00\x1b\x02\xf0\x802\x03\x00\x00\x00\x00\x00\x08\x00\x00\x00\x00\xf0\x00\x00\x08\x00\x08\x03\xc0"
-        )
-        pdu_response = (
-            b"\x03\x00\x00\x1b\x02\xf0\x802\x07\x00\x00\x00\x00\x00\x08\x00\x00\x00\x00\xf0\x00\x01\x00\x01\x03\xc0\x00"
-        )
+        connection_response = b"\x03\x00\x00\x1b\x02\xf0\x802\x03\x00\x00\x00\x00\x00\x08\x00\x00\x00\x00\xf0\x00\x00\x08\x00\x08\x03\xc0"
+        pdu_response = b"\x03\x00\x00\x1b\x02\xf0\x802\x07\x00\x00\x00\x00\x00\x08\x00\x00\x00\x00\xf0\x00\x01\x00\x01\x03\xc0\x00"
 
         def _mock_recv_factory(*responses: bytes):
             from array import array
+
             buffers = [array("B", r) for r in responses]
             current: Any = None
 
@@ -136,10 +133,14 @@ class TestLargeArrayHandling:
         )
         monkeypatch.setattr("socket.socket.shutdown", lambda *args, **kwargs: None)
         monkeypatch.setattr("socket.socket.close", lambda *args, **kwargs: None)
-        monkeypatch.setattr("socket.socket.getpeername", lambda *args, **kwargs: ("192.168.1.1", 102))
+        monkeypatch.setattr(
+            "socket.socket.getpeername", lambda *args, **kwargs: ("192.168.1.1", 102)
+        )
         monkeypatch.setattr("socket.socket.shutdown", lambda *args, **kwargs: None)
         monkeypatch.setattr("socket.socket.close", lambda *args, **kwargs: None)
-        monkeypatch.setattr("socket.socket.getpeername", lambda *args, **kwargs: ("192.168.1.1", 102))
+        monkeypatch.setattr(
+            "socket.socket.getpeername", lambda *args, **kwargs: ("192.168.1.1", 102)
+        )
 
         client.connect()
         client.pdu_size = 240
@@ -151,7 +152,7 @@ class TestLargeArrayHandling:
             data_type=DataType.WORD,
             start=0,
             bit_offset=0,
-            length=120
+            length=120,
         )
 
         with pytest.raises(S7AddressError) as exc_info:
@@ -173,15 +174,12 @@ class TestLargeArrayHandling:
         def mock_sendall(self: Any, bytes_request: bytes) -> None:
             return None
 
-        connection_response = (
-            b"\x03\x00\x00\x1b\x02\xf0\x802\x03\x00\x00\x00\x00\x00\x08\x00\x00\x00\x00\xf0\x00\x00\x08\x00\x08\x03\xc0"
-        )
-        pdu_response = (
-            b"\x03\x00\x00\x1b\x02\xf0\x802\x07\x00\x00\x00\x00\x00\x08\x00\x00\x00\x00\xf0\x00\x01\x00\x01\x03\xc0\x00"
-        )
+        connection_response = b"\x03\x00\x00\x1b\x02\xf0\x802\x03\x00\x00\x00\x00\x00\x08\x00\x00\x00\x00\xf0\x00\x00\x08\x00\x08\x03\xc0"
+        pdu_response = b"\x03\x00\x00\x1b\x02\xf0\x802\x07\x00\x00\x00\x00\x00\x08\x00\x00\x00\x00\xf0\x00\x01\x00\x01\x03\xc0\x00"
 
         def _mock_recv_factory(*responses: bytes):
             from array import array
+
             buffers = [array("B", r) for r in responses]
             current: Any = None
 
@@ -211,7 +209,9 @@ class TestLargeArrayHandling:
         )
         monkeypatch.setattr("socket.socket.shutdown", lambda *args, **kwargs: None)
         monkeypatch.setattr("socket.socket.close", lambda *args, **kwargs: None)
-        monkeypatch.setattr("socket.socket.getpeername", lambda *args, **kwargs: ("192.168.1.1", 102))
+        monkeypatch.setattr(
+            "socket.socket.getpeername", lambda *args, **kwargs: ("192.168.1.1", 102)
+        )
 
         client.connect()
         client.pdu_size = 240
@@ -223,7 +223,7 @@ class TestLargeArrayHandling:
             data_type=DataType.INT,
             start=0,
             bit_offset=0,
-            length=10
+            length=10,
         )
 
         large_tag = S7Tag(
@@ -232,7 +232,7 @@ class TestLargeArrayHandling:
             data_type=DataType.BYTE,
             start=100,
             bit_offset=0,
-            length=242
+            length=242,
         )
 
         # Should raise error for the large tag

@@ -25,10 +25,10 @@ def main():
 
         # Tags to read
         tags = [
-            "DB1,I0",      # Integer at DB1.DBW0
-            "DB1,R4",      # Real at DB1.DBD4
-            "DB99,I0",     # This might fail if DB99 doesn't exist
-            "DB1,X8.0",    # Bit at DB1.DBX8.0
+            "DB1,I0",  # Integer at DB1.DBW0
+            "DB1,R4",  # Real at DB1.DBD4
+            "DB99,I0",  # This might fail if DB99 doesn't exist
+            "DB1,X8.0",  # Bit at DB1.DBX8.0
             "DB1,S10.20",  # String at DB1 starting at byte 10, max 20 chars
         ]
 
@@ -138,14 +138,14 @@ def batch_read_with_validation():
 
         # Mix of different data types
         tags = [
-            "DB1,X0.0",     # BIT
-            "DB1,B1",       # BYTE
-            "DB1,I2",       # INT
-            "DB1,DI4",      # DINT
-            "DB1,R8",       # REAL
-            "DB1,S12.10",   # STRING
-            "DB99,I0",      # Invalid DB (will fail)
-            "M10.5",        # Merker bit
+            "DB1,X0.0",  # BIT
+            "DB1,B1",  # BYTE
+            "DB1,I2",  # INT
+            "DB1,DI4",  # DINT
+            "DB1,R8",  # REAL
+            "DB1,S12.10",  # STRING
+            "DB99,I0",  # Invalid DB (will fail)
+            "M10.5",  # Merker bit
         ]
 
         results = client.read_detailed(tags)
@@ -219,7 +219,7 @@ def partial_data_collection():
         inaccessible_dbs = []
 
         for i, result in enumerate(results):
-            db_num = int(tags[i].split(',')[0].replace('DB', ''))
+            db_num = int(tags[i].split(",")[0].replace("DB", ""))
             if result.success:
                 accessible_dbs[db_num] = result.value
             else:
@@ -238,14 +238,18 @@ def partial_data_collection():
             print("\n=== Reading additional data from accessible DBs ===")
             additional_tags = []
             for db_num in accessible_dbs.keys():
-                additional_tags.extend([
-                    f"DB{db_num},I2",
-                    f"DB{db_num},R4",
-                ])
+                additional_tags.extend(
+                    [
+                        f"DB{db_num},I2",
+                        f"DB{db_num},R4",
+                    ]
+                )
 
             additional_results = client.read_detailed(additional_tags)
             success_count = sum(1 for r in additional_results if r.success)
-            print(f"Successfully read {success_count}/{len(additional_tags)} additional tags")
+            print(
+                f"Successfully read {success_count}/{len(additional_tags)} additional tags"
+            )
 
     finally:
         if client.is_connected:

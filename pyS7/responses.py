@@ -24,7 +24,9 @@ from .requests import TagsMap, Value
 from .tag import S7Tag
 
 
-def _parse_string(bytes_data: Union[bytes, memoryview], offset: int, tag_length: int) -> str:
+def _parse_string(
+    bytes_data: Union[bytes, memoryview], offset: int, tag_length: int
+) -> str:
     """
     Parse S7 STRING data from bytes.
 
@@ -54,12 +56,16 @@ def _parse_string(bytes_data: Union[bytes, memoryview], offset: int, tag_length:
         # Fallback: treat as raw character data without header
         string_end = offset + tag_length
         if isinstance(bytes_data, memoryview):
-            return bytes_data[offset:string_end].tobytes().decode("ascii").rstrip("\x00")
+            return (
+                bytes_data[offset:string_end].tobytes().decode("ascii").rstrip("\x00")
+            )
         else:
             return bytes_data[offset:string_end].decode("ascii").rstrip("\x00")
 
 
-def _parse_wstring(bytes_data: Union[bytes, memoryview], offset: int, tag_length: int) -> str:
+def _parse_wstring(
+    bytes_data: Union[bytes, memoryview], offset: int, tag_length: int
+) -> str:
     """
     Parse S7 WSTRING data from bytes.
 
@@ -94,23 +100,31 @@ def _parse_wstring(bytes_data: Union[bytes, memoryview], offset: int, tag_length
         # Ensure even byte count for UTF-16
         data_bytes_len -= data_bytes_len % 2
         if isinstance(bytes_data, memoryview):
-            string_bytes = bytes_data[string_start:string_start + data_bytes_len].tobytes()
+            string_bytes = bytes_data[
+                string_start : string_start + data_bytes_len
+            ].tobytes()
         else:
-            string_bytes = bytes_data[string_start:string_start + data_bytes_len]
+            string_bytes = bytes_data[string_start : string_start + data_bytes_len]
         # Decode and find the actual string (stop at null terminator)
         decoded_full = string_bytes.decode("utf-16-be")
         # Clamp current_length to actual decoded length to prevent overflow
         safe_length = min(current_length, len(decoded_full))
         # Find null terminator or use clamped current_length
-        null_pos = decoded_full.find('\x00')
+        null_pos = decoded_full.find("\x00")
         return decoded_full[:null_pos] if null_pos >= 0 else decoded_full[:safe_length]
     else:
         # Fallback: treat as raw UTF-16 data without header
         string_end = offset + (tag_length * 2)
         if isinstance(bytes_data, memoryview):
-            return bytes_data[offset:string_end].tobytes().decode("utf-16-be").rstrip("\x00")
+            return (
+                bytes_data[offset:string_end]
+                .tobytes()
+                .decode("utf-16-be")
+                .rstrip("\x00")
+            )
         else:
             return bytes_data[offset:string_end].decode("utf-16-be").rstrip("\x00")
+
 
 COTP_DISCONNECT_REASONS: Dict[int, str] = {
     0x00: "Reason not specified",
@@ -128,8 +142,7 @@ COTP_DISCONNECT_REASONS: Dict[int, str] = {
 
 @runtime_checkable
 class Response(Protocol):
-    def parse(self) -> Any:
-        ...
+    def parse(self) -> Any: ...
 
 
 class ConnectionResponse:
@@ -140,9 +153,13 @@ class ConnectionResponse:
         if len(self.response) < 11:
             raise ValueError("Connection response too short")
 
-        version, reserved, tpkt_length = struct.unpack_from(">BBH", self.response, offset=0)
+        version, reserved, tpkt_length = struct.unpack_from(
+            ">BBH", self.response, offset=0
+        )
         if version != TPKT_VERSION:
-            raise ValueError(f"Unsupported TPKT version in connection response: expected {TPKT_VERSION}, got {version}")
+            raise ValueError(
+                f"Unsupported TPKT version in connection response: expected {TPKT_VERSION}, got {version}"
+            )
 
         if tpkt_length != len(self.response):
             raise ValueError("TPKT length mismatch in connection response")
@@ -382,8 +399,10 @@ def parse_read_response(bytes_response: bytes, tags: List[S7Tag]) -> List[Value]
 
         else:
             # Special handling for BIT data type with INVALID_DATA_SIZE error
-            if (tag.data_type == DataType.BIT and
-                return_code == ReturnCode.INVALID_DATA_SIZE.value):
+            if (
+                tag.data_type == DataType.BIT
+                and return_code == ReturnCode.INVALID_DATA_SIZE.value
+            ):
                 raise S7ReadResponseError(
                     f"{tag}: {_return_code_name(return_code)}. "
                     f"Some S7 PLCs do not support reading individual bits. "
@@ -473,9 +492,7 @@ def parse_optimized_read_response(
                 abs_off = base_off + rel
                 dt = tag.data_type
                 if abs_off + tag.size() > len(mv):
-                    raise S7ReadResponseError(
-                        f"{tag}: response too short for tag data"
-                    )
+                    raise S7ReadResponseError(f"{tag}: response too short for tag data")
 
                 if dt == DataType.BIT:
                     # Check if this is a packed BIT tag (when the packed_tag is a BYTE)
@@ -591,7 +608,9 @@ class SZLResponse:
 
         tpkt_length = struct.unpack_from(">H", self.response, 2)[0]
         if tpkt_length != len(self.response):
-            raise ValueError(f"TPKT length mismatch: expected {tpkt_length}, got {len(self.response)}")
+            raise ValueError(
+                f"TPKT length mismatch: expected {tpkt_length}, got {len(self.response)}"
+            )
 
         # Skip COTP (3 bytes at offset 4)
         # S7 header starts at offset 7
@@ -605,8 +624,12 @@ class SZLResponse:
         if message_type != MessageType.USERDATA.value:
             raise ValueError(f"Expected USERDATA message type, got {message_type:#x}")
 
-        param_length = struct.unpack_from(">H", self.response, offset + S7_PARAM_LENGTH_OFFSET)[0]
-        data_length = struct.unpack_from(">H", self.response, offset + S7_DATA_LENGTH_OFFSET)[0]
+        param_length = struct.unpack_from(
+            ">H", self.response, offset + S7_PARAM_LENGTH_OFFSET
+        )[0]
+        data_length = struct.unpack_from(
+            ">H", self.response, offset + S7_DATA_LENGTH_OFFSET
+        )[0]
 
         # Parameter section starts after S7 header (10 bytes)
         param_offset = offset + 10
@@ -625,8 +648,12 @@ class SZLResponse:
         # SZL data structure
         szl_id = struct.unpack_from(">H", self.response, data_offset + 4)[0]
         szl_index = struct.unpack_from(">H", self.response, data_offset + 6)[0]
-        length_dr = struct.unpack_from(">H", self.response, data_offset + 8)[0]  # Length of one data record
-        n_dr = struct.unpack_from(">H", self.response, data_offset + 10)[0]  # Number of data records
+        length_dr = struct.unpack_from(">H", self.response, data_offset + 8)[
+            0
+        ]  # Length of one data record
+        n_dr = struct.unpack_from(">H", self.response, data_offset + 10)[
+            0
+        ]  # Number of data records
 
         # Extract the actual data records
         data_start = data_offset + 12
@@ -655,7 +682,9 @@ class SZLResponse:
         szl_data = self.parse()
 
         if szl_data["szl_id"] != 0x0424:
-            raise ValueError(f"Invalid SZL ID for CPU status: {szl_data['szl_id']:#x}, expected 0x0424")
+            raise ValueError(
+                f"Invalid SZL ID for CPU status: {szl_data['szl_id']:#x}, expected 0x0424"
+            )
 
         data = szl_data["data"]
 
@@ -701,7 +730,9 @@ class SZLResponse:
         szl_data = self.parse()
 
         if szl_data["szl_id"] != 0x0011:
-            raise ValueError(f"Invalid SZL ID for CPU info: {szl_data['szl_id']:#x}, expected 0x0011")
+            raise ValueError(
+                f"Invalid SZL ID for CPU info: {szl_data['szl_id']:#x}, expected 0x0011"
+            )
 
         data = szl_data["data"]
         length_dr = szl_data["length_dr"]
@@ -724,7 +755,7 @@ class SZLResponse:
 
         for i in range(n_dr):
             offset = i * length_dr
-            record_data = data[offset:offset + length_dr]
+            record_data = data[offset : offset + length_dr]
 
             if len(record_data) < length_dr:
                 break
@@ -736,7 +767,12 @@ class SZLResponse:
             module["index"] = f"0x{index:04X}"
 
             # Module type name / order number (bytes 2-21, ASCII)
-            module_type = record_data[2:22].split(b'\x00', 1)[0].decode('ascii', errors='ignore').strip()
+            module_type = (
+                record_data[2:22]
+                .split(b"\x00", 1)[0]
+                .decode("ascii", errors="ignore")
+                .strip()
+            )
             module["module_type_name"] = module_type
 
             # Reserved (bytes 22-23)
@@ -792,4 +828,3 @@ class SZLResponse:
             info = modules[0].copy()
 
         return info
-

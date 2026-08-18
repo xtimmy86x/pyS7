@@ -50,6 +50,7 @@ from .tag import S7Tag
 | `MLR84`                       | `MLR84`               | Number        | Floating point 64-bit number at byte 84 of memory area |
 """
 
+
 @dataclass(frozen=True)
 class _TokenInfo:
     data_type: DataType
@@ -81,10 +82,18 @@ TOKEN_TABLE: Dict[str, _TokenInfo] = {
     "REAL": _TokenInfo(DataType.REAL),
     "LR": _TokenInfo(DataType.LREAL),
     "LREAL": _TokenInfo(DataType.LREAL),
-    "S": _TokenInfo(DataType.STRING, bit_offset_required=True, bit_offset_is_length=True),
-    "STRING": _TokenInfo(DataType.STRING, bit_offset_required=True, bit_offset_is_length=True),
-    "WS": _TokenInfo(DataType.WSTRING, bit_offset_required=True, bit_offset_is_length=True),
-    "WSTRING": _TokenInfo(DataType.WSTRING, bit_offset_required=True, bit_offset_is_length=True),
+    "S": _TokenInfo(
+        DataType.STRING, bit_offset_required=True, bit_offset_is_length=True
+    ),
+    "STRING": _TokenInfo(
+        DataType.STRING, bit_offset_required=True, bit_offset_is_length=True
+    ),
+    "WS": _TokenInfo(
+        DataType.WSTRING, bit_offset_required=True, bit_offset_is_length=True
+    ),
+    "WSTRING": _TokenInfo(
+        DataType.WSTRING, bit_offset_required=True, bit_offset_is_length=True
+    ),
 }
 
 
@@ -162,7 +171,9 @@ def _token_to_tag(
             raise S7AddressError("Missing bit_offset value")
         bit_offset_int = int(bit_offset)
         if not 0 <= bit_offset_int <= 7:
-            raise S7AddressError("The bit offset must be a value between 0 and 7 included")
+            raise S7AddressError(
+                "The bit offset must be a value between 0 and 7 included"
+            )
         length = info.length
     else:
         if bit_offset is not None:
@@ -170,7 +181,9 @@ def _token_to_tag(
         bit_offset_int = 0
         length = info.length
 
-    return build_tag(memory_area, db_number, info.data_type, start, bit_offset_int, length)
+    return build_tag(
+        memory_area, db_number, info.data_type, start, bit_offset_int, length
+    )
 
 
 def _parse_memory_area_address(
@@ -217,7 +230,9 @@ def map_address_to_tag(address: str) -> S7Tag:
         db_number_s, token, start_s, bit_offset = match.groups()
         db_number = int(db_number_s)
         start = int(start_s)
-        return _token_to_tag(token, MemoryArea.DB, db_number, start, bit_offset, address)
+        return _token_to_tag(
+            token, MemoryArea.DB, db_number, start, bit_offset, address
+        )
 
     if address.startswith("I") or address.startswith("E"):
         return _parse_memory_area_address(

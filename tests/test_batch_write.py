@@ -27,7 +27,9 @@ def client() -> S7Client:
 @pytest.fixture(autouse=True)
 def mock_socket_getpeername(monkeypatch: pytest.MonkeyPatch) -> None:
     """Automatically mock socket.getpeername() for all tests."""
-    monkeypatch.setattr("socket.socket.getpeername", lambda self: ("192.168.100.10", 102))
+    monkeypatch.setattr(
+        "socket.socket.getpeername", lambda self: ("192.168.100.10", 102)
+    )
 
 
 class TestBatchWriteTransaction:
@@ -37,14 +39,21 @@ class TestBatchWriteTransaction:
         self, client: S7Client, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Test batch write with context manager."""
+
         # Mock write_detailed to return success
         def mock_write_detailed(
             self: S7Client, tags: Any, values: Any
         ) -> list[WriteResult]:
             return [
-                WriteResult(tag=S7Tag(MemoryArea.DB, 1, DataType.INT, 0, 0, 1), success=True),
-                WriteResult(tag=S7Tag(MemoryArea.DB, 1, DataType.INT, 2, 0, 1), success=True),
-                WriteResult(tag=S7Tag(MemoryArea.DB, 1, DataType.INT, 4, 0, 1), success=True),
+                WriteResult(
+                    tag=S7Tag(MemoryArea.DB, 1, DataType.INT, 0, 0, 1), success=True
+                ),
+                WriteResult(
+                    tag=S7Tag(MemoryArea.DB, 1, DataType.INT, 2, 0, 1), success=True
+                ),
+                WriteResult(
+                    tag=S7Tag(MemoryArea.DB, 1, DataType.INT, 4, 0, 1), success=True
+                ),
             ]
 
         # Mock read for rollback support
@@ -67,12 +76,17 @@ class TestBatchWriteTransaction:
         self, client: S7Client, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Test batch write with manual commit."""
+
         def mock_write_detailed(
             self: S7Client, tags: Any, values: Any
         ) -> list[WriteResult]:
             return [
-                WriteResult(tag=S7Tag(MemoryArea.DB, 1, DataType.INT, 0, 0, 1), success=True),
-                WriteResult(tag=S7Tag(MemoryArea.DB, 1, DataType.INT, 2, 0, 1), success=True),
+                WriteResult(
+                    tag=S7Tag(MemoryArea.DB, 1, DataType.INT, 0, 0, 1), success=True
+                ),
+                WriteResult(
+                    tag=S7Tag(MemoryArea.DB, 1, DataType.INT, 2, 0, 1), success=True
+                ),
             ]
 
         def mock_read(self: S7Client, tags: Any) -> list[Any]:
@@ -95,13 +109,20 @@ class TestBatchWriteTransaction:
         self, client: S7Client, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Test batch write with method chaining."""
+
         def mock_write_detailed(
             self: S7Client, tags: Any, values: Any
         ) -> list[WriteResult]:
             return [
-                WriteResult(tag=S7Tag(MemoryArea.DB, 1, DataType.INT, 0, 0, 1), success=True),
-                WriteResult(tag=S7Tag(MemoryArea.DB, 1, DataType.INT, 2, 0, 1), success=True),
-                WriteResult(tag=S7Tag(MemoryArea.DB, 1, DataType.INT, 4, 0, 1), success=True),
+                WriteResult(
+                    tag=S7Tag(MemoryArea.DB, 1, DataType.INT, 0, 0, 1), success=True
+                ),
+                WriteResult(
+                    tag=S7Tag(MemoryArea.DB, 1, DataType.INT, 2, 0, 1), success=True
+                ),
+                WriteResult(
+                    tag=S7Tag(MemoryArea.DB, 1, DataType.INT, 4, 0, 1), success=True
+                ),
             ]
 
         def mock_read(self: S7Client, tags: Any) -> list[Any]:
@@ -113,7 +134,9 @@ class TestBatchWriteTransaction:
         _set_client_connected(client, MagicMock())
 
         with client.batch_write(auto_commit=False) as batch:
-            results = batch.add("DB1,I0", 100).add("DB1,I2", 200).add("DB1,I4", 300).commit()
+            results = (
+                batch.add("DB1,I0", 100).add("DB1,I2", 200).add("DB1,I4", 300).commit()
+            )
 
         assert len(results) == 3
         assert all(r.success for r in results)
@@ -133,10 +156,14 @@ class TestBatchWriteTransaction:
                 WriteResult(
                     tag=S7Tag(MemoryArea.DB, 1, DataType.INT, 0, 0, 1),
                     success=False,
-                    error="Address out of range"
+                    error="Address out of range",
                 ),
-                WriteResult(tag=S7Tag(MemoryArea.DB, 1, DataType.INT, 2, 0, 1), success=True),
-                WriteResult(tag=S7Tag(MemoryArea.DB, 1, DataType.INT, 4, 0, 1), success=True),
+                WriteResult(
+                    tag=S7Tag(MemoryArea.DB, 1, DataType.INT, 2, 0, 1), success=True
+                ),
+                WriteResult(
+                    tag=S7Tag(MemoryArea.DB, 1, DataType.INT, 4, 0, 1), success=True
+                ),
             ]
 
         def mock_read(self: S7Client, tags: Any) -> list[Any]:
@@ -178,9 +205,11 @@ class TestBatchWriteTransaction:
                 WriteResult(
                     tag=S7Tag(MemoryArea.DB, 1, DataType.INT, 0, 0, 1),
                     success=False,
-                    error="Error"
+                    error="Error",
                 ),
-                WriteResult(tag=S7Tag(MemoryArea.DB, 1, DataType.INT, 2, 0, 1), success=True),
+                WriteResult(
+                    tag=S7Tag(MemoryArea.DB, 1, DataType.INT, 2, 0, 1), success=True
+                ),
             ]
 
         monkeypatch.setattr(S7Client, "write_detailed", mock_write_detailed)
@@ -196,9 +225,7 @@ class TestBatchWriteTransaction:
         assert len(write_calls) == 1
         assert write_calls[0][0] == "write_detailed"
 
-    def test_batch_write_empty_raises_error(
-        self, client: S7Client
-    ) -> None:
+    def test_batch_write_empty_raises_error(self, client: S7Client) -> None:
         """Test that committing empty batch raises error."""
         _set_client_connected(client, MagicMock())
 
@@ -206,9 +233,7 @@ class TestBatchWriteTransaction:
             with client.batch_write(auto_commit=False) as batch:
                 batch.commit()
 
-    def test_batch_write_empty_no_autocommit(
-        self, client: S7Client
-    ) -> None:
+    def test_batch_write_empty_no_autocommit(self, client: S7Client) -> None:
         """Test that empty batch with no auto-commit doesn't raise error."""
         _set_client_connected(client, MagicMock())
 
@@ -220,6 +245,7 @@ class TestBatchWriteTransaction:
         self, client: S7Client, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Test batch write with S7Tag objects."""
+
         def mock_write_detailed(
             self: S7Client, tags: Any, values: Any
         ) -> list[WriteResult]:
@@ -257,8 +283,12 @@ class TestBatchWriteTransaction:
             self: S7Client, tags: Any, values: Any
         ) -> list[WriteResult]:
             return [
-                WriteResult(tag=S7Tag(MemoryArea.DB, 1, DataType.INT, 0, 0, 1), success=True),
-                WriteResult(tag=S7Tag(MemoryArea.DB, 1, DataType.INT, 2, 0, 1), success=True),
+                WriteResult(
+                    tag=S7Tag(MemoryArea.DB, 1, DataType.INT, 0, 0, 1), success=True
+                ),
+                WriteResult(
+                    tag=S7Tag(MemoryArea.DB, 1, DataType.INT, 2, 0, 1), success=True
+                ),
             ]
 
         def mock_read(self: S7Client, tags: Any) -> list[Any]:
@@ -289,8 +319,12 @@ class TestBatchWriteTransaction:
         """Test that manual rollback without commit raises error."""
         _set_client_connected(client, MagicMock())
 
-        with pytest.raises(RuntimeError, match="Cannot rollback: no original values saved"):
-            with client.batch_write(auto_commit=False, rollback_on_error=False) as batch:
+        with pytest.raises(
+            RuntimeError, match="Cannot rollback: no original values saved"
+        ):
+            with client.batch_write(
+                auto_commit=False, rollback_on_error=False
+            ) as batch:
                 batch.add("DB1,I0", 100)
                 batch.rollback()
 
@@ -298,13 +332,20 @@ class TestBatchWriteTransaction:
         self, client: S7Client, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Test batch write where all writes succeed."""
+
         def mock_write_detailed(
             self: S7Client, tags: Any, values: Any
         ) -> list[WriteResult]:
             return [
-                WriteResult(tag=S7Tag(MemoryArea.DB, 1, DataType.INT, 0, 0, 1), success=True),
-                WriteResult(tag=S7Tag(MemoryArea.DB, 1, DataType.INT, 2, 0, 1), success=True),
-                WriteResult(tag=S7Tag(MemoryArea.DB, 1, DataType.INT, 4, 0, 1), success=True),
+                WriteResult(
+                    tag=S7Tag(MemoryArea.DB, 1, DataType.INT, 0, 0, 1), success=True
+                ),
+                WriteResult(
+                    tag=S7Tag(MemoryArea.DB, 1, DataType.INT, 2, 0, 1), success=True
+                ),
+                WriteResult(
+                    tag=S7Tag(MemoryArea.DB, 1, DataType.INT, 4, 0, 1), success=True
+                ),
             ]
 
         def mock_read(self: S7Client, tags: Any) -> list[Any]:
@@ -346,7 +387,7 @@ class TestBatchWriteTransaction:
                 WriteResult(
                     tag=S7Tag(MemoryArea.DB, 1, DataType.INT, 0, 0, 1),
                     success=False,
-                    error="Error"
+                    error="Error",
                 ),
             ]
 
@@ -373,9 +414,7 @@ class TestBatchWriteDataclass:
     def test_batch_write_transaction_creation(self, client: S7Client) -> None:
         """Test creating a BatchWriteTransaction."""
         batch = BatchWriteTransaction(
-            client=client,
-            auto_commit=True,
-            rollback_on_error=True
+            client=client, auto_commit=True, rollback_on_error=True
         )
 
         assert batch._client is client

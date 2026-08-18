@@ -217,10 +217,7 @@ class ClientMetrics:
             self.disconnection_count += 1
 
     def record_read(
-        self,
-        duration: float,
-        bytes_read: int = 0,
-        success: bool = True
+        self, duration: float, bytes_read: int = 0, success: bool = True
     ) -> None:
         """Record a read operation.
 
@@ -240,10 +237,7 @@ class ClientMetrics:
                 self.read_errors += 1
 
     def record_write(
-        self,
-        duration: float,
-        bytes_written: int = 0,
-        success: bool = True
+        self, duration: float, bytes_written: int = 0, success: bool = True
     ) -> None:
         """Record a write operation.
 
@@ -309,36 +303,32 @@ class ClientMetrics:
         with self._lock:
             return {
                 # Connection metrics
-                'connected': self.connected,
-                'connection_uptime': self.connection_uptime,
-                'connection_count': self.connection_count,
-                'disconnection_count': self.disconnection_count,
-
+                "connected": self.connected,
+                "connection_uptime": self.connection_uptime,
+                "connection_count": self.connection_count,
+                "disconnection_count": self.disconnection_count,
                 # Operation counters
-                'read_count': self.read_count,
-                'write_count': self.write_count,
-                'total_operations': self.total_operations,
-
+                "read_count": self.read_count,
+                "write_count": self.write_count,
+                "total_operations": self.total_operations,
                 # Error metrics
-                'read_errors': self.read_errors,
-                'write_errors': self.write_errors,
-                'timeout_errors': self.timeout_errors,
-                'total_errors': self.total_errors,
-                'error_rate': self.error_rate,
-                'success_rate': self.success_rate,
-
+                "read_errors": self.read_errors,
+                "write_errors": self.write_errors,
+                "timeout_errors": self.timeout_errors,
+                "total_errors": self.total_errors,
+                "error_rate": self.error_rate,
+                "success_rate": self.success_rate,
                 # Performance metrics
-                'last_read_duration': self.last_read_duration,
-                'last_write_duration': self.last_write_duration,
-                'avg_read_duration': self.avg_read_duration,
-                'avg_write_duration': self.avg_write_duration,
-                'operations_per_minute': self.operations_per_minute,
-
+                "last_read_duration": self.last_read_duration,
+                "last_write_duration": self.last_write_duration,
+                "avg_read_duration": self.avg_read_duration,
+                "avg_write_duration": self.avg_write_duration,
+                "operations_per_minute": self.operations_per_minute,
                 # Bandwidth metrics
-                'total_bytes_read': self.total_bytes_read,
-                'total_bytes_written': self.total_bytes_written,
-                'avg_bytes_per_read': self.avg_bytes_per_read,
-                'avg_bytes_per_write': self.avg_bytes_per_write,
+                "total_bytes_read": self.total_bytes_read,
+                "total_bytes_written": self.total_bytes_written,
+                "avg_bytes_per_read": self.avg_bytes_per_read,
+                "avg_bytes_per_write": self.avg_bytes_per_write,
             }
 
     def __str__(self) -> str:

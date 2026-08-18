@@ -1,6 +1,7 @@
 """
 Tests for TSAP (Transport Service Access Point) functionality in S7Client.
 """
+
 import pytest
 
 from pyS7.client import S7Client
@@ -114,10 +115,7 @@ class TestTSAPValidation:
         """Test that valid TSAP values are accepted."""
         # Standard TSAP values
         client = S7Client(
-            address="192.168.0.1",
-            local_tsap=0x0100,
-            remote_tsap=0x0101,
-            timeout=1.0
+            address="192.168.0.1", local_tsap=0x0100, remote_tsap=0x0101, timeout=1.0
         )
         assert client.local_tsap == 0x0100
         assert client.remote_tsap == 0x0101
@@ -126,58 +124,50 @@ class TestTSAPValidation:
         """Test TSAP validation with edge case values."""
         # Minimum values
         client = S7Client(
-            address="192.168.0.1",
-            local_tsap=0x0000,
-            remote_tsap=0x0000,
-            timeout=1.0
+            address="192.168.0.1", local_tsap=0x0000, remote_tsap=0x0000, timeout=1.0
         )
         assert client.local_tsap == 0x0000
         assert client.remote_tsap == 0x0000
 
         # Maximum values
         client = S7Client(
-            address="192.168.0.1",
-            local_tsap=0xFFFF,
-            remote_tsap=0xFFFF,
-            timeout=1.0
+            address="192.168.0.1", local_tsap=0xFFFF, remote_tsap=0xFFFF, timeout=1.0
         )
         assert client.local_tsap == 0xFFFF
         assert client.remote_tsap == 0xFFFF
 
     def test_invalid_tsap_out_of_range_high(self) -> None:
         """Test that TSAP values above 0xFFFF are rejected."""
-        with pytest.raises(ValueError, match="local_tsap must be in range 0x0000-0xFFFF"):
+        with pytest.raises(
+            ValueError, match="local_tsap must be in range 0x0000-0xFFFF"
+        ):
             S7Client(
                 address="192.168.0.1",
                 local_tsap=0x10000,
                 remote_tsap=0x0101,
-                timeout=1.0
+                timeout=1.0,
             )
 
-        with pytest.raises(ValueError, match="remote_tsap must be in range 0x0000-0xFFFF"):
+        with pytest.raises(
+            ValueError, match="remote_tsap must be in range 0x0000-0xFFFF"
+        ):
             S7Client(
                 address="192.168.0.1",
                 local_tsap=0x0100,
                 remote_tsap=0x10000,
-                timeout=1.0
+                timeout=1.0,
             )
 
     def test_invalid_tsap_negative(self) -> None:
         """Test that negative TSAP values are rejected."""
         with pytest.raises(ValueError, match="local_tsap must be in range"):
             S7Client(
-                address="192.168.0.1",
-                local_tsap=-1,
-                remote_tsap=0x0101,
-                timeout=1.0
+                address="192.168.0.1", local_tsap=-1, remote_tsap=0x0101, timeout=1.0
             )
 
         with pytest.raises(ValueError, match="remote_tsap must be in range"):
             S7Client(
-                address="192.168.0.1",
-                local_tsap=0x0100,
-                remote_tsap=-1,
-                timeout=1.0
+                address="192.168.0.1", local_tsap=0x0100, remote_tsap=-1, timeout=1.0
             )
 
     def test_invalid_tsap_wrong_type(self) -> None:
@@ -188,7 +178,7 @@ class TestTSAPValidation:
                 address="192.168.0.1",
                 local_tsap="0x0100",  # Invalid format (0x prefix not allowed)
                 remote_tsap=0x0101,
-                timeout=1.0
+                timeout=1.0,
             )
 
         with pytest.raises(ValueError, match="TSAP string must be in format 'XX.YY'"):
@@ -196,37 +186,32 @@ class TestTSAPValidation:
                 address="192.168.0.1",
                 local_tsap=0x0100,
                 remote_tsap="0x0101",  # Invalid format (0x prefix not allowed)
-                timeout=1.0
+                timeout=1.0,
             )
 
     def test_invalid_only_local_tsap(self) -> None:
         """Test that providing only local_tsap is rejected."""
-        with pytest.raises(ValueError, match="Both local_tsap and remote_tsap must be provided together"):
+        with pytest.raises(
+            ValueError,
+            match="Both local_tsap and remote_tsap must be provided together",
+        ):
             S7Client(
-                address="192.168.0.1",
-                local_tsap=0x0100,
-                remote_tsap=None,
-                timeout=1.0
+                address="192.168.0.1", local_tsap=0x0100, remote_tsap=None, timeout=1.0
             )
 
     def test_invalid_only_remote_tsap(self) -> None:
         """Test that providing only remote_tsap is rejected."""
-        with pytest.raises(ValueError, match="Both local_tsap and remote_tsap must be provided together"):
+        with pytest.raises(
+            ValueError,
+            match="Both local_tsap and remote_tsap must be provided together",
+        ):
             S7Client(
-                address="192.168.0.1",
-                local_tsap=None,
-                remote_tsap=0x0101,
-                timeout=1.0
+                address="192.168.0.1", local_tsap=None, remote_tsap=0x0101, timeout=1.0
             )
 
     def test_no_tsap_uses_rack_slot(self) -> None:
         """Test that omitting TSAP values falls back to rack/slot."""
-        client = S7Client(
-            address="192.168.0.1",
-            rack=0,
-            slot=1,
-            timeout=1.0
-        )
+        client = S7Client(address="192.168.0.1", rack=0, slot=1, timeout=1.0)
         assert client.rack == 0
         assert client.slot == 1
         assert client.local_tsap is None
@@ -295,10 +280,7 @@ class TestTSAPIntegration:
     def test_tsap_string_in_constructor(self) -> None:
         """Test that TIA Portal TSAP strings work in S7Client constructor."""
         client = S7Client(
-            address="192.168.0.1",
-            local_tsap="03.00",
-            remote_tsap="03.01",
-            timeout=1.0
+            address="192.168.0.1", local_tsap="03.00", remote_tsap="03.01", timeout=1.0
         )
         assert client.local_tsap == 0x0300
         assert client.remote_tsap == 0x0301
@@ -306,10 +288,7 @@ class TestTSAPIntegration:
     def test_tsap_mixed_string_int(self) -> None:
         """Test that mixing string and integer TSAP works."""
         client = S7Client(
-            address="192.168.0.1",
-            local_tsap="03.00",
-            remote_tsap=0x0301,
-            timeout=1.0
+            address="192.168.0.1", local_tsap="03.00", remote_tsap=0x0301, timeout=1.0
         )
         assert client.local_tsap == 0x0300
         assert client.remote_tsap == 0x0301
@@ -317,11 +296,7 @@ class TestTSAPIntegration:
     def test_tsap_string_validation_in_constructor(self) -> None:
         """Test that invalid TSAP strings are caught in constructor."""
         with pytest.raises(ValueError, match="must be in format 'XX.YY'"):
-            S7Client(
-                address="192.168.0.1",
-                local_tsap="invalid",
-                remote_tsap="03.01"
-            )
+            S7Client(address="192.168.0.1", local_tsap="invalid", remote_tsap="03.01")
 
     def test_tsap_overrides_rack_slot(self) -> None:
         """Test that TSAP values override rack/slot when both are provided."""
@@ -331,7 +306,7 @@ class TestTSAPIntegration:
             slot=1,
             local_tsap=0x0200,
             remote_tsap=0x0300,
-            timeout=1.0
+            timeout=1.0,
         )
         # TSAP should be set
         assert client.local_tsap == 0x0200
@@ -347,7 +322,7 @@ class TestTSAPIntegration:
             address="192.168.0.1",
             local_tsap=0x0100,
             remote_tsap=remote_tsap,
-            timeout=1.0
+            timeout=1.0,
         )
         assert client.local_tsap == 0x0100
         assert client.remote_tsap == 0x0102
@@ -355,10 +330,7 @@ class TestTSAPIntegration:
     def test_default_rack_slot_when_tsap_provided(self) -> None:
         """Test that rack/slot default to 0 when TSAP is provided."""
         client = S7Client(
-            address="192.168.0.1",
-            local_tsap=0x0100,
-            remote_tsap=0x0101,
-            timeout=1.0
+            address="192.168.0.1", local_tsap=0x0100, remote_tsap=0x0101, timeout=1.0
         )
         assert client.rack == 0
         assert client.slot == 0
@@ -368,16 +340,10 @@ class TestTSAPIntegration:
     def test_multiple_clients_different_tsap(self) -> None:
         """Test creating multiple clients with different TSAP values."""
         client1 = S7Client(
-            address="192.168.0.1",
-            local_tsap=0x0100,
-            remote_tsap=0x0101,
-            timeout=1.0
+            address="192.168.0.1", local_tsap=0x0100, remote_tsap=0x0101, timeout=1.0
         )
         client2 = S7Client(
-            address="192.168.0.2",
-            local_tsap=0x0100,
-            remote_tsap=0x0102,
-            timeout=1.0
+            address="192.168.0.2", local_tsap=0x0100, remote_tsap=0x0102, timeout=1.0
         )
 
         assert client1.remote_tsap == 0x0101
@@ -396,7 +362,7 @@ class TestTSAPBackwardCompatibility:
             slot=1,
             connection_type=ConnectionType.S7Basic,
             port=102,
-            timeout=5.0
+            timeout=5.0,
         )
         assert client.rack == 0
         assert client.slot == 1
@@ -410,7 +376,7 @@ class TestTSAPBackwardCompatibility:
             connection_type=ConnectionType.PG,
             local_tsap=0x0100,
             remote_tsap=0x0101,
-            timeout=1.0
+            timeout=1.0,
         )
         assert client.connection_type == ConnectionType.PG
         assert client.local_tsap == 0x0100
@@ -424,7 +390,7 @@ class TestTSAPBackwardCompatibility:
                 connection_type=conn_type,
                 local_tsap=0x0100,
                 remote_tsap=0x0101,
-                timeout=1.0
+                timeout=1.0,
             )
             assert client.connection_type == conn_type
             assert client.local_tsap == 0x0100

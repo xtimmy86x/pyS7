@@ -40,11 +40,14 @@ def read_bit_with_workaround(client, db_number, byte_address, bit_offset):
 
             # Extract the specific bit
             bit_value = extract_bit_from_byte(byte_value, bit_offset)
-            print(f"Read byte value {byte_value}, extracted bit {bit_offset}: {bit_value}")
+            print(
+                f"Read byte value {byte_value}, extracted bit {bit_offset}: {bit_value}"
+            )
             return bit_value
         else:
             # Re-raise other exceptions
             raise
+
 
 if __name__ == "__main__":
     # Example usage (commented out since we don't have a real PLC connection)
@@ -62,13 +65,15 @@ if __name__ == "__main__":
     print("=====================================")
 
     test_cases = [
-        (0b00000001, 0, "Bit 0 set"),           # Bit 0 = True
-        (0b00000100, 2, "Bit 2 set"),           # Bit 2 = True (your error case)
-        (0b10000000, 7, "Bit 7 set"),           # Bit 7 = True
-        (0b11111111, 4, "All bits set"),        # All bits = True
-        (0b00000000, 3, "No bits set"),         # All bits = False
+        (0b00000001, 0, "Bit 0 set"),  # Bit 0 = True
+        (0b00000100, 2, "Bit 2 set"),  # Bit 2 = True (your error case)
+        (0b10000000, 7, "Bit 7 set"),  # Bit 7 = True
+        (0b11111111, 4, "All bits set"),  # All bits = True
+        (0b00000000, 3, "No bits set"),  # All bits = False
     ]
 
     for byte_val, bit_pos, description in test_cases:
         result = extract_bit_from_byte(byte_val, bit_pos)
-        print(f"{description}: byte={byte_val:08b} ({byte_val:3d}), bit[{bit_pos}]={result}")
+        print(
+            f"{description}: byte={byte_val:08b} ({byte_val:3d}), bit[{bit_pos}]={result}"
+        )

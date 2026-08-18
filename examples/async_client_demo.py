@@ -36,9 +36,7 @@ async def detailed_operations():
                 print(f"  {r.tag} FAILED: {r.error}")
 
         # write_detailed returns per-tag results
-        write_results = await client.write_detailed(
-            ["DB1,I0", "DB1,I2"], [100, 200]
-        )
+        write_results = await client.write_detailed(["DB1,I0", "DB1,I2"], [100, 200])
         for r in write_results:
             status = "OK" if r.success else r.error
             print(f"  {r.tag}: {status}")

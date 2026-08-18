@@ -24,4 +24,6 @@ if __name__ == "__main__":
     # Read the data from the PLC using the specified tags list
     data = client.read(tags=tags)
 
-    print(data)  # [True, False, -50, 200, 123, True, 10, -2.54943805634653e-12, 'Hello']
+    print(
+        data
+    )  # [True, False, -50, 200, 123, True, 10, -2.54943805634653e-12, 'Hello']

@@ -166,7 +166,9 @@ def state_based_error_handling():
 
         # Check state before operation
         if client.connection_state != ConnectionState.CONNECTED:
-            print(f"  ✗ Cannot perform operation - state is {client.connection_state.value}")
+            print(
+                f"  ✗ Cannot perform operation - state is {client.connection_state.value}"
+            )
             return False
 
         try:
@@ -198,7 +200,9 @@ def state_based_error_handling():
 
         # Perform operations
         safe_operation("Read DB1.DBW0", lambda: None)  # client.read(["DB1,I0"]))
-        safe_operation("Write DB1.DBW2", lambda: None)  # client.write(["DB1,I2"], [100]))
+        safe_operation(
+            "Write DB1.DBW2", lambda: None
+        )  # client.write(["DB1,I2"], [100]))
 
     except Exception as e:
         print(f"\nFatal error: {e}")
@@ -259,6 +263,7 @@ def main():
         except Exception as e:
             print(f"\nExample failed with unexpected error: {e}")
             import traceback
+
             traceback.print_exc()
 
     print("\n" + "=" * 60)

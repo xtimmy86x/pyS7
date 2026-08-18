@@ -5,9 +5,10 @@ This example shows how to use the get_cpu_info() method to retrieve
 detailed information about the PLC CPU including model, serial number,
 and other identification data.
 """
+
 import sys
 
-sys.path.insert(0, '/home/ale/pys7/pyS7')
+sys.path.insert(0, "/home/ale/pys7/pyS7")
 
 from pyS7 import S7Client
 
@@ -23,9 +24,9 @@ if __name__ == "__main__":
         print("Connected successfully!\n")
 
         # Get the CPU information
-        print("="*70)
+        print("=" * 70)
         print("Reading CPU Information...")
-        print("="*70)
+        print("=" * 70)
 
         info = client.get_cpu_info()
 
@@ -36,9 +37,9 @@ if __name__ == "__main__":
         print(f"Index:                {info.get('index', 'N/A')}")
 
         # Show additional modules if available
-        if 'modules' in info and len(info['modules']) > 1:
+        if "modules" in info and len(info["modules"]) > 1:
             print(f"\nAdditional Modules Found: {len(info['modules'])}")
-            for idx, module in enumerate(info['modules'], 1):
+            for idx, module in enumerate(info["modules"], 1):
                 print(f"\n  Module {idx}:")
                 print(f"    Type:     {module.get('module_type_name', 'N/A')}")
                 print(f"    Index:    {module.get('index', 'N/A')}")
@@ -48,7 +49,7 @@ if __name__ == "__main__":
         # Also get the CPU status
         print(f"\n{'='*70}")
         print("CPU Status...")
-        print("="*70)
+        print("=" * 70)
         status = client.get_cpu_status()
         print(f"\nCPU Operating Mode:   {status}")
 
@@ -57,6 +58,7 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"Error: {e}")
         import traceback
+
         traceback.print_exc()
 
     finally:

@@ -2,7 +2,6 @@
 Unit tests for CPU status reading functionality.
 """
 
-
 import pytest
 
 from pyS7.constants import MessageType, SZLId
@@ -78,7 +77,7 @@ class TestSZLResponse:
         data_start = len(packet)
         packet.extend(b"\xff")  # Return code (success)
         packet.extend(b"\x09")  # Transport size
-        packet.extend(b"\x00\x1C")  # Data unit length (28 bytes: 8 header + 20 data)
+        packet.extend(b"\x00\x1c")  # Data unit length (28 bytes: 8 header + 20 data)
         packet.extend(b"\x04\x24")  # SZL ID 0x0424
         packet.extend(b"\x00\x00")  # SZL index
         packet.extend(b"\x00\x14")  # Length of data record (20 bytes)
@@ -88,7 +87,9 @@ class TestSZLResponse:
         packet.extend(b"\x02")  # Byte 0: Reserved (typical value)
         packet.extend(b"\x51")  # Byte 1: Status bits (typical value)
         packet.extend(b"\xff")  # Byte 2: Event bits
-        packet.extend(bytes([status_byte]))  # Byte 3: Operating mode (0x08=RUN, 0x03=STOP)
+        packet.extend(
+            bytes([status_byte])
+        )  # Byte 3: Operating mode (0x08=RUN, 0x03=STOP)
         packet.extend(b"\x00" * 16)  # Bytes 4-19: Reserved/additional diagnostic info
 
         # Update lengths
@@ -96,9 +97,15 @@ class TestSZLResponse:
         data_length = len(packet) - data_start
         tpkt_length = len(packet)
 
-        packet[tpkt_length_pos:tpkt_length_pos + 2] = tpkt_length.to_bytes(2, byteorder="big")
-        packet[param_length_pos:param_length_pos + 2] = param_length.to_bytes(2, byteorder="big")
-        packet[data_length_pos:data_length_pos + 2] = data_length.to_bytes(2, byteorder="big")
+        packet[tpkt_length_pos : tpkt_length_pos + 2] = tpkt_length.to_bytes(
+            2, byteorder="big"
+        )
+        packet[param_length_pos : param_length_pos + 2] = param_length.to_bytes(
+            2, byteorder="big"
+        )
+        packet[data_length_pos : data_length_pos + 2] = data_length.to_bytes(
+            2, byteorder="big"
+        )
 
         return bytes(packet)
 
@@ -117,7 +124,9 @@ class TestSZLResponse:
 
     def test_parse_cpu_status_run(self):
         """Test parsing CPU status - RUN mode."""
-        response_bytes = self.create_mock_szl_response(status_byte=0x08)  # Byte 3 = 0x08 = RUN
+        response_bytes = self.create_mock_szl_response(
+            status_byte=0x08
+        )  # Byte 3 = 0x08 = RUN
         response = SZLResponse(response=response_bytes)
 
         status = response.parse_cpu_status()
@@ -125,7 +134,9 @@ class TestSZLResponse:
 
     def test_parse_cpu_status_stop(self):
         """Test parsing CPU status - STOP mode."""
-        response_bytes = self.create_mock_szl_response(status_byte=0x03)  # Byte 3 = 0x03 = STOP
+        response_bytes = self.create_mock_szl_response(
+            status_byte=0x03
+        )  # Byte 3 = 0x03 = STOP
         response = SZLResponse(response=response_bytes)
 
         status = response.parse_cpu_status()
@@ -133,7 +144,9 @@ class TestSZLResponse:
 
     def test_parse_cpu_status_unknown(self):
         """Test parsing CPU status - unknown mode."""
-        response_bytes = self.create_mock_szl_response(status_byte=0x05)  # Unknown value
+        response_bytes = self.create_mock_szl_response(
+            status_byte=0x05
+        )  # Unknown value
         response = SZLResponse(response=response_bytes)
 
         status = response.parse_cpu_status()

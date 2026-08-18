@@ -48,20 +48,22 @@ def test_connection_request() -> None:
     # Bytes 8-9: Source Reference (random 0x0000-0xFFFF) - just verify they exist
     assert len(packet[8:10]) == 2
     # Bytes 10-end: fixed structure
-    assert packet[10:] == bytearray([
-        0x00,
-        0xC0,
-        0x01,
-        0x0A,
-        0xC1,
-        0x02,
-        0x01,
-        0x00,
-        0xC2,
-        0x02,
-        connection_type.value,
-        rack * 32 + slot,
-    ])
+    assert packet[10:] == bytearray(
+        [
+            0x00,
+            0xC0,
+            0x01,
+            0x0A,
+            0xC1,
+            0x02,
+            0x01,
+            0x00,
+            0xC2,
+            0x02,
+            connection_type.value,
+            rack * 32 + slot,
+        ]
+    )
 
     assert connection_request.serialize() == bytes(packet)
 
@@ -125,9 +127,7 @@ def assert_read_tag(packet: bytearray, offset: int, tag: S7Tag) -> None:
     assert packet[offset + 2] == 0x10
     assert packet[offset + 3] == tag.data_type.value.to_bytes(1, byteorder="big")[0]
     assert packet[offset + 4 : offset + 6] == tag.length.to_bytes(2, byteorder="big")
-    assert packet[offset + 6 : offset + 8] == tag.db_number.to_bytes(
-        2, byteorder="big"
-    )
+    assert packet[offset + 6 : offset + 8] == tag.db_number.to_bytes(2, byteorder="big")
     assert packet[offset + 8] == tag.memory_area.value
     assert packet[offset + 9 : offset + 12] == (
         tag.start * 8 + tag.bit_offset
@@ -207,9 +207,7 @@ def assert_write_tag(packet: bytearray, offset: int, tag: S7Tag) -> None:
     else:
         assert packet[offset + 3] == DataType.BYTE.value.to_bytes(1, byteorder="big")[0]
     assert packet[offset + 4 : offset + 6] == tag.size().to_bytes(2, byteorder="big")
-    assert packet[offset + 6 : offset + 8] == tag.db_number.to_bytes(
-        2, byteorder="big"
-    )
+    assert packet[offset + 6 : offset + 8] == tag.db_number.to_bytes(2, byteorder="big")
     assert packet[offset + 8] == tag.memory_area.value.to_bytes(1, byteorder="big")[0]
     assert packet[offset + 9 : offset + 12] == (
         tag.start * 8 + tag.bit_offset
@@ -384,14 +382,16 @@ def test_prepare_optimized_request() -> None:
         ],
     }
 
-    expected_requests: List[List[S7Tag]] = [[
-        S7Tag(MemoryArea.INPUT, 0, DataType.BYTE, 16, 0, 6),
-        S7Tag(MemoryArea.MERKER, 0, DataType.REAL, 40, 0, 1),
-        S7Tag(MemoryArea.MERKER, 0, DataType.REAL, 60, 0, 1),
-        S7Tag(MemoryArea.DB, 1, DataType.BYTE, 1, 0, 2),
-        S7Tag(MemoryArea.DB, 2, DataType.BYTE, 10, 0, 1),
-        S7Tag(MemoryArea.DB, 23, DataType.BYTE, 4, 0, 8),
-    ]]
+    expected_requests: List[List[S7Tag]] = [
+        [
+            S7Tag(MemoryArea.INPUT, 0, DataType.BYTE, 16, 0, 6),
+            S7Tag(MemoryArea.MERKER, 0, DataType.REAL, 40, 0, 1),
+            S7Tag(MemoryArea.MERKER, 0, DataType.REAL, 60, 0, 1),
+            S7Tag(MemoryArea.DB, 1, DataType.BYTE, 1, 0, 2),
+            S7Tag(MemoryArea.DB, 2, DataType.BYTE, 10, 0, 1),
+            S7Tag(MemoryArea.DB, 23, DataType.BYTE, 4, 0, 8),
+        ]
+    ]
 
     # group_tags expect an ordered sequence of tag
     requests, groups = prepare_optimized_requests(tags=tags, max_pdu=240)
@@ -550,10 +550,7 @@ def test_prepare_write_request() -> None:
 
         # We want to assert the bytes length is < max_pdu
         WRITE_REQ_OVERHEAD = (
-            TPKT_SIZE
-            + COTP_SIZE
-            + WRITE_REQ_HEADER_SIZE
-            + WRITE_REQ_PARAM_SIZE_NO_TAGS
+            TPKT_SIZE + COTP_SIZE + WRITE_REQ_HEADER_SIZE + WRITE_REQ_PARAM_SIZE_NO_TAGS
         )  # 3 + 4 + 10 + 2
         WRITE_RES_OVERHEAD = (
             TPKT_SIZE + COTP_SIZE + WRITE_RES_HEADER_SIZE + WRITE_RES_PARAM_SIZE

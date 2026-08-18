@@ -24,8 +24,8 @@ optimizations = [
         "changes": [
             "Add _cached_size field to S7Tag",
             "Modify size() to use cache",
-            "Invalidate cache if tag modified (immutable, so not needed)"
-        ]
+            "Invalidate cache if tag modified (immutable, so not needed)",
+        ],
     },
     {
         "id": 2,
@@ -37,8 +37,8 @@ optimizations = [
         "changes": [
             "Create _SIZE_LOOKUP dict mapping DataType -> lambda",
             "Replace if/elif chain with dict lookup",
-            "Reduce enum hashing overhead"
-        ]
+            "Reduce enum hashing overhead",
+        ],
     },
     {
         "id": 3,
@@ -50,9 +50,9 @@ optimizations = [
         "changes": [
             "Store tag.size() in local variable",
             "Reuse in multiple calculations",
-            "Avoid calling size() twice per tag"
-        ]
-    }
+            "Avoid calling size() twice per tag",
+        ],
+    },
 ]
 
 print("\nOptimizations to implement:")
@@ -63,7 +63,7 @@ for opt in optimizations:
     print(f"   Effort: {opt['effort']}")
     print(f"   Risk: {opt['risk']}")
     print("   Changes:")
-    for change in opt['changes']:
+    for change in opt["changes"]:
         print(f"     - {change}")
 
 print("\n" + "=" * 60)

@@ -148,11 +148,17 @@ class ConnectionRequest(Request):
         packet.extend(TPKT_VERSION.to_bytes(1, byteorder="big"))  # Version
         packet.extend(TPKT_RESERVED.to_bytes(1, byteorder="big"))  # Reserved
         packet.extend(b"\x00")  # Length (MSB)
-        packet.extend(COTP_CR_PACKET_LENGTH.to_bytes(1, byteorder="big"))  # Length (LSB) = 22 bytes
+        packet.extend(
+            COTP_CR_PACKET_LENGTH.to_bytes(1, byteorder="big")
+        )  # Length (LSB) = 22 bytes
 
         # COTP Header (ISO 8073)
-        packet.extend(COTP_CR_LENGTH.to_bytes(1, byteorder="big"))  # Length Indicator = 17 bytes
-        packet.extend(COTP_PDU_TYPE_CR.to_bytes(1, byteorder="big"))  # PDU Type = CR (Connection Request)
+        packet.extend(
+            COTP_CR_LENGTH.to_bytes(1, byteorder="big")
+        )  # Length Indicator = 17 bytes
+        packet.extend(
+            COTP_PDU_TYPE_CR.to_bytes(1, byteorder="big")
+        )  # PDU Type = CR (Connection Request)
         packet.extend(b"\x00")  # Destination Reference (MSB)
         packet.extend(b"\x00")  # Destination Reference (LSB)
 
@@ -163,18 +169,28 @@ class ConnectionRequest(Request):
         # The source reference is split into MSB and LSB for network byte order.
         source_ref = random.randint(0, 0xFFFF)
         packet.extend(bytes([(source_ref >> 8) & 0xFF]))  # Source Reference (MSB)
-        packet.extend(bytes([source_ref & 0xFF]))         # Source Reference (LSB)
+        packet.extend(bytes([source_ref & 0xFF]))  # Source Reference (LSB)
         packet.extend(b"\x00")  # Class/Options (TP0)
 
         # COTP Parameters
-        packet.extend(COTP_TPDU_SIZE_PARAM.to_bytes(1, byteorder="big"))  # Parameter Code: TPDU Size
-        packet.extend(COTP_PARAM_LENGTH.to_bytes(1, byteorder="big"))  # Parameter Length
-        packet.extend(COTP_TPDU_SIZE_1024.to_bytes(1, byteorder="big"))  # TPDU Size = 1024 bytes
-        packet.extend(COTP_SRC_TSAP_PARAM.to_bytes(1, byteorder="big"))  # Parameter Code: Source TSAP
+        packet.extend(
+            COTP_TPDU_SIZE_PARAM.to_bytes(1, byteorder="big")
+        )  # Parameter Code: TPDU Size
+        packet.extend(
+            COTP_PARAM_LENGTH.to_bytes(1, byteorder="big")
+        )  # Parameter Length
+        packet.extend(
+            COTP_TPDU_SIZE_1024.to_bytes(1, byteorder="big")
+        )  # TPDU Size = 1024 bytes
+        packet.extend(
+            COTP_SRC_TSAP_PARAM.to_bytes(1, byteorder="big")
+        )  # Parameter Code: Source TSAP
         packet.extend(COTP_TSAP_LENGTH.to_bytes(1, byteorder="big"))  # Parameter Length
         packet.extend(b"\x01")  # Src-TSAP (MSB) - placeholder
         packet.extend(b"\x00")  # Src-TSAP (LSB) - placeholder
-        packet.extend(COTP_DST_TSAP_PARAM.to_bytes(1, byteorder="big"))  # Parameter Code: Destination TSAP
+        packet.extend(
+            COTP_DST_TSAP_PARAM.to_bytes(1, byteorder="big")
+        )  # Parameter Code: Destination TSAP
         packet.extend(COTP_TSAP_LENGTH.to_bytes(1, byteorder="big"))  # Parameter Length
         packet.extend(b"\x01")  # Dst-TSAP (MSB) - placeholder
         packet.extend(b"\x02")  # Dst-TSAP (LSB) - placeholder
@@ -281,9 +297,11 @@ class ReadRequest(Request):
 
 
 # Helper functions for data packing to reduce code duplication
-def _pack_numeric_data(data: Union[int, float, Tuple[Union[int, float], ...]],
-                       format_char: str,
-                       length: int) -> bytes:
+def _pack_numeric_data(
+    data: Union[int, float, Tuple[Union[int, float], ...]],
+    format_char: str,
+    length: int,
+) -> bytes:
     """Pack numeric data (int, float) using struct.pack.
 
     Args:
@@ -300,7 +318,9 @@ def _pack_numeric_data(data: Union[int, float, Tuple[Union[int, float], ...]],
         return struct.pack(f">{format_char}", data)
 
 
-def _pack_string_data(data: str, max_length: int, tag: S7Tag, encoding: str = "ascii") -> bytes:
+def _pack_string_data(
+    data: str, max_length: int, tag: S7Tag, encoding: str = "ascii"
+) -> bytes:
     """Pack STRING data with header and padding.
 
     Args:
@@ -316,9 +336,7 @@ def _pack_string_data(data: str, max_length: int, tag: S7Tag, encoding: str = "a
         S7AddressError: If data type is incorrect or string is too long
     """
     if not isinstance(data, str):
-        raise S7AddressError(
-            f"STRING data must be str, got {type(data).__name__}"
-        )
+        raise S7AddressError(f"STRING data must be str, got {type(data).__name__}")
     encoded = data.encode(encoding=encoding)
     if len(encoded) > max_length:
         raise S7AddressError(
@@ -344,9 +362,7 @@ def _pack_wstring_data(data: str, max_length: int, tag: S7Tag) -> bytes:
         S7AddressError: If data type is incorrect or string is too long
     """
     if not isinstance(data, str):
-        raise S7AddressError(
-            f"WSTRING data must be str, got {type(data).__name__}"
-        )
+        raise S7AddressError(f"WSTRING data must be str, got {type(data).__name__}")
     encoded = data.encode(encoding="utf-16-be")
     if len(encoded) // 2 > max_length:  # Each char is 2 bytes
         raise S7AddressError(
@@ -394,7 +410,11 @@ class WriteRequest(Request):
                 packet.extend(DataType.BYTE.value.to_bytes(1, byteorder="big"))
 
             # Length (tag length * size of data type)
-            tag_size = tag.size() if tag.data_type in (DataType.STRING, DataType.WSTRING) else tag.length * DataTypeSize[tag.data_type]
+            tag_size = (
+                tag.size()
+                if tag.data_type in (DataType.STRING, DataType.WSTRING)
+                else tag.length * DataTypeSize[tag.data_type]
+            )
             packet.extend(tag_size.to_bytes(2, byteorder="big"))
             packet.extend(tag.db_number.to_bytes(2, byteorder="big"))  # DB Number
             packet.extend(
@@ -423,12 +443,12 @@ class WriteRequest(Request):
             elif tag.data_type == DataType.BYTE or tag.data_type == DataType.USINT:
                 transport_size = DataTypeData.BYTE_WORD_DWORD
                 new_length = tag.length * DataTypeSize[tag.data_type] * 8
-                packed_data = _pack_numeric_data(data, 'B', tag.length)  # type: ignore[arg-type]
+                packed_data = _pack_numeric_data(data, "B", tag.length)  # type: ignore[arg-type]
 
             elif tag.data_type == DataType.SINT:
                 transport_size = DataTypeData.BYTE_WORD_DWORD
                 new_length = tag.length * DataTypeSize[tag.data_type] * 8
-                packed_data = _pack_numeric_data(data, 'b', tag.length)  # type: ignore[arg-type]
+                packed_data = _pack_numeric_data(data, "b", tag.length)  # type: ignore[arg-type]
 
             elif tag.data_type == DataType.CHAR:
                 transport_size = DataTypeData.BYTE_WORD_DWORD
@@ -454,32 +474,32 @@ class WriteRequest(Request):
             elif tag.data_type == DataType.INT:
                 transport_size = DataTypeData.BYTE_WORD_DWORD
                 new_length = tag.length * DataTypeSize[tag.data_type] * 8
-                packed_data = _pack_numeric_data(data, 'h', tag.length)  # type: ignore[arg-type]
+                packed_data = _pack_numeric_data(data, "h", tag.length)  # type: ignore[arg-type]
 
             elif tag.data_type == DataType.WORD:
                 transport_size = DataTypeData.BYTE_WORD_DWORD
                 new_length = tag.length * DataTypeSize[tag.data_type] * 8
-                packed_data = _pack_numeric_data(data, 'H', tag.length)  # type: ignore[arg-type]
+                packed_data = _pack_numeric_data(data, "H", tag.length)  # type: ignore[arg-type]
 
             elif tag.data_type == DataType.DWORD:
                 transport_size = DataTypeData.BYTE_WORD_DWORD
                 new_length = tag.length * DataTypeSize[tag.data_type] * 8
-                packed_data = _pack_numeric_data(data, 'I', tag.length)  # type: ignore[arg-type]
+                packed_data = _pack_numeric_data(data, "I", tag.length)  # type: ignore[arg-type]
 
             elif tag.data_type == DataType.DINT:
                 transport_size = DataTypeData.BYTE_WORD_DWORD
                 new_length = tag.length * DataTypeSize[tag.data_type] * 8
-                packed_data = _pack_numeric_data(data, 'l', tag.length)  # type: ignore[arg-type]
+                packed_data = _pack_numeric_data(data, "l", tag.length)  # type: ignore[arg-type]
 
             elif tag.data_type == DataType.REAL:
                 transport_size = DataTypeData.BYTE_WORD_DWORD
                 new_length = tag.length * DataTypeSize[tag.data_type] * 8
-                packed_data = _pack_numeric_data(data, 'f', tag.length)  # type: ignore[arg-type]
+                packed_data = _pack_numeric_data(data, "f", tag.length)  # type: ignore[arg-type]
 
             elif tag.data_type == DataType.LREAL:
                 transport_size = DataTypeData.BYTE_WORD_DWORD
                 new_length = tag.length * DataTypeSize[tag.data_type] * 8
-                packed_data = _pack_numeric_data(data, 'd', tag.length)  # type: ignore[arg-type]
+                packed_data = _pack_numeric_data(data, "d", tag.length)  # type: ignore[arg-type]
 
             else:
                 raise RuntimeError(
@@ -500,6 +520,7 @@ class WriteRequest(Request):
         _finalize_packet(packet, parameter_start, data_start)
 
         return packet
+
 
 def prepare_requests(tags: List[S7Tag], max_pdu: int) -> List[List[S7Tag]]:
     requests: List[List[S7Tag]] = [[]]
@@ -620,7 +641,9 @@ def _check_tag_fits_pdu(tag: S7Tag, max_pdu: int) -> None:
         )
 
 
-def _try_merge_tags(prev: S7Tag, tag: S7Tag, max_gap_bytes: int, allow_overlap: bool) -> Optional[S7Tag]:
+def _try_merge_tags(
+    prev: S7Tag, tag: S7Tag, max_gap_bytes: int, allow_overlap: bool
+) -> Optional[S7Tag]:
     """Try to merge two adjacent tags into a single read.
 
     Args:
@@ -639,7 +662,7 @@ def _try_merge_tags(prev: S7Tag, tag: S7Tag, max_gap_bytes: int, allow_overlap: 
     prev_start = prev.start
     prev_end = prev.start + prev.size()  # exclusive end in bytes
     tag_start = tag.start
-    tag_end = tag.start + tag.size()     # exclusive end in bytes
+    tag_end = tag.start + tag.size()  # exclusive end in bytes
 
     # Positive only when tag starts after prev_end; negative/zero means overlap/containment
     gap = tag_start - prev_end
@@ -760,8 +783,6 @@ def prepare_optimized_requests(
     return requests, groups
 
 
-
-
 def prepare_write_requests_and_values(
     tags: Sequence[S7Tag], values: Sequence[Value], max_pdu: int
 ) -> Tuple[List[List[S7Tag]], List[List[Value]]]:
@@ -847,7 +868,9 @@ class SZLRequest(Request):
         packet.extend(S7_PROTOCOL_ID.to_bytes(1, byteorder="big"))  # S7 protocol ID
         packet.extend(MessageType.USERDATA.value.to_bytes(1, byteorder="big"))
         packet.extend(b"\x00\x00")  # Reserved
-        packet.extend(b"\x00\x00")  # PDU reference (will be filled by sequence number if needed)
+        packet.extend(
+            b"\x00\x00"
+        )  # PDU reference (will be filled by sequence number if needed)
         param_length_index = len(packet)
         packet.extend(b"\x00\x00")  # Placeholder for parameter length
         data_length_index = len(packet)
@@ -857,8 +880,12 @@ class SZLRequest(Request):
 
         # Parameter section
         packet.extend(SZL_PARAM_HEAD)  # Parameter head (3 bytes)
-        packet.extend(SZL_PARAM_LENGTH.to_bytes(1, byteorder="big"))  # Parameter length (4 bytes after this)
-        packet.extend(SZL_METHOD_REQUEST.to_bytes(1, byteorder="big"))  # Method: Request
+        packet.extend(
+            SZL_PARAM_LENGTH.to_bytes(1, byteorder="big")
+        )  # Parameter length (4 bytes after this)
+        packet.extend(
+            SZL_METHOD_REQUEST.to_bytes(1, byteorder="big")
+        )  # Method: Request
         packet.extend(UserDataFunction.CPU_FUNCTIONS.value.to_bytes(1, byteorder="big"))
         packet.extend(UserDataSubfunction.READ_SZL.value.to_bytes(1, byteorder="big"))
         packet.extend(b"\x01")  # Sequence number
@@ -866,8 +893,12 @@ class SZLRequest(Request):
         data_start = len(packet)
 
         # Data section
-        packet.extend(SZL_RETURN_CODE_SUCCESS.to_bytes(1, byteorder="big"))  # Return code (0xFF for request)
-        packet.extend(SZL_TRANSPORT_SIZE.to_bytes(1, byteorder="big"))  # Transport size (octet string)
+        packet.extend(
+            SZL_RETURN_CODE_SUCCESS.to_bytes(1, byteorder="big")
+        )  # Return code (0xFF for request)
+        packet.extend(
+            SZL_TRANSPORT_SIZE.to_bytes(1, byteorder="big")
+        )  # Transport size (octet string)
         data_unit_length = 4
         packet.extend(data_unit_length.to_bytes(2, byteorder="big"))
         packet.extend(szl_id.value.to_bytes(2, byteorder="big"))
@@ -878,9 +909,14 @@ class SZLRequest(Request):
         data_length = len(packet) - data_start
         tpkt_length = len(packet)
 
-        packet[tpkt_length_index:tpkt_length_index + 2] = tpkt_length.to_bytes(2, byteorder="big")
-        packet[param_length_index:param_length_index + 2] = parameter_length.to_bytes(2, byteorder="big")
-        packet[data_length_index:data_length_index + 2] = data_length.to_bytes(2, byteorder="big")
+        packet[tpkt_length_index : tpkt_length_index + 2] = tpkt_length.to_bytes(
+            2, byteorder="big"
+        )
+        packet[param_length_index : param_length_index + 2] = parameter_length.to_bytes(
+            2, byteorder="big"
+        )
+        packet[data_length_index : data_length_index + 2] = data_length.to_bytes(
+            2, byteorder="big"
+        )
 
         return packet
-

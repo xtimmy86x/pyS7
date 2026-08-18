@@ -16,11 +16,13 @@ class ConnectionState(Enum):
         ERROR: Connection failed or lost due to error
         DISCONNECTING: Disconnection in progress
     """
+
     DISCONNECTED = "disconnected"
     CONNECTING = "connecting"
     CONNECTED = "connected"
     ERROR = "error"
     DISCONNECTING = "disconnecting"
+
 
 # PDU size limits for validation
 MIN_PDU_SIZE = 100  # Minimum practical PDU size for S7 protocol
@@ -45,9 +47,9 @@ COTP_PDU_TYPE_CC = 0xD0  # Connection Confirm
 COTP_PDU_TYPE_DR = 0x80  # Disconnect Request
 COTP_PDU_TYPE_DT = 0xF0  # Data Transfer
 COTP_TPDU_SIZE_PARAM = 0xC0  # Parameter code for TPDU size
-COTP_SRC_TSAP_PARAM = 0xC1   # Parameter code for Source TSAP
-COTP_DST_TSAP_PARAM = 0xC2   # Parameter code for Destination TSAP
-COTP_TPDU_SIZE_1024 = 0x0A   # TPDU size value for 1024 bytes
+COTP_SRC_TSAP_PARAM = 0xC1  # Parameter code for Source TSAP
+COTP_DST_TSAP_PARAM = 0xC2  # Parameter code for Destination TSAP
+COTP_TPDU_SIZE_1024 = 0x0A  # TPDU size value for 1024 bytes
 
 # S7 Protocol constants
 S7_PROTOCOL_ID = 0x32
@@ -70,7 +72,7 @@ S7_HEADER_OFFSET = 7  # Offset where S7 header starts (after TPKT + COTP)
 S7_PROTOCOL_ID_OFFSET = 0  # Offset of protocol ID within S7 header
 S7_MESSAGE_TYPE_OFFSET = 1  # Offset of message type within S7 header
 S7_PARAM_LENGTH_OFFSET = 6  # Offset of parameter length within S7 header
-S7_DATA_LENGTH_OFFSET = 8   # Offset of data length within S7 header
+S7_DATA_LENGTH_OFFSET = 8  # Offset of data length within S7 header
 
 READ_REQ_HEADER_SIZE = 10
 READ_REQ_PARAM_SIZE_NO_TAGS = 2
@@ -129,6 +131,7 @@ class UserDataSubfunction(Enum):
 
 class SZLId(Enum):
     """SZL (System Status List) IDs for reading PLC information"""
+
     MODULE_IDENTIFICATION = 0x0011
     CPU_CHARACTERISTICS = 0x0131
     USER_MEMORY_AREAS = 0x0132

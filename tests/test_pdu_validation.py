@@ -94,7 +94,9 @@ class TestPDUValidation:
         assert "unusually large PDU size" in caplog.text
         assert "clamping to protocol maximum" in caplog.text
 
-    def test_validate_pdu_below_recommended(self, caplog: pytest.LogCaptureFixture) -> None:
+    def test_validate_pdu_below_recommended(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
         """Test warning when PDU is below recommended minimum."""
         client = S7Client("192.168.1.1", 0, 1)
 
@@ -113,7 +115,9 @@ class TestPDUValidation:
         assert "may limit functionality" in caplog.text
         assert str(RECOMMENDED_MIN_PDU) in caplog.text
 
-    def test_validate_pdu_significant_reduction(self, caplog: pytest.LogCaptureFixture) -> None:
+    def test_validate_pdu_significant_reduction(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
         """Test info message when PDU is significantly reduced."""
         client = S7Client("192.168.1.1", 0, 1)
 
@@ -125,7 +129,9 @@ class TestPDUValidation:
         assert "reduced by 50%" in caplog.text
         assert "Operations will be automatically adjusted" in caplog.text
 
-    def test_validate_pdu_small_reduction(self, caplog: pytest.LogCaptureFixture) -> None:
+    def test_validate_pdu_small_reduction(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
         """Test no info message for small PDU reductions."""
         client = S7Client("192.168.1.1", 0, 1)
 
@@ -161,7 +167,9 @@ class TestPDUValidation:
         result = client._validate_and_adjust_pdu(960, MAX_PDU_SIZE)
         assert result == MAX_PDU_SIZE
 
-    def test_validate_pdu_increased_from_request(self, caplog: pytest.LogCaptureFixture) -> None:
+    def test_validate_pdu_increased_from_request(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
         """Test that PDU larger than requested is accepted without warning."""
         client = S7Client("192.168.1.1", 0, 1)
 

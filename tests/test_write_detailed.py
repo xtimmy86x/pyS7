@@ -31,7 +31,9 @@ def client() -> S7Client:
 @pytest.fixture(autouse=True)
 def mock_socket_getpeername(monkeypatch: pytest.MonkeyPatch) -> None:
     """Automatically mock socket.getpeername() for all tests."""
-    monkeypatch.setattr("socket.socket.getpeername", lambda self: ("192.168.100.10", 102))
+    monkeypatch.setattr(
+        "socket.socket.getpeername", lambda self: ("192.168.100.10", 102)
+    )
 
 
 class TestWriteDetailed:
@@ -143,7 +145,9 @@ class TestWriteDetailed:
 
     def test_write_detailed_mismatched_lengths(self, client: S7Client) -> None:
         """Test write_detailed with mismatched list lengths raises ValueError."""
-        with pytest.raises(ValueError, match="Tags and values must have the same length"):
+        with pytest.raises(
+            ValueError, match="Tags and values must have the same length"
+        ):
             client.write_detailed(["DB1,I0", "DB1,I2"], [100])
 
     def test_write_detailed_not_connected(self, client: S7Client) -> None:

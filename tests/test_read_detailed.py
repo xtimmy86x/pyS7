@@ -8,7 +8,12 @@ from unittest.mock import MagicMock
 import pytest
 
 from pyS7 import ReadResult, S7Client
-from pyS7.constants import ConnectionState, ConnectionType, DataType, MemoryArea, ReturnCode
+from pyS7.constants import (
+    ConnectionState,
+    ConnectionType,
+    DataType,
+    MemoryArea,
+)
 from pyS7.tag import S7Tag
 
 
@@ -28,7 +33,9 @@ def client() -> S7Client:
 @pytest.fixture(autouse=True)
 def mock_socket_getpeername(monkeypatch: pytest.MonkeyPatch) -> None:
     """Automatically mock socket.getpeername() for all tests."""
-    monkeypatch.setattr("socket.socket.getpeername", lambda self: ("192.168.100.10", 102))
+    monkeypatch.setattr(
+        "socket.socket.getpeername", lambda self: ("192.168.100.10", 102)
+    )
 
 
 class TestReadDetailed:
@@ -52,21 +59,21 @@ class TestReadDetailed:
             # Item 3: INT, 16 bits (6 bytes total)
             b"\xff\x04\x00\x10\x00\x00"  # RC=0xFF, TS=0x04, len=16, data=0x0000
         )
-        
+
         def mock_send(self: S7Client, request: Any) -> bytes:
             return read_response
-        
+
         monkeypatch.setattr("pyS7.client.S7Client._S7Client__send", mock_send)
-        
+
         _set_client_connected(client, MagicMock())
-        
+
         tags = ["DB1,X0.0", "DB1,X0.1", "DB2,I2"]
         results = client.read_detailed(tags, optimize=False)
-        
+
         assert len(results) == 3
         assert all(r.success for r in results)
-        assert results[0].value == True
-        assert results[1].value == True
+        assert results[0].value is True
+        assert results[1].value is True
         assert results[2].value == 0
 
     def test_read_detailed_partial_failure(
@@ -86,20 +93,20 @@ class TestReadDetailed:
             # Item 3: INT success (6 bytes: RC+TS+len+data)
             b"\xff\x04\x00\x10\x00\x64"  # RC=0xFF, TS=0x04, len=16, data=100
         )
-        
+
         def mock_send(self: S7Client, request: Any) -> bytes:
             return read_response
-        
+
         monkeypatch.setattr("pyS7.client.S7Client._S7Client__send", mock_send)
-        
+
         _set_client_connected(client, MagicMock())
-        
+
         tags = ["DB1,X0.0", "DB99,I10", "DB1,I4"]
         results = client.read_detailed(tags, optimize=False)
-        
+
         assert len(results) == 3
         assert results[0].success is True
-        assert results[0].value == True
+        assert results[0].value is True
         assert results[1].success is False
         assert "object_does_not_exist" in results[1].error.lower()
         assert results[2].success is True
@@ -118,33 +125,29 @@ class TestReadDetailed:
             b"\x05\x00"  # Item 1: Error 0x05 + fill
             b"\x05\x00"  # Item 2: Error 0x05 + fill
         )
-        
+
         def mock_send(self: S7Client, request: Any) -> bytes:
             return read_response
-        
+
         monkeypatch.setattr("pyS7.client.S7Client._S7Client__send", mock_send)
-        
+
         _set_client_connected(client, MagicMock())
-        
+
         tags = ["DB99,I0", "DB99,I2"]
         results = client.read_detailed(tags, optimize=False)
-        
+
         assert len(results) == 2
         assert all(not r.success for r in results)
         assert all("out_of_range" in r.error.lower() for r in results)
 
-    def test_read_detailed_empty_tags_raises_error(
-        self, client: S7Client
-    ) -> None:
+    def test_read_detailed_empty_tags_raises_error(self, client: S7Client) -> None:
         """Test that empty tags list raises error."""
         _set_client_connected(client, MagicMock())
-        
+
         with pytest.raises(ValueError, match="Tags list cannot be empty"):
             client.read_detailed([])
 
-    def test_read_detailed_not_connected(
-        self, client: S7Client
-    ) -> None:
+    def test_read_detailed_not_connected(self, client: S7Client) -> None:
         """Test that read_detailed raises error when not connected."""
         # Don't connect
         with pytest.raises(Exception, match="Not connected"):
@@ -161,19 +164,19 @@ class TestReadDetailed:
             b"\xff\x04\x00\x10\x00\x64"  # INT value 100
             b"\xff\x04\x00\x10\x00\xc8"  # INT value 200
         )
-        
+
         def mock_send(self: S7Client, request: Any) -> bytes:
             return read_response
-        
+
         monkeypatch.setattr("pyS7.client.S7Client._S7Client__send", mock_send)
-        
+
         _set_client_connected(client, MagicMock())
-        
+
         tag1 = S7Tag(MemoryArea.DB, 1, DataType.INT, 0, 0, 1)
         tag2 = S7Tag(MemoryArea.DB, 1, DataType.INT, 2, 0, 1)
-        
+
         results = client.read_detailed([tag1, tag2], optimize=False)
-        
+
         assert len(results) == 2
         assert all(r.success for r in results)
         assert results[0].value == 100
@@ -195,17 +198,17 @@ class TestReadDetailed:
             b"\x0a\x00"  # Error 0x0A + fill (2 bytes)
             b"\xff\x04\x00\x10\x00\x14"  # Success INT, value=20 (6 bytes)
         )
-        
+
         def mock_send(self: S7Client, request: Any) -> bytes:
             return read_response
-        
+
         monkeypatch.setattr("pyS7.client.S7Client._S7Client__send", mock_send)
-        
+
         _set_client_connected(client, MagicMock())
-        
+
         tags = ["DB1,I0", "DB1,I2", "DB99,I0", "DB1,I4"]
         results = client.read_detailed(tags, optimize=False)
-        
+
         assert len(results) == 4
         assert results[0].success is True
         assert results[0].value == 10
@@ -224,16 +227,16 @@ class TestReadDetailed:
             b"\x04\x01"  # 1 item
             b"\xff\x04\x00\x10\x00\x2a"  # Success, value=42
         )
-        
+
         def mock_send(self: S7Client, request: Any) -> bytes:
             return read_response
-        
+
         monkeypatch.setattr("pyS7.client.S7Client._S7Client__send", mock_send)
-        
+
         _set_client_connected(client, MagicMock())
-        
+
         results = client.read_detailed(["DB1,I0"], optimize=False)
-        
+
         assert len(results) == 1
         assert results[0].success is True
         assert results[0].value == 42
@@ -252,17 +255,17 @@ class TestReadDetailed:
             b"\xff\x04\x00\x10\x00\x04"  # value=4
             b"\xff\x04\x00\x10\x00\x05"  # value=5
         )
-        
+
         def mock_send(self: S7Client, request: Any) -> bytes:
             return read_response
-        
+
         monkeypatch.setattr("pyS7.client.S7Client._S7Client__send", mock_send)
-        
+
         _set_client_connected(client, MagicMock())
-        
+
         tags = ["DB1,I0", "DB1,I2", "DB1,I4", "DB1,I6", "DB1,I8"]
         results = client.read_detailed(tags, optimize=False)
-        
+
         assert len(results) == 5
         for i, result in enumerate(results, 1):
             assert result.success is True
@@ -283,20 +286,20 @@ class TestReadDetailed:
             b"\xff\x04\x00\x10\x7d\x00"  # INT, value=32000 (6 bytes: RC+TS+len+data)
             b"\xff\x04\x00\x20\x00\x01\x86\xa0"  # DINT, value=100000 (8 bytes: RC+TS+len+data)
         )
-        
+
         def mock_send(self: S7Client, request: Any) -> bytes:
             return read_response
-        
+
         monkeypatch.setattr("pyS7.client.S7Client._S7Client__send", mock_send)
-        
+
         _set_client_connected(client, MagicMock())
-        
+
         tags = ["DB1,X0.0", "DB1,B2", "DB1,I4", "DB1,DI6"]
         results = client.read_detailed(tags, optimize=False)
-        
+
         assert len(results) == 4
         assert all(r.success for r in results)
-        assert results[0].value == True
+        assert results[0].value is True
         assert results[1].value == 255
         assert results[2].value == 32000
         assert results[3].value == 100000
@@ -410,10 +413,13 @@ class TestReadDetailed:
             b"\x02\xf0\x80"
             b"2\x03\x00\x00\x00\x00\x00\x02\x00\x2a\x00\x00"
             b"\x04\x04"
-            b"\xff\x04\x00\x10\x03\x5c"          # DB1,I4  -> 860
+            b"\xff\x04\x00\x10\x03\x5c"  # DB1,I4  -> 860
             b"\xff\x04\x00\x20\x00\x00\x00\x09"  # DB1,DI20 -> 9
-            b"\xff\x04\x00\x80" + lreal_bytes + lreal_extra +  # DB1,LR36 (16 bytes payload)
-            b"\xff\x04\x00\x20" + real_bytes       # DB11,R12
+            b"\xff\x04\x00\x80"
+            + lreal_bytes
+            + lreal_extra  # DB1,LR36 (16 bytes payload)
+            + b"\xff\x04\x00\x20"
+            + real_bytes  # DB11,R12
         )
 
         def mock_send(self: S7Client, request: Any) -> bytes:
@@ -440,7 +446,7 @@ class TestReadResultDataclass:
         """Test ReadResult for successful read."""
         tag = S7Tag(MemoryArea.DB, 1, DataType.INT, 0, 0, 1)
         result = ReadResult(tag=tag, success=True, value=42)
-        
+
         assert result.tag == tag
         assert result.success is True
         assert result.value == 42
@@ -451,12 +457,9 @@ class TestReadResultDataclass:
         """Test ReadResult for failed read."""
         tag = S7Tag(MemoryArea.DB, 1, DataType.INT, 0, 0, 1)
         result = ReadResult(
-            tag=tag,
-            success=False,
-            error="Address not available",
-            error_code=0x0A
+            tag=tag, success=False, error="Address not available", error_code=0x0A
         )
-        
+
         assert result.tag == tag
         assert result.success is False
         assert result.value is None
@@ -467,7 +470,7 @@ class TestReadResultDataclass:
         """Test ReadResult string representation."""
         tag = S7Tag(MemoryArea.DB, 1, DataType.INT, 0, 0, 1)
         result = ReadResult(tag=tag, success=True, value=123)
-        
+
         repr_str = repr(result)
         assert "ReadResult" in repr_str
         assert "success=True" in repr_str
