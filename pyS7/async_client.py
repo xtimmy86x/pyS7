@@ -591,7 +591,9 @@ class AsyncS7Client:
 
                 # Large strings need multiple send/receive cycles.
                 # Release the lock so _read_large_string → read() can reacquire it.
-                for idx, tag in zip(large_string_indices, large_string_tags):
+                for idx, tag in zip(
+                    large_string_indices, large_string_tags, strict=False
+                ):
                     data[idx] = await self._read_large_string_unlocked(tag)
 
                 if regular_tags:
@@ -627,7 +629,9 @@ class AsyncS7Client:
                             rr = ReadResponse(response=resp_bytes, tags=req)
                             regular_data.extend(rr.parse())
 
-                    for (orig_idx, _), value in zip(regular_tags, regular_data):
+                    for (orig_idx, _), value in zip(
+                        regular_tags, regular_data, strict=False
+                    ):
                         data[orig_idx] = value
 
                 if self.metrics and start_time is not None:
@@ -831,7 +835,7 @@ class AsyncS7Client:
                 regular_tags: List[S7Tag] = []
                 regular_values: List[Value] = []
 
-                for tag, value in zip(tags_list, values):
+                for tag, value in zip(tags_list, values, strict=False):
                     req_size = (
                         WRITE_REQ_OVERHEAD + WRITE_REQ_PARAM_SIZE_TAG + tag.size() + 4
                     )
@@ -900,7 +904,7 @@ class AsyncS7Client:
             processed: set[int] = set()
 
             # Large strings
-            for i, (tag, value) in enumerate(zip(tags_list, values)):
+            for i, (tag, value) in enumerate(zip(tags_list, values, strict=False)):
                 req_size = (
                     WRITE_REQ_OVERHEAD + WRITE_REQ_PARAM_SIZE_TAG + tag.size() + 4
                 )
@@ -939,7 +943,7 @@ class AsyncS7Client:
             regular_tags = []
             regular_values = []
             regular_indices = []
-            for i, (tag, val) in enumerate(zip(tags_list, values)):
+            for i, (tag, val) in enumerate(zip(tags_list, values, strict=False)):
                 if i not in processed:
                     regular_tags.append(tag)
                     regular_values.append(val)

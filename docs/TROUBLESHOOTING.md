@@ -98,7 +98,7 @@ S7CommunicationError: The connection has been closed by the peer
    ```python
    if not client.is_connected:
        client.connect()
-   
+
    data = client.read([...])
    ```
 
@@ -141,15 +141,15 @@ Maximum data size for this PDU: 214 bytes (current tag needs 300 bytes).
 2. **For BYTE/WORD/INT arrays - manual chunking:**
    ```python
    from pyS7 import S7Tag, DataType, MemoryArea
-   
+
    # Calculate max array size
    max_data = client.pdu_size - 26  # Account for overhead
    max_ints = max_data // 2  # INT is 2 bytes
-   
+
    # Read in chunks
    chunk1 = client.read([S7Tag(MemoryArea.DB, 1, DataType.INT, 0, 0, max_ints)])
    chunk2 = client.read([S7Tag(MemoryArea.DB, 1, DataType.INT, max_ints*2, 0, remaining)])
-   
+
    # Combine results
    all_data = chunk1[0] + chunk2[0]
    ```
@@ -170,7 +170,7 @@ Maximum data size for this PDU: 214 bytes (current tag needs 300 bytes).
    ```python
    # Instead of one large array
    tags = [S7Tag(MemoryArea.DB, 1, DataType.BYTE, 0, 0, 300)]  # Too large!
-   
+
    # Use multiple smaller arrays
    tags = [
        S7Tag(MemoryArea.DB, 1, DataType.BYTE, 0, 0, 100),
@@ -197,7 +197,7 @@ ValueError: Invalid address format: 'DB1,10'
    "DB1,I10"     # INT
    "DB1,R20"     # REAL
    "DB1,S30.50"  # STRING with length
-   
+
    # Incorrect formats:
    "DB1,10"      # Missing type
    "DB1,X0"      # Missing bit offset
@@ -207,7 +207,7 @@ ValueError: Invalid address format: 'DB1,10'
 2. **Use S7Tag for complex addresses:**
    ```python
    from pyS7 import S7Tag, DataType, MemoryArea
-   
+
    tag = S7Tag(
        memory_area=MemoryArea.DB,
        db_number=1,
@@ -240,10 +240,10 @@ client.write(["DB1,I10"], ["Hello"])  # STRING to INT!
 2. **Check array lengths:**
    ```python
    from pyS7 import S7Tag, DataType, MemoryArea
-   
+
    # Read 5 INTs
    tag = S7Tag(MemoryArea.DB, 1, DataType.INT, 0, 0, 5)
-   
+
    # Write 5 values (as tuple)
    client.write([tag], [(10, 20, 30, 40, 50)])
    ```
@@ -270,7 +270,7 @@ S7CommunicationError: Write operation failed - area may be read-only
    # Verify you can read before writing
    data = client.read(["DB1,I10"])
    print(f"Current value: {data[0]}")
-   
+
    # Then write
    client.write(["DB1,I10"], [123])
    ```
@@ -291,7 +291,7 @@ S7CommunicationError: Write operation failed - area may be read-only
    ```python
    # Good: All in DB1, contiguous
    tags = ["DB1,I0", "DB1,I2", "DB1,I4", "DB1,I6"]
-   
+
    # Less efficient: Different DBs
    tags = ["DB1,I0", "DB5,I0", "DB10,I0"]
    ```
@@ -300,7 +300,7 @@ S7CommunicationError: Write operation failed - area may be read-only
    ```python
    # Efficient: One tag for 10 values
    tag = S7Tag(MemoryArea.DB, 1, DataType.INT, 0, 0, 10)
-   
+
    # Inefficient: 10 separate tags
    tags = [f"DB1,I{i*2}" for i in range(10)]
    ```
@@ -324,12 +324,12 @@ S7CommunicationError: Write operation failed - area may be read-only
    # Good: Reuse connection
    client = S7Client("192.168.1.1", 0, 1)
    client.connect()
-   
+
    for i in range(100):
        data = client.read(["DB1,I0"])
-   
+
    client.disconnect()
-   
+
    # Bad: New connection each time
    for i in range(100):
        client = S7Client("192.168.1.1", 0, 1)
@@ -361,7 +361,7 @@ print(data[0])  # "Hell▒▒▒World"
    ```python
    # ASCII strings (S7-300/400/1200/1500)
    data = client.read(["DB1,S10.20"])  # STRING
-   
+
    # Unicode strings (S7-1200/1500 only)
    data = client.read(["DB1,WS10.20"])  # WSTRING
    ```
@@ -386,7 +386,7 @@ print(data[0])  # "Hell▒▒▒World"
    ```python
    # Single precision (32-bit)
    data = client.read(["DB1,R10"])  # REAL
-   
+
    # Double precision (64-bit)
    data = client.read(["DB1,LR10"])  # LREAL
    ```
@@ -445,7 +445,7 @@ client.write([tag], [(True, False, True, False, True, False, True, False)])
 
 ### Q: What's the difference between optimize=True and optimize=False?
 
-**A:** 
+**A:**
 - `optimize=True` (default): Groups contiguous tags to minimize requests
 - `optimize=False`: Reads each tag separately (slower but more predictable)
 
@@ -454,7 +454,7 @@ client.write([tag], [(True, False, True, False, True, False, True, False)])
 tags = ["DB1,I0", "DB1,I2", "DB1,I4"]
 data = client.read(tags, optimize=True)  # 1 request for all 3
 
-# Without optimization  
+# Without optimization
 data = client.read(tags, optimize=False)  # 3 separate requests
 ```
 

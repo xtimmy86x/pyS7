@@ -52,7 +52,7 @@ else:
 2. ❌ SZL 0x001C (Component Identification): Returns error code `0x85` (not supported on S7-1200)
 3. ❌ Firmware field in SZL 0x0011: Contains spaces (`0x20 0x20`), not version data
 
-**Conclusion**: 
+**Conclusion**:
 - The firmware version `V 4.5.2` shown in TIA Portal likely comes from:
   - The project file (user configuration)
   - A different SZL ID not universally supported (e.g., 0x001C, 0x0F12)

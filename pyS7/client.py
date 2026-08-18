@@ -1171,7 +1171,9 @@ class S7Client:
                 data: List[Optional[Value]] = [None] * len(list_tags)
 
                 # Read large strings separately with chunking
-                for idx, tag in zip(large_string_indices, large_string_tags):
+                for idx, tag in zip(
+                    large_string_indices, large_string_tags, strict=False
+                ):
                     data[idx] = self._read_large_string(tag)
 
                 # Read regular tags if any
@@ -1216,7 +1218,9 @@ class S7Client:
                             regular_data.extend(read_response.parse())
 
                     # Fill in regular data at correct indices
-                    for (orig_idx, _), value in zip(regular_tags, regular_data):
+                    for (orig_idx, _), value in zip(
+                        regular_tags, regular_data, strict=False
+                    ):
                         data[orig_idx] = value
 
                 # All elements have been filled at this point (either large strings or regular tags)
@@ -1388,7 +1392,7 @@ class S7Client:
 
                         # Parse responses with detailed error handling
                         for bytes_response, request in zip(
-                            all_bytes_responses, all_requests
+                            all_bytes_responses, all_requests, strict=False
                         ):
                             request_map = {
                                 key: tags_map[key] for key in request if key in tags_map
@@ -1526,7 +1530,7 @@ class S7Client:
                 regular_values = []
                 large_string_indices = []
 
-                for i, (tag, value) in enumerate(zip(tags_list, values)):
+                for i, (tag, value) in enumerate(zip(tags_list, values, strict=False)):
                     # Check if tag request exceeds PDU size
                     tag_request_size = (
                         WRITE_REQ_OVERHEAD + WRITE_REQ_PARAM_SIZE_TAG + tag.size() + 4
@@ -1651,7 +1655,7 @@ class S7Client:
             processed_indices = set()
 
             # Handle large strings separately
-            for i, (tag, value) in enumerate(zip(tags_list, values)):
+            for i, (tag, value) in enumerate(zip(tags_list, values, strict=False)):
                 tag_request_size = (
                     WRITE_REQ_OVERHEAD + WRITE_REQ_PARAM_SIZE_TAG + tag.size() + 4
                 )
@@ -1699,7 +1703,7 @@ class S7Client:
             regular_values = []
             regular_indices = []
 
-            for i, (tag, value) in enumerate(zip(tags_list, values)):
+            for i, (tag, value) in enumerate(zip(tags_list, values, strict=False)):
                 if i not in processed_indices:
                     regular_tags.append(tag)
                     regular_values.append(value)

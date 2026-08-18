@@ -327,14 +327,14 @@ from pyS7 import S7Client
 def worker(thread_id, plc_ip):
     # Each thread gets its own client instance
     client = S7Client(plc_ip, 0, 1)
-    
+
     try:
         client.connect()
-        
+
         # Read data specific to this thread
         data = client.read([f"DB{thread_id},I0"])
         print(f"Thread {thread_id}: {data}")
-        
+
     finally:
         client.disconnect()
 
@@ -367,23 +367,23 @@ class S7WorkerPool:
         self.plc_ip = plc_ip
         self.task_queue = queue.Queue()
         self.workers = []
-        
+
         for i in range(num_workers):
             worker = threading.Thread(target=self._worker, args=(i,))
             worker.daemon = True
             worker.start()
             self.workers.append(worker)
-    
+
     def _worker(self, worker_id):
         client = S7Client(self.plc_ip, 0, 1)
         client.connect()
-        
+
         try:
             while True:
                 task = self.task_queue.get()
                 if task is None:  # Shutdown signal
                     break
-                
+
                 try:
                     result = client.read(task['tags'])
                     task['callback'](result)
@@ -393,10 +393,10 @@ class S7WorkerPool:
                     self.task_queue.task_done()
         finally:
             client.disconnect()
-    
+
     def submit(self, tags, callback):
         self.task_queue.put({'tags': tags, 'callback': callback})
-    
+
     def shutdown(self):
         for _ in self.workers:
             self.task_queue.put(None)

@@ -64,7 +64,7 @@ with S7Client(address="192.168.5.100", rack=0, slot=1) as client:
         "QR24",         # REAL at byte 24 of output area
         "DB1,S10.5"     # String of 5 characters at byte 10 of DB1
     ]
-    
+
     data = client.read(tags)
     print(data)  # [True, -50, 200, 123, True, 10, 3.14, 'Hello']
 ```
@@ -77,7 +77,7 @@ from pyS7 import S7Client
 with S7Client(address="192.168.5.100", rack=0, slot=1) as client:
     tags = ["DB1,X0.0", "DB1,SINT20", "DB1,USINT21", "DB1,I30", "DB1,R40", "DB1,S10.5"]
     values = [True, -50, 200, 25000, 1.2345, "Hello"]
-    
+
     client.write(tags, values)
 ```
 
@@ -89,18 +89,18 @@ from pyS7 import S7Client
 with S7Client(address="192.168.5.100", rack=0, slot=1) as client:
     # read_detailed() continues on errors, returns per-tag results
     results = client.read_detailed(["DB1,I0", "DB99,I0", "DB1,R4"])
-    
+
     for result in results:
         if result.success:
             print(f"{result.tag}: {result.value}")
         else:
             print(f"{result.tag} failed: {result.error}")
-    
+
     # write_detailed() provides per-tag success/failure info
     tags = ["DB1,I0", "DB1,I2", "DB99,I0"]
     values = [100, 200, 300]
     write_results = client.write_detailed(tags, values)
-    
+
     for result in write_results:
         if result.success:
             print(f"✓ {result.tag}: Written")
@@ -120,12 +120,12 @@ with S7Client(address="192.168.5.100", rack=0, slot=1) as client:
         batch.add("DB1,I2", 200)
         batch.add("DB1,R4", 3.14)
         # Auto-commits on exit, rolls back on error
-    
+
     # Or with explicit control
     batch = client.batch_write(auto_commit=False)
     batch.add("DB1,I0", 100)
     batch.add("DB1,I2", 200)
-    
+
     try:
         batch.commit()  # Write and verify
     except Exception as e:

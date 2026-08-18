@@ -75,7 +75,7 @@ if status == "RUN":
     # Safe to perform read/write operations
     data = client.read(["DB1,I0", "DB1,R4"])
     print(f"Data: {data}")
-    
+
     client.write(["DB1,I0"], [42])
     print("Write successful")
 else:

@@ -193,10 +193,10 @@ Complete table mapping pyS7 addresses to Step7/TIA Portal equivalents:
 
 ### STRING (ASCII)
 
-**Encoding**: ASCII (1 byte per character)  
-**Max length**: 254 characters  
-**Size**: length + 2 bytes (header)  
-**PLC compatibility**: S7-300/400/1200/1500  
+**Encoding**: ASCII (1 byte per character)
+**Max length**: 254 characters
+**Size**: length + 2 bytes (header)
+**PLC compatibility**: S7-300/400/1200/1500
 
 **Address format**: `DB<n>,S<offset>.<length>`
 
@@ -224,10 +224,10 @@ values = client.read(tags)  # Complete string returned transparently
 
 ### WSTRING (Unicode)
 
-**Encoding**: UTF-16 BE (2 bytes per character)  
-**Max length**: 254 characters  
-**Size**: (length × 2) + 4 bytes (header)  
-**PLC compatibility**: S7-1200/1500 (NOT available on S7-300/400)  
+**Encoding**: UTF-16 BE (2 bytes per character)
+**Max length**: 254 characters
+**Size**: (length × 2) + 4 bytes (header)
+**PLC compatibility**: S7-1200/1500 (NOT available on S7-300/400)
 
 **Address format**: `DB<n>,WS<offset>.<length>`
 
@@ -245,7 +245,7 @@ tags = ["DB1,WS100.30"]  # WSTRING at byte 100, max 30 chars
 values = client.read(tags)
 print(values[0])  # "Hello 世界! 🌍"
 
-# Write Unicode string  
+# Write Unicode string
 client.write(["DB1,WS100.30"], ["Café Müller 東京"])
 
 # Automatic chunking for large WSTRING
@@ -300,9 +300,9 @@ def safe_string_write(client, tag, value, max_length):
     if len(value) > max_length:
         print(f"Warning: Truncating string from {len(value)} to {max_length} chars")
         value = value[:max_length]
-    
+
     client.write([tag], [value])
-    
+
     # Verify
     readback = client.read([tag])[0]
     if readback != value:
@@ -320,7 +320,7 @@ Read multiple tags with per-tag error handling. Unlike `read()` which fails fast
 **Signature:**
 ```python
 def read_detailed(
-    tags: Sequence[Union[str, S7Tag]], 
+    tags: Sequence[Union[str, S7Tag]],
     optimize: bool = True
 ) -> List[ReadResult]
 ```
@@ -347,7 +347,7 @@ with S7Client(address="192.168.5.100", rack=0, slot=1) as client:
     # Some tags may fail (e.g., DB99 doesn't exist)
     tags = ["DB1,I0", "DB99,I0", "DB1,R4", "DB1,X8.0"]
     results = client.read_detailed(tags)
-    
+
     for result in results:
         if result.success:
             print(f"✓ {result.tag}: {result.value}")
@@ -355,14 +355,14 @@ with S7Client(address="192.168.5.100", rack=0, slot=1) as client:
             print(f"✗ {result.tag}: {result.error}")
             if result.error_code:
                 print(f"  Error code: 0x{result.error_code:02X}")
-    
+
     # Collect only successful values
     successful_data = {
-        str(r.tag): r.value 
-        for r in results 
+        str(r.tag): r.value
+        for r in results
         if r.success
     }
-    
+
     # Retry only failed reads
     failed_tags = [str(r.tag) for r in results if not r.success]
     if failed_tags:
@@ -385,7 +385,7 @@ Write multiple tags with per-tag error handling. Unlike `write()` which fails fa
 **Signature:**
 ```python
 def write_detailed(
-    tags: Sequence[Union[str, S7Tag]], 
+    tags: Sequence[Union[str, S7Tag]],
     values: Sequence[Value]
 ) -> List[WriteResult]
 ```
@@ -410,9 +410,9 @@ from pyS7 import S7Client
 with S7Client(address="192.168.5.100", rack=0, slot=1) as client:
     tags = ["DB1,I0", "DB1,R4", "DB99,I0", "DB1,X8.0"]
     values = [100, 3.14, 200, True]
-    
+
     results = client.write_detailed(tags, values)
-    
+
     success_count = 0
     for i, result in enumerate(results):
         if result.success:
@@ -420,9 +420,9 @@ with S7Client(address="192.168.5.100", rack=0, slot=1) as client:
             success_count += 1
         else:
             print(f"✗ {tags[i]}: {result.error}")
-    
+
     print(f"\nSuccess rate: {success_count}/{len(results)}")
-    
+
     # Retry only failed writes
     failed_indices = [i for i, r in enumerate(results) if not r.success]
     if failed_indices:
@@ -476,12 +476,12 @@ with S7Client(address="192.168.5.100", rack=0, slot=1) as client:
         batch.add("DB1,R4", 3.14)
         # Automatically commits on exit
         # Rolls back on any error
-    
+
     # Manual mode (explicit control)
     batch = client.batch_write(auto_commit=False)
     batch.add("DB1,I0", 100)
     batch.add("DB1,I2", 200)
-    
+
     try:
         batch.commit()  # Write and verify
         print("Batch write successful")
@@ -489,20 +489,20 @@ with S7Client(address="192.168.5.100", rack=0, slot=1) as client:
         print(f"Batch write failed: {e}")
         batch.rollback()  # Restore original values
         print("Rolled back to original values")
-    
+
     # Method chaining
     batch = client.batch_write(auto_commit=False)
     (batch
         .add("DB1,I0", 100)
         .add("DB1,I2", 200)
         .add("DB1,R4", 3.14))
-    
+
     batch.commit()
 ```
 
 **Behavior:**
 1. `add()`: Stores tag/value pairs (no PLC communication)
-2. `commit()`: 
+2. `commit()`:
    - Reads original values from PLC
    - Writes new values to PLC
    - Reads back to verify
@@ -769,7 +769,7 @@ class PLCUptimeSensor(SensorEntity):
     @property
     def state(self):
         return self.client.metrics.connection_uptime
-    
+
     @property
     def unit_of_measurement(self):
         return "s"

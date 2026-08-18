@@ -61,7 +61,7 @@ Implemented 3 Priority 1 optimizations:
 - `tag.size()` calls: **50,000** (1x per tag, cached)
 - Function calls: **152,354** (down from 402,204, -62%)
 
-**Why:** 
+**Why:**
 1. Caching eliminates repeated size calculations
 2. Storing result in local variable avoids duplicate calls
 3. Lookup table removes enum hashing

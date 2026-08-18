@@ -57,13 +57,13 @@ def _check_type(value_type: type, expected_type: type) -> bool:
 def __post_init__(self) -> None:
     # Raccolta errori invece di fail-fast
     errors = []
-    
+
     if not isinstance(self.memory_area, MemoryArea):
         errors.append(f"memory_area must be MemoryArea, got {type(self.memory_area)}")
     if not isinstance(self.data_type, DataType):
         errors.append(f"data_type must be DataType, got {type(self.data_type)}")
     # ... altri check
-    
+
     if errors:
         raise ValueError("; ".join(errors))
 ```
@@ -131,12 +131,12 @@ def size(self) -> int:
 class S7Tag:
     # ...
     _cached_size: int = field(default=None, init=False, repr=False)
-    
+
     def size(self) -> int:
         if self._cached_size is None:
             self._cached_size = self._calculate_size()
         return self._cached_size
-    
+
     def _calculate_size(self) -> int:
         # Logica attuale di size()
         ...
@@ -162,7 +162,7 @@ for tag in tags:
 
 ### Priority 1: Immediate Impact (Effort: Low, Gain: High)
 
-1. **Cache tag.size()** 
+1. **Cache tag.size()**
    - Impatto: -35-40% su prepare_requests
    - Effort: 30 minuti
    - Rischio: Basso

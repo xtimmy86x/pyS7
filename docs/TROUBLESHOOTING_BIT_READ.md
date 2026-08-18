@@ -68,7 +68,7 @@ Bits are numbered from 0-7 within a byte, where:
 
 Example: For byte value `0b00000100` (decimal 4):
 - Bit 0 = 0 (False)
-- Bit 1 = 0 (False)  
+- Bit 1 = 0 (False)
 - Bit 2 = 1 (True)   ← This is the bit that was causing the error
 - Bit 3 = 0 (False)
 - ... and so on

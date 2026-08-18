@@ -262,14 +262,14 @@ def example_7_performance_comparison():
 
         # Individual writes
         start = time.time()
-        for tag, value in zip(tags, values):
+        for tag, value in zip(tags, values, strict=False):
             client.write([tag], [value])
         individual_time = time.time() - start
 
         # Batch write
         start = time.time()
         with client.batch_write() as batch:
-            for tag, value in zip(tags, values):
+            for tag, value in zip(tags, values, strict=False):
                 batch.add(tag, value)
         batch_time = time.time() - start
 

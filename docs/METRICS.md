@@ -22,12 +22,12 @@ pyS7 includes a lightweight, zero-dependency metrics collection system that trac
 
 ### Key Features
 
-✅ **Property-based API** - Access metrics as simple properties  
-✅ **Thread-safe** - Concurrent access protected by locks  
-✅ **Zero dependencies** - Pure Python implementation  
-✅ **Optional** - Enable/disable via parameter (enabled by default)  
-✅ **Export-friendly** - Convert to dict for logging/monitoring systems  
-✅ **Home Assistant ready** - Direct integration with HA sensors  
+✅ **Property-based API** - Access metrics as simple properties
+✅ **Thread-safe** - Concurrent access protected by locks
+✅ **Zero dependencies** - Pure Python implementation
+✅ **Optional** - Enable/disable via parameter (enabled by default)
+✅ **Export-friendly** - Convert to dict for logging/monitoring systems
+✅ **Home Assistant ready** - Direct integration with HA sensors
 
 ## Quick Start
 
@@ -161,7 +161,7 @@ client.connect()
 while True:
     try:
         data = client.read(["DB1,I0", "DB1,R4"])
-        
+
         # Print metrics every 10 operations
         if client.metrics.total_operations % 10 == 0:
             print(f"\n=== Metrics Report ===")
@@ -170,9 +170,9 @@ while True:
             print(f"Success rate: {client.metrics.success_rate:.1f}%")
             print(f"Avg read time: {client.metrics.avg_read_duration*1000:.1f}ms")
             print(f"Throughput: {client.metrics.operations_per_minute:.1f} ops/min")
-        
+
         time.sleep(1)
-    
+
     except KeyboardInterrupt:
         break
 
@@ -238,25 +238,25 @@ def check_plc_health(client: S7Client) -> bool:
     """Check if PLC connection is healthy."""
     if not client.metrics:
         return True  # Metrics disabled, can't check
-    
+
     metrics = client.metrics
-    
+
     # Check connection
     if not metrics.connected:
         print("❌ Not connected")
         return False
-    
+
     # Check error rate (allow up to 5%)
     if metrics.error_rate > 5.0:
         print(f"⚠️ High error rate: {metrics.error_rate:.1f}%")
         return False
-    
+
     # Check response time (under 100ms average)
     avg_duration = (metrics.avg_read_duration + metrics.avg_write_duration) / 2
     if avg_duration > 0.1:
         print(f"⚠️ Slow response: {avg_duration*1000:.1f}ms average")
         return False
-    
+
     print(f"✅ Healthy - {metrics.success_rate:.1f}% success, "
           f"{avg_duration*1000:.1f}ms avg response")
     return True
@@ -329,18 +329,18 @@ from pyS7 import S7Client
 
 class PLCMetricsSensor(SensorEntity):
     """Home Assistant sensor for PLC metrics."""
-    
+
     def __init__(self, client: S7Client, metric_name: str):
         self._client = client
         self._metric_name = metric_name
         self._attr_name = f"PLC {metric_name}"
-    
+
     @property
     def state(self):
         """Return the state of the sensor."""
         if not self._client.metrics:
             return None
-        
+
         metric_map = {
             "uptime": self._client.metrics.connection_uptime,
             "success_rate": self._client.metrics.success_rate,
@@ -348,9 +348,9 @@ class PLCMetricsSensor(SensorEntity):
             "operations": self._client.metrics.total_operations,
             "avg_read_ms": self._client.metrics.avg_read_duration * 1000,
         }
-        
+
         return metric_map.get(self._metric_name)
-    
+
     @property
     def unit_of_measurement(self):
         """Return the unit of measurement."""
@@ -389,15 +389,15 @@ def update_prometheus_metrics(client: S7Client):
     """Update Prometheus metrics from pyS7 client."""
     if not client.metrics:
         return
-    
+
     metrics = client.metrics
-    
+
     # Update gauges
     plc_uptime.set(metrics.connection_uptime)
     plc_success_rate.set(metrics.success_rate)
     plc_avg_duration.labels(type='read').set(metrics.avg_read_duration)
     plc_avg_duration.labels(type='write').set(metrics.avg_write_duration)
-    
+
     # Note: Counters should only increase, so track the delta
     # You'd need to store previous values and update with the difference
 
@@ -423,13 +423,13 @@ client.connect()
 
 while True:
     metrics = client.metrics.as_dict()
-    
+
     # Add timestamp
     metrics['timestamp'] = time.time()
-    
+
     # Send to your time-series DB (InfluxDB, TimescaleDB, etc.)
     # influxdb_client.write_point("plc_metrics", metrics)
-    
+
     time.sleep(10)  # Collect every 10 seconds
 ```
 
@@ -443,7 +443,7 @@ Focus on metrics that indicate health and performance:
 def get_health_summary(client: S7Client) -> dict:
     """Get key health indicators."""
     m = client.metrics
-    
+
     return {
         "connected": m.connected,
         "uptime_minutes": m.connection_uptime / 60,
@@ -469,17 +469,17 @@ THRESHOLDS = {
 def check_thresholds(metrics, thresholds):
     """Check if any thresholds are exceeded."""
     alerts = []
-    
+
     if metrics.success_rate < thresholds["min_success_rate"]:
         alerts.append(f"Low success rate: {metrics.success_rate:.1f}%")
-    
+
     if metrics.error_rate > thresholds["max_error_rate"]:
         alerts.append(f"High error rate: {metrics.error_rate:.1f}%")
-    
+
     avg_duration = (metrics.avg_read_duration + metrics.avg_write_duration) / 2
     if avg_duration > thresholds["max_avg_duration"]:
         alerts.append(f"Slow response: {avg_duration*1000:.1f}ms")
-    
+
     return alerts
 ```
 
@@ -494,40 +494,40 @@ from datetime import datetime
 def generate_report(client: S7Client, filename: str):
     """Generate metrics report."""
     m = client.metrics
-    
+
     report = f"""
     PLC Metrics Report
     Generated: {datetime.now().isoformat()}
-    
+
     Connection:
     - Status: {'Connected' if m.connected else 'Disconnected'}
     - Uptime: {m.connection_uptime:.1f}s
     - Connections: {m.connection_count}
     - Disconnections: {m.disconnection_count}
-    
+
     Operations:
     - Total: {m.total_operations}
     - Reads: {m.read_count} ({m.read_errors} errors)
     - Writes: {m.write_count} ({m.write_errors} errors)
     - Timeouts: {m.timeout_errors}
-    
+
     Performance:
     - Success rate: {m.success_rate:.2f}%
     - Error rate: {m.error_rate:.2f}%
     - Avg read time: {m.avg_read_duration*1000:.2f}ms
     - Avg write time: {m.avg_write_duration*1000:.2f}ms
     - Throughput: {m.operations_per_minute:.1f} ops/min
-    
+
     Data Transfer:
     - Bytes read: {m.total_bytes_read:,}
     - Bytes written: {m.total_bytes_written:,}
     - Avg read size: {m.avg_bytes_per_read:.0f} bytes
     - Avg write size: {m.avg_bytes_per_write:.0f} bytes
     """
-    
+
     with open(filename, 'w') as f:
         f.write(report)
-    
+
     print(f"Report saved to {filename}")
 ```
 

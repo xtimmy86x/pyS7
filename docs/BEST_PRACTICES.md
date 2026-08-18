@@ -44,10 +44,10 @@ client = S7Client("192.168.5.100", 0, 1)
 
 try:
     client.connect()
-    
+
     # Your operations
     data = client.read(["DB1,I0"])
-    
+
 finally:
     # Always disconnect, even if errors occur
     if client.is_connected:
@@ -108,20 +108,20 @@ import threading
 class S7ConnectionPool:
     def __init__(self, plc_ip, rack, slot, pool_size=5):
         self.pool = queue.Queue(maxsize=pool_size)
-        
+
         # Create pool of connections
         for _ in range(pool_size):
             client = S7Client(plc_ip, rack, slot)
             client.connect()
             self.pool.put(client)
-    
+
     def get_client(self, timeout=5):
         """Get a client from the pool."""
         try:
             return self.pool.get(timeout=timeout)
         except queue.Empty:
             raise RuntimeError("No available connections in pool")
-    
+
     def return_client(self, client):
         """Return a client to the pool."""
         if client.is_connected:
@@ -130,7 +130,7 @@ class S7ConnectionPool:
             # Reconnect before returning
             client.connect()
             self.pool.put(client)
-    
+
     def close_all(self):
         """Close all connections in pool."""
         while not self.pool.empty():
@@ -169,28 +169,28 @@ from pyS7 import (
 try:
     client = S7Client("192.168.5.100", 0, 1)
     client.connect()
-    
+
     data = client.read(["DB1,I0"])
-    
+
 except S7ConnectionError as e:
     # Connection failed (network issues, wrong IP, etc.)
     print(f"Cannot connect to PLC: {e}")
     # Maybe try backup PLC?
-    
+
 except S7CommunicationError as e:
     # Communication error after connection (timeout, disconnect)
     print(f"Communication lost: {e}")
     # Maybe reconnect and retry?
-    
+
 except S7AddressError as e:
     # Invalid address or tag configuration
     print(f"Invalid tag: {e}")
     # Fix the address in code
-    
+
 except Exception as e:
     # Catch-all for unexpected errors
     print(f"Unexpected error: {e}")
-    
+
 finally:
     # Always cleanup
     if 'client' in locals() and client.is_connected:
@@ -207,24 +207,24 @@ from pyS7 import S7Client, S7CommunicationError
 
 def robust_read(plc_ip, rack, slot, tags, max_retries=3, backoff=2):
     """Read with exponential backoff retry."""
-    
+
     for attempt in range(max_retries):
         client = None
         try:
             client = S7Client(plc_ip, rack, slot)
             client.connect()
             return client.read(tags)
-            
+
         except S7CommunicationError as e:
             if attempt == max_retries - 1:
                 # Last attempt failed
                 raise RuntimeError(f"Failed after {max_retries} attempts") from e
-            
+
             # Wait with exponential backoff
             wait_time = backoff ** attempt
             print(f"Attempt {attempt + 1} failed. Retrying in {wait_time}s...")
             time.sleep(wait_time)
-            
+
         finally:
             if client and client.is_connected:
                 client.disconnect()
@@ -244,15 +244,15 @@ from pyS7 import S7Client
 
 def safe_write(client, tags, values):
     """Write with validation."""
-    
+
     # Validate inputs
     if len(tags) != len(values):
         raise ValueError(f"Tag count ({len(tags)}) != value count ({len(values)})")
-    
+
     # Validate connection
     if not client.is_connected:
         raise RuntimeError("Client not connected")
-    
+
     # Perform write
     client.write(tags, values)
 ```
@@ -295,18 +295,18 @@ with S7Client("192.168.5.100", 0, 1) as client:
     # Continue even if some tags fail
     tags = ["DB1,I0", "DB99,I0", "DB1,R4"]  # DB99 may not exist
     results = client.read_detailed(tags)
-    
+
     # Process each result individually
     successful_data = {}
     failed_tags = []
-    
+
     for result in results:
         if result.success:
             successful_data[str(result.tag)] = result.value
         else:
             failed_tags.append((str(result.tag), result.error))
             print(f"Failed: {result.tag} - {result.error}")
-    
+
     # Retry only failed tags
     if failed_tags:
         retry_tags = [tag for tag, _ in failed_tags]
@@ -314,7 +314,7 @@ with S7Client("192.168.5.100", 0, 1) as client:
         for result in retry_results:
             if result.success:
                 successful_data[str(result.tag)] = result.value
-    
+
     print(f"Collected {len(successful_data)} values from {len(tags)} tags")
 ```
 
@@ -345,7 +345,7 @@ with S7Client("192.168.5.100", 0, 1) as client:
             # Auto-commits on exit
             # Rolls back to original values on any error
         print("All writes succeeded and verified")
-    
+
     except Exception as e:
         print(f"Batch write failed and rolled back: {e}")
         # Original values automatically restored
@@ -371,19 +371,19 @@ with S7Client("192.168.5.100", 0, 1) as client:
 | Single critical value | `write()` | Simple, clear |
 | Testing new configuration | `batch_write()` | Auto cleanup on error |
 
-    
+
     # Check connection
     if not client.is_connected:
         raise RuntimeError("Client not connected")
-    
+
     # Check CPU status for critical operations
     status = client.get_cpu_status()
     if status != "RUN":
         raise RuntimeError(f"PLC not in RUN mode (current: {status})")
-    
+
     # Perform write
     client.write(tags, values)
-    
+
     # Verify write (read back)
     readback = client.read(tags)
     for i, (expected, actual) in enumerate(zip(values, readback)):
@@ -424,19 +424,19 @@ from pyS7 import S7Client, S7Tag
 
 def read_sensor_data(client: S7Client) -> Tuple[int, float, bool]:
     """Read temperature, pressure, and alarm status."""
-    
+
     tags: List[str] = [
         "DB1,I0",    # Temperature (INT)
         "DB1,R2",    # Pressure (REAL)
         "DB1,X6.0"   # Alarm (BOOL)
     ]
-    
+
     data = client.read(tags)
-    
+
     temperature: int = data[0]
     pressure: float = data[1]
     alarm: bool = data[2]
-    
+
     return temperature, pressure, alarm
 
 # Usage with type checking
@@ -452,16 +452,16 @@ from pyS7 import S7Client
 
 def read_validated_int(client: S7Client, tag: str, min_val: int, max_val: int) -> int:
     """Read INT with range validation."""
-    
+
     data = client.read([tag])
     value = data[0]
-    
+
     if not isinstance(value, int):
         raise TypeError(f"Expected int, got {type(value)}")
-    
+
     if not (min_val <= value <= max_val):
         raise ValueError(f"Value {value} out of range [{min_val}, {max_val}]")
-    
+
     return value
 
 # Usage
@@ -531,15 +531,15 @@ class PLCInterface:
     def __init__(self, client: S7Client):
         self.client = client
         self._cpu_info = None  # Cache
-    
+
     def get_cpu_info(self, use_cache=True):
         """Get CPU info (cached)."""
         if use_cache and self._cpu_info is not None:
             return self._cpu_info
-        
+
         self._cpu_info = self.client.get_cpu_info()
         return self._cpu_info
-    
+
     def read_dynamic_data(self):
         """Always read fresh."""
         return self.client.read(["DB1,I0", "DB1,R2"])
@@ -547,10 +547,10 @@ class PLCInterface:
 # Usage
 with S7Client("192.168.5.100", 0, 1) as client:
     plc = PLCInterface(client)
-    
+
     info = plc.get_cpu_info()  # Reads from PLC
     info2 = plc.get_cpu_info()  # Returns cached
-    
+
     data = plc.read_dynamic_data()  # Always fresh
 ```
 
@@ -596,7 +596,7 @@ class PLCConfig:
     def __init__(self, config_file: Path):
         with open(config_file) as f:
             self.config = json.load(f)
-    
+
     def create_client(self):
         """Create client from configuration."""
         return S7Client(
@@ -606,7 +606,7 @@ class PLCConfig:
             timeout=self.config['plc'].get('timeout', 5.0),
             pdu_size=self.config['plc'].get('pdu_size', 960)
         )
-    
+
     def get_tags(self, group: str):
         """Get tag list by group."""
         return self.config['tags'][group]
@@ -644,7 +644,7 @@ class PLCHealthMonitor:
         self.slot = slot
         self.last_success = None
         self.error_count = 0
-    
+
     def check_health(self) -> dict:
         """Check PLC health status."""
         result = {
@@ -654,41 +654,41 @@ class PLCHealthMonitor:
             'error': None,
             'last_success': self.last_success
         }
-        
+
         client = None
         try:
             client = S7Client(self.plc_ip, self.rack, self.slot, timeout=2.0)
             client.connect()
-            
+
             result['connected'] = True
             result['status'] = client.get_cpu_status()
             result['pdu_size'] = client.pdu_size
-            
+
             self.last_success = time.time()
             self.error_count = 0
-            
+
         except Exception as e:
             result['error'] = str(e)
             self.error_count += 1
-            
+
         finally:
             if client and client.is_connected:
                 client.disconnect()
-        
+
         return result
-    
+
     def is_healthy(self, max_errors=3) -> bool:
         """Check if PLC is considered healthy."""
         if self.error_count >= max_errors:
             return False
-        
+
         if self.last_success is None:
             return False
-        
+
         # Consider unhealthy if no success in last 60 seconds
         if time.time() - self.last_success > 60:
             return False
-        
+
         return True
 
 # Usage in monitoring loop
@@ -697,10 +697,10 @@ monitor = PLCHealthMonitor("192.168.5.100", 0, 1)
 while True:
     health = monitor.check_health()
     print(f"Health: {health}")
-    
+
     if not monitor.is_healthy():
         print("Alert: PLC unhealthy!")
-    
+
     time.sleep(10)  # Check every 10 seconds
 ```
 
@@ -715,30 +715,30 @@ class PLCApplication:
     def __init__(self):
         self.client = None
         self.running = True
-        
+
         # Register signal handlers
         signal.signal(signal.SIGINT, self._signal_handler)
         signal.signal(signal.SIGTERM, self._signal_handler)
-    
+
     def _signal_handler(self, signum, frame):
         """Handle shutdown signals."""
         print(f"Received signal {signum}, shutting down...")
         self.running = False
-    
+
     def run(self):
         """Main application loop."""
         self.client = S7Client("192.168.5.100", 0, 1)
-        
+
         try:
             self.client.connect()
             print("Connected to PLC")
-            
+
             while self.running:
                 # Your application logic
                 data = self.client.read(["DB1,I0"])
                 print(f"Data: {data}")
                 time.sleep(1)
-                
+
         finally:
             if self.client and self.client.is_connected:
                 print("Disconnecting from PLC...")
