@@ -4,7 +4,7 @@
 
 <br/>
 
-pyS7 is a lightweight, pure Python library that implements the Siemens S7 communication protocol over ISO-on-TCP (RFC1006). It enables direct communication with Siemens S7-200, S7-300, S7-400, S7-1200, and S7-1500 PLCs from Python applications.
+pyS7 is a lightweight, pure Python library that implements the Siemens S7 communication protocol over ISO-on-TCP (RFC1006). It provides operations for S7-200, S7-300, S7-400, S7-1200, and S7-1500 PLC families; actual compatibility depends on CPU and PLC configuration.
 
 **Production/Stable** • **2x Performance** • **Fully Tested**
 
@@ -26,7 +26,7 @@ pyS7 is a lightweight, pure Python library that implements the Siemens S7 commun
 - **Automatic chunking** – Transparently splits large STRING/WSTRING reads exceeding PDU size
 - **CPU diagnostics** – Read PLC status (RUN/STOP) and information (model, firmware) via SZL protocol
 - **Broad compatibility** – Supports S7-200/300/400/1200/1500 series
-- **Production Ready** – 322 tests, 82% coverage, strict type checking
+- **Validated protocol core** – Extensive automated tests and strict type checking
 
 ## Safety Notice
 
@@ -35,6 +35,9 @@ Industrial safety must always remain your top priority. By using pyS7 you accept
 ## Installation
 
 Requires Python 3.11 or later.
+
+Preparing to upgrade from 2.x? Read the [3.0 migration guide](docs/MIGRATION_3_0.md)
+and the evidence-based [compatibility matrix](docs/COMPATIBILITY.md).
 
 ```bash
 pip install pys7
@@ -204,7 +207,7 @@ tags = ["DB1,S10.20"]  # STRING at byte 10, max 20 chars
 data = client.read(tags)
 print(data[0])  # "Hello World"
 
-# WSTRING (Unicode) - S7-1200/1500 only
+# WSTRING (UTF-16-BE; PLC support/configuration dependent)
 tags = ["DB1,WS100.30"]  # WSTRING at byte 100, max 30 chars
 data = client.read(tags)
 print(data[0])  # "Hello 世界! 🌍"
@@ -250,6 +253,9 @@ See [docs/METRICS.md](docs/METRICS.md) for complete metrics documentation and in
 
 ### Guides
 
+- **[Migrating from 2.x to 3.0](docs/MIGRATION_3_0.md)** – Breaking changes and practical checklist
+- **[Compatibility](docs/COMPATIBILITY.md)** – Python, PLC, configuration, and testing evidence
+- **[Draft 3.0 release notes](docs/RELEASE_NOTES_3_0.md)** – Upcoming release highlights
 - **[API Reference](docs/API_REFERENCE.md)** – Data types, address formats, supported operations
 - **[Advanced Usage](docs/ADVANCED_USAGE.md)** – TSAP connections, PDU tuning, chunking, async client, multi-threading
 - **[Metrics and Telemetry](docs/METRICS.md)** – Performance monitoring, diagnostics, integration patterns
@@ -287,7 +293,6 @@ Example scripts in the [`examples/`](examples/) directory demonstrate:
 - `manage_reconnection.py` – Connection handling
 - `connection_state_demo.py` – Connection state management
 - `async_client_demo.py` – Async client usage with asyncio
-- `homeassistant_metrics_integration.py` – Home Assistant integration patterns
 
 ## License
 

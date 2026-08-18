@@ -469,7 +469,7 @@ The timeout applies to:
 
 ```python
 import asyncio
-from pyS7 import AsyncS7Client
+from pyS7 import AsyncS7Client, BatchWriteError
 
 async def main():
     async with AsyncS7Client('192.168.0.1', 0, 1) as client:
@@ -517,8 +517,9 @@ async with AsyncS7Client('192.168.0.1', 0, 1) as client:
     batch.add('DB1,I0', 100).add('DB1,I2', 200)
     try:
         results = await batch.commit()
-    except Exception:
-        await batch.rollback()
+    except BatchWriteError as exc:
+        print(exc.results)
+        print(exc.rollback_attempted, exc.rollback_succeeded, exc.rollback_error)
 ```
 
 ### CPU diagnostics

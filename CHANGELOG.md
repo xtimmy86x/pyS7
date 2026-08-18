@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Added a practical pyS7 2.x to 3.0 migration guide, an evidence-based PLC and
+  Python compatibility matrix, and draft 3.0 release notes.
+
 ### Changed
 - Optimized BIT reads are now always byte-based: every `BIT` tag in an
   `optimize=True` read is transparently read as the containing `BYTE` and the
@@ -21,6 +25,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   dataclasses, shared by both sync and async clients.
 - Raised minimum Python version requirement from 3.8 to 3.11. Classifiers and CI
   updated accordingly.
+- Documented strict batch failure handling, BIT transport behavior, WSTRING
+  UTF-16 capacity, structured errors, PLC prerequisites, and sync/async parity.
 
 
 ## [2.8.2]

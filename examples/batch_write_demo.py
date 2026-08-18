@@ -1,4 +1,4 @@
-"""Example demonstrating batch write transactions with atomic operations.
+"""Example demonstrating strict batch writes with best-effort rollback.
 
 This example shows how to use batch write transactions for:
 1. Automatic commit with rollback on error

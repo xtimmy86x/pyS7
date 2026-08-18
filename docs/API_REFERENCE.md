@@ -37,7 +37,7 @@ Complete reference for pyS7 data types, address formats, and supported operation
 |------|------|-------|-------------|-------------|
 | **CHAR** | 1 byte | ASCII | `str` | Single ASCII character |
 | **STRING** | Variable | 0-254 chars | `str` | ASCII string (1 byte/char + 2 byte header) |
-| **WSTRING** | Variable | 0-254 chars | `str` | Unicode string (2 bytes/char + 4 byte header) |
+| **WSTRING** | Variable | 0-254 declared UTF-16 code units | `str` | UTF-16-BE; characters use one or two code units, plus a 4-byte header |
 
 ## Address Format
 
@@ -225,9 +225,9 @@ values = client.read(tags)  # Complete string returned transparently
 ### WSTRING (Unicode)
 
 **Encoding**: UTF-16 BE (one or two UTF-16 code units per character)
-**Max length**: 254 characters
-**Size**: (length × 2) + 4 bytes (header)
-**PLC compatibility**: S7-1200/1500 (NOT available on S7-300/400)
+**Max declared length**: 254 UTF-16 code units
+**Size**: (`max_length` × 2) + 4 bytes (header)
+**PLC compatibility**: implemented for PLCs that expose Siemens WSTRING storage; see the [compatibility evidence](COMPATIBILITY.md)
 
 **Address format**: `DB<n>,WS<offset>.<length>`
 
@@ -244,6 +244,10 @@ characters such as `🌍` and `😀😁` remain fully supported, but each consum
 UTF-16 code units of payload capacity. Thus `WSTRING[10]` can store
 `"ABCDEFGHIJ"`, but not `"🌍" * 10`, which requires 20 code units. This
 observation does not claim compatibility with every CPU or firmware version.
+
+For `WSTRING[254]`, `"A" * 254`, `"🌍" * 127`, and
+`"A" * 252 + "🌍"` fit. `"🌍" * 128` and `"A" * 253 + "🌍"` do not.
+The physical payload capacity is 254 UTF-16 code units in every case.
 
 **Example:**
 ```python
@@ -291,13 +295,14 @@ data = client.read(tags)
 - See [ADVANCED_USAGE.md](ADVANCED_USAGE.md#automatic-string-chunking) for details
 
 **Character Encoding:**
-- STRING: ASCII only (characters 0-127 safe, 128-255 extended ASCII)
+- STRING: ASCII only (characters 0-127)
 - WSTRING: Full Unicode support (UTF-16, all languages, emojis)
-- Non-ASCII characters in STRING may display incorrectly
+- Non-ASCII characters in STRING are rejected during encoding
 
 **Writing Strings:**
 - If written string is shorter than declared length, rest is null-padded
-- If longer than declared length, it will be truncated
+- Values exceeding declared storage are rejected with `S7AddressError`; pyS7
+  does not silently truncate them
 - Current length byte is automatically updated
 
 **Example with validation:**
@@ -772,17 +777,21 @@ client = S7Client("192.168.1.10", 0, 1, enable_metrics=False)
 
 - **[Metrics Guide](METRICS.md)** - Complete metrics documentation
 - **[Examples](../examples/metrics_demo.py)** - Usage examples
-- **[Home Assistant Integration](../examples/homeassistant_metrics_integration.py)** - HA patterns
 
 ## AsyncS7Client
 
-Asyncio-based S7 PLC client. Drop-in async replacement for `S7Client` — all I/O methods are coroutines, request-building and response-parsing reuse the synchronous helpers (pure computation, no blocking I/O).
+Asyncio-based S7 PLC client with equivalent protocol behavior for the major
+supported operations. All I/O methods are coroutines; connection parameters,
+read/write semantics, BIT handling, WSTRING handling, timeout normalization,
+structured errors, and batch failure rules align with `S7Client` where the
+corresponding async operation exists. This does not promise implementation
+identity.
 
 ### Overview
 
 **Import:**
 ```python
-from pyS7 import AsyncS7Client, AsyncBatchWriteTransaction
+from pyS7 import AsyncBatchWriteTransaction, AsyncS7Client, BatchWriteError
 ```
 
 **Constructor:**
@@ -849,7 +858,9 @@ async def read(
 ) -> List[Value]
 ```
 
-Read tags from the PLC. Identical API to `S7Client.read()`.
+Read tags from the PLC with equivalent major-operation semantics to
+`S7Client.read()`. Optimized and native BIT behavior matches the synchronous
+client.
 
 ```python
 values = await client.read(['DB1,X0.0', 'DB1,I2', 'DB1,R4'])
@@ -884,7 +895,8 @@ async def write(
 ) -> None
 ```
 
-Write values to PLC tags. Identical API to `S7Client.write()`.
+Write values to PLC tags with equivalent major-operation semantics to
+`S7Client.write()`.
 
 ```python
 await client.write(['DB1,I0', 'DB1,R4'], [42, 3.14])
@@ -966,8 +978,9 @@ batch.add('DB1,I0', 100).add('DB1,I2', 200)
 
 try:
     results = await batch.commit()
-except Exception:
-    await batch.rollback()
+except BatchWriteError as exc:
+    print(exc.results)
+    print(exc.rollback_attempted, exc.rollback_succeeded, exc.rollback_error)
 ```
 
 ### Concurrency
@@ -1009,6 +1022,19 @@ context. `S7ReadResponseError` and `S7WriteResponseError` provide the affected
 `None` when unavailable), and an `operation` value of `"read"` or `"write"`.
 Existing code that only catches these exceptions or displays `str(exc)` remains
 valid.
+
+Related communication exceptions remain intentionally small in scope:
+
+- `S7ReadResponseError`: the PLC rejected a read item.
+- `S7WriteResponseError`: the PLC rejected a write item.
+- `S7ProtocolError`: a response is malformed, truncated, or structurally invalid.
+- `S7TimeoutError`: communication timed out.
+- `S7ConnectionError`: connection establishment failed.
+
+For ordinary PLC item failures, `read_detailed()` and `write_detailed()` return
+per-tag result objects rather than raising. `ReadResult` and `WriteResult` both
+provide `tag`, `success`, `error`, and `error_code`; `ReadResult` also provides
+`value`.
 
 ```python
 from pyS7 import S7ReadResponseError

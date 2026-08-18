@@ -43,7 +43,7 @@ async def detailed_operations():
 
 
 async def batch_write_example():
-    """Transactional batch write with automatic rollback."""
+    """Strict batch write with best-effort rollback."""
     async with AsyncS7Client(address="192.168.5.100", rack=0, slot=1) as client:
         # Auto-commit: writes on exit, rolls back on error
         async with client.batch_write() as batch:

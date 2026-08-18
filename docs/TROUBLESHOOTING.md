@@ -404,7 +404,11 @@ print(data[0])  # "Hell▒▒▒World"
 
 ### Q: Does pyS7 work with S7-1200/1500?
 
-**A:** Yes! pyS7 fully supports S7-1200 and S7-1500 PLCs, including WSTRING and larger PDU sizes.
+**A:** pyS7 implements the common S7 operations used with these families,
+including WSTRING and PDU negotiation. Compatibility depends on the CPU,
+firmware, security settings, and absolute-address-compatible DB layout. The
+[compatibility matrix](COMPATIBILITY.md) states what is hardware-tested versus
+protocol/unit-tested; it does not currently claim S7-1500 hardware validation.
 
 ### Q: Can I use pyS7 in multi-threaded applications?
 

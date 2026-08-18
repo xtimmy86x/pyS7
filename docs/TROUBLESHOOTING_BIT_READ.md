@@ -71,4 +71,7 @@ Example: For byte value `0b00000100` (decimal 4):
 - Bit 3 = 0 (False)
 - ... and so on
 
-For PLC-side prerequisites such as PUT/GET permission and optimized DB access, consult the documentation for the specific CPU, firmware, and TIA Portal configuration. A verified compatibility matrix is outside the scope of this troubleshooting note.
+For PLC-side prerequisites such as PUT/GET permission and absolute-offset-compatible
+DB layout, consult the documentation for the specific CPU, firmware, and TIA Portal
+configuration, and see pyS7's [compatibility matrix](COMPATIBILITY.md). Siemens
+optimized block access is unrelated to pyS7's `optimize=True` read option.
