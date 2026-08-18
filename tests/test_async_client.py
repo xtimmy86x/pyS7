@@ -9,8 +9,12 @@ from pyS7.async_client import AsyncS7Client
 from pyS7.constants import (
     MAX_PDU,
     ConnectionState,
+    DataType,
+    MemoryArea,
 )
 from pyS7.errors import S7CommunicationError, S7ConnectionError, S7TimeoutError
+from pyS7.requests import ReadRequest
+from pyS7.tag import S7Tag
 
 # -- Protocol response fixtures -----------------------------------------------
 
@@ -193,6 +197,26 @@ async def test_read_not_connected() -> None:
 async def test_read_empty_tags(client: AsyncS7Client) -> None:
     result = await client.read([])
     assert result == []
+
+
+@pytest.mark.asyncio
+async def test_read_isolated_bit_optimized_matches_sync_strategy(
+    client: AsyncS7Client, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    await _connect_client(client)
+    sent: list[ReadRequest] = []
+
+    async def fake_send(request: ReadRequest) -> bytes:
+        sent.append(request)
+        return (
+            b"\x03\x00\x00\x1b\x02\xf0\x802\x03\x00\x00\x00\x00\x00\x02"
+            b"\x00\x06\x00\x00\x04\x01\xff\x04\x00\x08\x04\x00"
+        )
+
+    monkeypatch.setattr(client, "_send_unlocked", fake_send)
+
+    assert await client.read(["DB1,X0.2"], optimize=True) == [True]
+    assert sent[0].tags == [S7Tag(MemoryArea.DB, 1, DataType.BYTE, 0, 0, 1)]
 
 
 # -- Write ---------------------------------------------------------------------

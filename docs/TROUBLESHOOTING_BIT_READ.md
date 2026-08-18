@@ -8,45 +8,43 @@ When trying to read individual bits from an S7 PLC, you may encounter an error l
 pyS7.errors.S7ReadResponseError: S7Tag(memory_area=<MemoryArea.DB: 132>, db_number=1, data_type=<DataType.BIT: 1>, start=0, bit_offset=2, length=1): INVALID_DATA_SIZE
 ```
 
-This error occurs because some S7 PLCs do not support reading individual bits directly and will return an `INVALID_DATA_SIZE` error code.
+Some PLC/configuration combinations may reject native individual BIT reads with an `INVALID_DATA_SIZE` error code.
 
 ## Root Cause
 
-The issue stems from PLC firmware limitations where certain S7 controllers require bit operations to be performed on byte-aligned data rather than individual bit addresses. When the PLC receives a request to read a single bit, it may reject the request with an `INVALID_DATA_SIZE` error.
+pyS7 does not currently maintain a verified list of affected CPU models, firmware versions, or PLC configurations. In particular, the repository does not contain enough hardware evidence to attribute this response solely to firmware or to determine whether optimized DB configuration is correlated with it.
 
 ## Solution
 
-### Option 1: Use the Built-in Workaround Function
+### Optimized reads (default)
 
-The library now provides an enhanced error message and a utility function to help work around this limitation:
+With `optimize=True`, pyS7 intentionally reads the byte containing every requested BIT and extracts the requested bit from that byte. This applies to isolated BITs as well as multiple BITs in the same byte. The API still returns `bool` values in the requested order.
 
 ```python
-from pyS7 import S7Client, extract_bit_from_byte
+from pyS7 import S7Client
 
 client = S7Client(address="192.168.1.100", rack=0, slot=1)
 client.connect()
 
-try:
-    # Try direct bit read first
-    result = client.read(["DB1,X0.2"])
-except Exception as e:
-    if "INVALID_DATA_SIZE" in str(e):
-        # Use workaround: read entire byte and extract the bit
-        byte_value = client.read(["DB1,B0"])[0]  # Read the byte
-        bit_value = extract_bit_from_byte(byte_value, 2)  # Extract bit 2
-        print(f"Bit value: {bit_value}")
+result = client.read(["DB1,X0.2"], optimize=True)
+print(result[0])  # bool
 ```
 
-### Option 2: Use Optimized Read Operations
+This is a proactive optimized-read strategy, not an error-driven retry: pyS7 does not first send a native BIT request and does not generate duplicate network traffic. BITs sharing a containing byte use one byte work item, which the optimizer may merge with adjacent ranges when safe.
 
-Optimized read operations may handle bit reads more effectively:
+### Native reads for diagnostics
 
 ```python
-# This might work better for some PLCs
-result = client.read_optimized(["DB1,X0.2"])
+result = client.read(["DB1,X0.2"], optimize=False)
 ```
 
-### Option 3: Manual Byte Reading and Bit Extraction
+Setting `optimize=False` preserves the native S7 BIT read. This is useful for advanced users and protocol diagnostics, but affected PLC/configuration combinations may reject it.
+
+### BIT writes
+
+BIT writes remain native S7 bit-level writes. pyS7 does not use a byte-level read-modify-write sequence, which could overwrite concurrent changes to other bits in the same byte.
+
+### Manual byte reading and bit extraction
 
 You can always read the entire byte and extract the specific bit manually:
 
@@ -73,17 +71,4 @@ Example: For byte value `0b00000100` (decimal 4):
 - Bit 3 = 0 (False)
 - ... and so on
 
-## Alternative Approaches
-
-1. **Check PLC Documentation**: Some PLCs may have specific requirements for bit addressing
-2. **Use Word/Byte Operations**: Consider reading larger data blocks and processing multiple bits at once
-3. **Update PLC Firmware**: Newer firmware versions may have better support for individual bit operations
-4. **Use Different Memory Areas**: Some memory areas (like Merker/Memory bits) may have better bit access support
-
-## Prevention
-
-To avoid this issue in new code:
-1. Always wrap individual bit reads in try-catch blocks
-2. Consider reading bytes and extracting bits as the primary approach for problematic PLCs
-3. Test bit read operations early in your development cycle
-4. Use the provided `extract_bit_from_byte()` utility function for consistent bit extraction
+For PLC-side prerequisites such as PUT/GET permission and optimized DB access, consult the documentation for the specific CPU, firmware, and TIA Portal configuration. A verified compatibility matrix is outside the scope of this troubleshooting note.

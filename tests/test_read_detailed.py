@@ -331,6 +331,49 @@ class TestReadDetailed:
         assert all(r.success for r in results)
         assert [r.value for r in results] == [1, 2, 3]
 
+    def test_read_detailed_optimized_bit_keeps_original_tag(
+        self, client: S7Client, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        read_response = (
+            b"\x03\x00\x00\x1b\x02\xf0\x802\x03\x00\x00\x00\x00\x00\x02"
+            b"\x00\x06\x00\x00\x04\x01\xff\x04\x00\x08\x80\x00"
+        )
+
+        def mock_send(self: S7Client, request: Any) -> bytes:
+            return read_response
+
+        monkeypatch.setattr("pyS7.client.S7Client._S7Client__send", mock_send)
+        _set_client_connected(client, MagicMock())
+        original = S7Tag(MemoryArea.DB, 1, DataType.BIT, 0, 7, 1)
+
+        results = client.read_detailed([original], optimize=True)
+
+        assert len(results) == 1
+        assert results[0].tag == original
+        assert results[0].success is True
+        assert results[0].value is True
+
+    def test_read_detailed_optimized_byte_error_maps_to_each_bit(
+        self, client: S7Client, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        read_response = (
+            b"\x03\x00\x00\x17\x02\xf0\x802\x03\x00\x00\x00\x00\x00\x02"
+            b"\x00\x02\x00\x00\x04\x01\x06\x00"
+        )
+
+        def mock_send(self: S7Client, request: Any) -> bytes:
+            return read_response
+
+        monkeypatch.setattr("pyS7.client.S7Client._S7Client__send", mock_send)
+        _set_client_connected(client, MagicMock())
+        tags = [S7Tag(MemoryArea.DB, 1, DataType.BIT, 0, bit, 1) for bit in (0, 2, 7)]
+
+        results = client.read_detailed(tags, optimize=True)
+
+        assert [result.tag for result in results] == tags
+        assert all(not result.success for result in results)
+        assert [result.error_code for result in results] == [0x06, 0x06, 0x06]
+
     def test_read_detailed_optimized_request_failure_marks_all_mapped_tags(
         self, client: S7Client, monkeypatch: pytest.MonkeyPatch
     ) -> None:

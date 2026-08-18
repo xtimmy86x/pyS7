@@ -421,6 +421,45 @@ def test_read_optimized_response(test_case: ReadResponseOptimizedTestCase) -> No
     assert read_response.parse() == test_case.parsed_values
 
 
+def test_optimized_response_extracts_multiple_bits_from_one_byte() -> None:
+    packed = S7Tag(MemoryArea.DB, 1, DataType.BYTE, 0, 0, 1)
+    bits = [S7Tag(MemoryArea.DB, 1, DataType.BIT, 0, bit, 1) for bit in (0, 1, 2, 7)]
+    response = (
+        b"\x03\x00\x00\x1b\x02\xf0\x802\x03\x00\x00\x00\x00\x00\x02"
+        b"\x00\x06\x00\x00\x04\x01\xff\x04\x00\x08\x85\x00"
+    )
+
+    values = parse_optimized_read_response(
+        [response], [{packed: list(enumerate(bits))}]
+    )
+
+    assert values == [True, False, True, True]
+    assert all(type(value) is bool for value in values)
+
+
+def test_optimized_mixed_tags_preserve_requested_order() -> None:
+    packed = S7Tag(MemoryArea.DB, 1, DataType.BYTE, 0, 0, 10)
+    tags = [
+        S7Tag(MemoryArea.DB, 1, DataType.BIT, 0, 7, 1),
+        S7Tag(MemoryArea.DB, 1, DataType.INT, 2, 0, 1),
+        S7Tag(MemoryArea.DB, 1, DataType.BIT, 0, 1, 1),
+        S7Tag(MemoryArea.DB, 1, DataType.REAL, 6, 0, 1),
+    ]
+    payload = b"\x82\x00\x00\x7b\x00\x00\x3f\xc0\x00\x00"
+    response = (
+        b"\x03\x00\x00\x24\x02\xf0\x802\x03\x00\x00\x00\x00\x00\x02"
+        b"\x00\x0e\x00\x00\x04\x01\xff\x04\x00\x50" + payload
+    )
+
+    values = parse_optimized_read_response(
+        [response], [{packed: list(enumerate(tags))}]
+    )
+
+    assert values == [True, 123, True, 1.5]
+    assert type(values[0]) is bool
+    assert type(values[2]) is bool
+
+
 # def test_read_optimized_response() -> None:
 #     read_reponse_optimized1 = ReadOptimizedResponse()
 #     read_reponse_optimized2 = ReadOptimizedResponse()

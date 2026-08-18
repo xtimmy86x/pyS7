@@ -592,26 +592,22 @@ def _bucket_bit_tags(tags: List[S7Tag]) -> Tuple[List[Tuple[int, S7Tag]], TagsMa
         else:
             non_bits.append((idx, t))
 
-    # Build "work items":
-    # - If a bucket has more than one BIT, replace it with a single BYTE(1) planned tag.
-    # - If a bucket has exactly one BIT, keep it as BIT to preserve existing semantics/tests.
+    # Every optimized BIT read uses its containing byte. Besides avoiding duplicate
+    # packed keys for bits that share a byte, this keeps isolated and grouped BIT
+    # reads consistent and lets the shared response parser mask the requested bit.
     work: List[Tuple[int, S7Tag]] = []
     for lst in bit_buckets.values():
-        if len(lst) == 1:
-            work.append(lst[0])  # (idx, BIT)
-        else:
-            idx0, t0 = min(lst, key=lambda x: x[0])
-            packed_byte = S7Tag(
-                memory_area=t0.memory_area,
-                db_number=t0.db_number,
-                data_type=DataType.BYTE,
-                start=t0.start,
-                bit_offset=0,
-                length=1,
-            )
-            work.append((idx0, packed_byte))
-            # Map this packed byte to ALL original bit tags (with their original indices)
-            groups[packed_byte] = list(lst)
+        idx0, t0 = min(lst, key=lambda x: x[0])
+        packed_byte = S7Tag(
+            memory_area=t0.memory_area,
+            db_number=t0.db_number,
+            data_type=DataType.BYTE,
+            start=t0.start,
+            bit_offset=0,
+            length=1,
+        )
+        work.append((idx0, packed_byte))
+        groups[packed_byte] = list(lst)
 
     # Add all non-bit tags as-is
     work.extend(non_bits)
@@ -702,8 +698,8 @@ def prepare_optimized_requests(
     """
     Prepare optimized read requests by:
       - Sorting tags by (area, db, start)
-      - Pre-bucketing BIT tags that share the same byte address into a single BYTE(1) read
-        to avoid duplicate packed keys and reduce telegram count
+      - Pre-bucketing all BIT tags by byte address into BYTE(1) reads, including
+        isolated BIT tags, to avoid native BIT reads and reduce telegram count
       - Merging tags into packed BYTE blocks:
           * If allow_overlap=True: merge when overlap/containment happens OR gap <= max_gap_bytes
           * If allow_overlap=False: merge only when tag starts after prev_end AND gap <= max_gap_bytes

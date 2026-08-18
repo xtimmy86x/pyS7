@@ -12,9 +12,12 @@ from pyS7.constants import (
     MAX_PDU,
     ConnectionState,
     ConnectionType,
+    DataType,
+    MemoryArea,
 )
 from pyS7.errors import S7ConnectionError
 from pyS7.requests import ReadRequest, Request, WriteRequest
+from pyS7.tag import S7Tag
 
 
 @pytest.fixture
@@ -254,7 +257,7 @@ def test_read_optimized(client: S7Client, monkeypatch: pytest.MonkeyPatch) -> No
     def mock_sendall(self: Any, bytes_request: bytes) -> None:
         return None
 
-    read_response = b"\x03\x00\x00!\x02\xf0\x802\x03\x00\x00\x00\x00\x00\x02\x00\x0c\x00\x00\x04\x02\xff\x03\x00\x01\x01\x00\xff\x05\x00\x10\x00\x00"
+    read_response = b"\x03\x00\x00!\x02\xf0\x802\x03\x00\x00\x00\x00\x00\x02\x00\x0c\x00\x00\x04\x02\xff\x04\x00\x08\x02\x00\xff\x05\x00\x10\x00\x00"
 
     monkeypatch.setattr("socket.socket.sendall", mock_sendall)
     monkeypatch.setattr("socket.socket.recv", _mock_recv_factory(read_response))
@@ -265,6 +268,50 @@ def test_read_optimized(client: S7Client, monkeypatch: pytest.MonkeyPatch) -> No
     tags = ["DB1,X0.1", "DB2,I2"]
     result = client.read(tags, optimize=True)
     assert result == [True, 0]
+
+
+@pytest.mark.parametrize(("byte_value", "expected"), [(0x04, True), (0x00, False)])
+def test_read_isolated_bit_optimized_uses_byte_and_mask(
+    client: S7Client,
+    monkeypatch: pytest.MonkeyPatch,
+    byte_value: int,
+    expected: bool,
+) -> None:
+    sent: list[ReadRequest] = []
+
+    def fake_send(self: S7Client, request: Request) -> bytes:
+        assert isinstance(request, ReadRequest)
+        sent.append(request)
+        return (
+            b"\x03\x00\x00\x1b\x02\xf0\x802\x03\x00\x00\x00\x00\x00\x02"
+            b"\x00\x06\x00\x00\x04\x01\xff\x04\x00\x08" + bytes([byte_value, 0])
+        )
+
+    monkeypatch.setattr(S7Client, "_S7Client__send", fake_send)
+    _set_client_connected(client, cast(socket.socket, object()))
+
+    assert client.read(["DB1,X0.2"], optimize=True) == [expected]
+    assert sent[0].tags == [S7Tag(MemoryArea.DB, 1, DataType.BYTE, 0, 0, 1)]
+
+
+def test_read_isolated_bit_non_optimized_remains_native(
+    client: S7Client, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    sent: list[ReadRequest] = []
+
+    def fake_send(self: S7Client, request: Request) -> bytes:
+        assert isinstance(request, ReadRequest)
+        sent.append(request)
+        return (
+            b"\x03\x00\x00\x1b\x02\xf0\x802\x03\x00\x00\x00\x00\x00\x02"
+            b"\x00\x06\x00\x00\x04\x01\xff\x03\x00\x01\x01\x00"
+        )
+
+    monkeypatch.setattr(S7Client, "_S7Client__send", fake_send)
+    _set_client_connected(client, cast(socket.socket, object()))
+
+    assert client.read(["DB1,X0.2"], optimize=False) == [True]
+    assert sent[0].tags == [S7Tag(MemoryArea.DB, 1, DataType.BIT, 0, 2, 1)]
 
 
 def test_write(client: S7Client, monkeypatch: pytest.MonkeyPatch) -> None:

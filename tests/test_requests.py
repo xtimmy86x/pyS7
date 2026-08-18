@@ -400,6 +400,75 @@ def test_prepare_optimized_request() -> None:
     assert expected_groups == groups
 
 
+@pytest.mark.parametrize(
+    ("tag", "expected"),
+    [
+        (
+            S7Tag(MemoryArea.DB, 1, DataType.BIT, 0, 0, 1),
+            S7Tag(MemoryArea.DB, 1, DataType.BYTE, 0, 0, 1),
+        ),
+        (
+            S7Tag(MemoryArea.DB, 1, DataType.BIT, 0, 7, 1),
+            S7Tag(MemoryArea.DB, 1, DataType.BYTE, 0, 0, 1),
+        ),
+        (
+            S7Tag(MemoryArea.DB, 1, DataType.BIT, 1, 0, 1),
+            S7Tag(MemoryArea.DB, 1, DataType.BYTE, 1, 0, 1),
+        ),
+        (
+            S7Tag(MemoryArea.DB, 1, DataType.BIT, 1, 7, 1),
+            S7Tag(MemoryArea.DB, 1, DataType.BYTE, 1, 0, 1),
+        ),
+        (
+            S7Tag(MemoryArea.INPUT, 0, DataType.BIT, 3, 2, 1),
+            S7Tag(MemoryArea.INPUT, 0, DataType.BYTE, 3, 0, 1),
+        ),
+        (
+            S7Tag(MemoryArea.OUTPUT, 0, DataType.BIT, 4, 2, 1),
+            S7Tag(MemoryArea.OUTPUT, 0, DataType.BYTE, 4, 0, 1),
+        ),
+        (
+            S7Tag(MemoryArea.MERKER, 0, DataType.BIT, 5, 2, 1),
+            S7Tag(MemoryArea.MERKER, 0, DataType.BYTE, 5, 0, 1),
+        ),
+    ],
+)
+def test_prepare_optimized_isolated_bit_uses_containing_byte(
+    tag: S7Tag, expected: S7Tag
+) -> None:
+    requests, groups = prepare_optimized_requests([tag], max_pdu=240)
+
+    assert requests == [[expected]]
+    assert groups == {expected: [(0, tag)]}
+    packet = ReadRequest(requests[0]).request
+    assert packet[22] == DataType.BYTE.value
+    assert packet[23:25] == b"\x00\x01"
+    assert packet[25:27] == tag.db_number.to_bytes(2, "big")
+    assert packet[27] == tag.memory_area.value
+    assert packet[28:31] == (tag.start * 8).to_bytes(3, "big")
+
+
+def test_prepare_optimized_bits_sharing_byte_use_one_byte() -> None:
+    tags = [S7Tag(MemoryArea.DB, 1, DataType.BIT, 0, bit, 1) for bit in (0, 2, 7)]
+    packed = S7Tag(MemoryArea.DB, 1, DataType.BYTE, 0, 0, 1)
+
+    requests, groups = prepare_optimized_requests(tags, max_pdu=240)
+
+    assert requests == [[packed]]
+    assert groups == {packed: list(enumerate(tags))}
+
+
+def test_bit_write_packet_remains_native_bit_transport() -> None:
+    tag = S7Tag(MemoryArea.DB, 1, DataType.BIT, 0, 2, 1)
+    packet = WriteRequest([tag], [True]).request
+
+    assert packet[22] == DataType.BIT.value
+    assert packet[23:25] == b"\x00\x01"
+    assert packet[28:31] == (2).to_bytes(3, "big")
+    assert packet[32] == DataTypeData.BIT.value
+    assert packet[33:35] == b"\x00\x01"
+
+
 def test_prepare_request() -> None:
     # Mock up tags for testing
     tags: List[S7Tag] = [
