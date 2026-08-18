@@ -62,7 +62,7 @@ for opt in optimizations:
     print(f"   Impact: {opt['impact']}")
     print(f"   Effort: {opt['effort']}")
     print(f"   Risk: {opt['risk']}")
-    print(f"   Changes:")
+    print("   Changes:")
     for change in opt['changes']:
         print(f"     - {change}")
 

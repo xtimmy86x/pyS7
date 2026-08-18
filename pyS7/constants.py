@@ -8,7 +8,7 @@ MAX_JOB_CALLED = 8
 
 class ConnectionState(Enum):
     """PLC connection state.
-    
+
     Attributes:
         DISCONNECTED: Not connected to PLC
         CONNECTING: Connection in progress (TCP + COTP + PDU negotiation)

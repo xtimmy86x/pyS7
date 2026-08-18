@@ -2,7 +2,7 @@
 #######################################################################
 # This code serves as an illustrative example demonstrating how
 # to configure and handle a TSAP connection.
-# 
+#
 #######################################################################
 """
 from pyS7 import S7Client

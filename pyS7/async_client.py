@@ -25,22 +25,22 @@ from types import TracebackType
 from typing import Any, Dict, List, Optional, Sequence, Tuple, Type, Union, cast
 
 from .address_parser import map_address_to_tag
-from .client import BatchWriteTransaction, ReadResult, S7Client, WriteResult
+from .client import ReadResult, S7Client, WriteResult
 from .constants import (
     MAX_JOB_CALLED,
     MAX_JOB_CALLING,
     MAX_PDU,
     MAX_PDU_SIZE,
     MIN_PDU_SIZE,
+    READ_RES_OVERHEAD,
+    READ_RES_PARAM_SIZE_TAG,
     TPKT_SIZE,
+    WRITE_REQ_OVERHEAD,
+    WRITE_REQ_PARAM_SIZE_TAG,
     ConnectionState,
     ConnectionType,
     DataType,
-    READ_RES_OVERHEAD,
-    READ_RES_PARAM_SIZE_TAG,
     SZLId,
-    WRITE_REQ_OVERHEAD,
-    WRITE_REQ_PARAM_SIZE_TAG,
 )
 from .errors import (
     S7AddressError,
@@ -823,7 +823,7 @@ class AsyncS7Client:
                 regular_tags: List[S7Tag] = []
                 regular_values: List[Value] = []
 
-                for i, (tag, value) in enumerate(zip(tags_list, values)):
+                for tag, value in zip(tags_list, values):
                     req_size = WRITE_REQ_OVERHEAD + WRITE_REQ_PARAM_SIZE_TAG + tag.size() + 4
                     if req_size > self.pdu_size:
                         if tag.data_type in (DataType.STRING, DataType.WSTRING):

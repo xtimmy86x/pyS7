@@ -1,21 +1,23 @@
 """
 Tests for handling of large arrays that exceed PDU size.
 """
-import pytest
 from typing import Any
+
+import pytest
+
 from pyS7 import S7Client
-from pyS7.tag import S7Tag
 from pyS7.constants import DataType, MemoryArea
 from pyS7.errors import S7AddressError
+from pyS7.tag import S7Tag
 
 
 class TestLargeArrayHandling:
     """Test handling of arrays that exceed PDU size."""
-    
+
     def test_large_byte_array_raises_error(self, monkeypatch: pytest.MonkeyPatch):
         """Test that large BYTE arrays raise clear error message."""
         client = S7Client(address="192.168.1.1", rack=0, slot=1)
-        
+
         # Mock connection
         def mock_connect(self: Any, *args: Any) -> None:
             return None
@@ -65,7 +67,7 @@ class TestLargeArrayHandling:
 
         client.connect()
         client.pdu_size = 240  # Set small PDU for testing
-        
+
         # Create a BYTE array that exceeds PDU (242 bytes data + 26 overhead = 268 > 240)
         large_tag = S7Tag(
             memory_area=MemoryArea.DB,
@@ -75,20 +77,20 @@ class TestLargeArrayHandling:
             bit_offset=0,
             length=242
         )
-        
+
         with pytest.raises(S7AddressError) as exc_info:
             client.read([large_tag])
-        
+
         error_msg = str(exc_info.value)
         assert "242 bytes" in error_msg
         assert "214 bytes" in error_msg  # max_data_size for PDU 240
         assert "BYTE arrays" in error_msg
         assert "smaller chunks" in error_msg
-    
+
     def test_large_word_array_raises_error(self, monkeypatch: pytest.MonkeyPatch):
         """Test that large WORD arrays raise clear error message."""
         client = S7Client(address="192.168.1.1", rack=0, slot=1)
-        
+
         # Mock connection (same as above)
         def mock_connect(self: Any, *args: Any) -> None:
             return None
@@ -141,7 +143,7 @@ class TestLargeArrayHandling:
 
         client.connect()
         client.pdu_size = 240
-        
+
         # Create a WORD array that exceeds PDU (120 * 2 = 240 bytes data + 26 overhead = 266 > 240)
         large_tag = S7Tag(
             memory_area=MemoryArea.DB,
@@ -151,19 +153,19 @@ class TestLargeArrayHandling:
             bit_offset=0,
             length=120
         )
-        
+
         with pytest.raises(S7AddressError) as exc_info:
             client.read([large_tag])
-        
+
         error_msg = str(exc_info.value)
         assert "240 bytes" in error_msg  # tag size
         assert "214 bytes" in error_msg  # max_data_size
         assert "WORD arrays" in error_msg
-    
+
     def test_mixed_tags_with_large_array(self, monkeypatch: pytest.MonkeyPatch):
         """Test that mixed tags with one large array raises error for the large one."""
         client = S7Client(address="192.168.1.1", rack=0, slot=1)
-        
+
         # Mock connection
         def mock_connect(self: Any, *args: Any) -> None:
             return None
@@ -213,7 +215,7 @@ class TestLargeArrayHandling:
 
         client.connect()
         client.pdu_size = 240
-        
+
         # Create a mix of tags
         normal_tag = S7Tag(
             memory_area=MemoryArea.DB,
@@ -223,7 +225,7 @@ class TestLargeArrayHandling:
             bit_offset=0,
             length=10
         )
-        
+
         large_tag = S7Tag(
             memory_area=MemoryArea.DB,
             db_number=1,
@@ -232,11 +234,11 @@ class TestLargeArrayHandling:
             bit_offset=0,
             length=242
         )
-        
+
         # Should raise error for the large tag
         with pytest.raises(S7AddressError) as exc_info:
             client.read([normal_tag, large_tag])
-        
+
         error_msg = str(exc_info.value)
         assert "242 bytes" in error_msg
         assert "start=100" in error_msg  # Confirm it's the right tag

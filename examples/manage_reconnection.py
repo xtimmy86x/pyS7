@@ -1,13 +1,14 @@
 """
 #######################################################################
-# This code serves as an illustrative example demonstrating how 
+# This code serves as an illustrative example demonstrating how
 # to handle unexpected disconnections when interacting with
 # a Siemens PLC using the pyS7 library.
 #######################################################################
 """
 
 import time
-from pyS7 import S7Client, S7ConnectionError, S7CommunicationError
+
+from pyS7 import S7Client, S7CommunicationError, S7ConnectionError
 
 
 def attempt_connection(client: S7Client) -> None:

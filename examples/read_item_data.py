@@ -1,4 +1,4 @@
-from pyS7 import S7Client, DataType, S7Tag, MemoryArea
+from pyS7 import DataType, MemoryArea, S7Client, S7Tag
 
 if __name__ == "__main__":
     # Create a new S7Client object to connect to S7-300/400/1200/1500 PLC.

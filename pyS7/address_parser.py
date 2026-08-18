@@ -97,9 +97,9 @@ def build_tag(
     length: int,
 ) -> S7Tag:
     """Build an S7Tag from component parameters.
-    
+
     Simple wrapper around S7Tag constructor for consistency.
-    
+
     Args:
         memory_area: Memory area (DB, INPUT, OUTPUT, MERKER, etc.)
         db_number: DB number (0 for non-DB areas)
@@ -107,7 +107,7 @@ def build_tag(
         start: Start byte address
         bit_offset: Bit offset within byte (0-7, used for BIT type)
         length: Length in units appropriate to data_type
-        
+
     Returns:
         Constructed S7Tag instance
     """
@@ -130,10 +130,10 @@ def _token_to_tag(
     address: str,
 ) -> S7Tag:
     """Convert a data type token to an S7Tag.
-    
+
     Validates token against TOKEN_TABLE and processes bit_offset based on
     whether it is required, represents length (for strings), or not allowed.
-    
+
     Args:
         token: Data type token (e.g., 'X', 'B', 'I', 'S')
         memory_area: Memory area for the tag
@@ -141,10 +141,10 @@ def _token_to_tag(
         start: Start byte address
         bit_offset: Optional bit offset or length (as string)
         address: Original address string for error messages
-        
+
     Returns:
         Constructed S7Tag
-        
+
     Raises:
         S7AddressError: If token is invalid or bit_offset is incorrect
     """
@@ -177,29 +177,29 @@ def _parse_memory_area_address(
     address: str, pattern: str, memory_area: MemoryArea
 ) -> S7Tag:
     """Parse address for INPUT, OUTPUT, or MERKER memory areas.
-    
+
     These memory areas share identical parsing logic but differ in
     the regex pattern and target memory area.
-    
+
     Args:
         address: The address string to parse (already uppercased)
         pattern: Regex pattern to match the address format
         memory_area: Target memory area (INPUT, OUTPUT, or MERKER)
-        
+
     Returns:
         S7Tag: Parsed tag object
-        
+
     Raises:
         S7AddressError: If address cannot be parsed
     """
     match = re.match(pattern, address)
     if match is None:
         raise S7AddressError(f"Impossible to parse address '{address}'")
-    
+
     token, start_s, bit_offset = match.groups()
     if token is None and bit_offset is None:
         raise S7AddressError(f"Impossible to parse address '{address}'")
-    
+
     start = int(start_s)
     token = token if token is not None else "X"
     return _token_to_tag(token, memory_area, 0, start, bit_offset, address)

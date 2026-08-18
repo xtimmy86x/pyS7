@@ -1,12 +1,10 @@
 """Tests for edge cases and boundary conditions in pyS7."""
 
-import struct
-from typing import Any
 
 import pytest
 
 from pyS7.constants import DataType, MemoryArea
-from pyS7.errors import S7AddressError, S7PDUError, S7ReadResponseError
+from pyS7.errors import S7PDUError, S7ReadResponseError
 from pyS7.requests import prepare_requests, prepare_write_requests_and_values
 from pyS7.responses import extract_bit_from_byte, parse_read_response
 from pyS7.tag import S7Tag
@@ -20,7 +18,7 @@ class TestTagBoundaryConditions:
         # Min boundary
         tag_min = S7Tag(MemoryArea.DB, 1, DataType.BIT, 0, 0, 1)
         assert tag_min.bit_offset == 0
-        
+
         # Max boundary
         tag_max = S7Tag(MemoryArea.DB, 1, DataType.BIT, 0, 7, 1)
         assert tag_max.bit_offset == 7
@@ -29,7 +27,7 @@ class TestTagBoundaryConditions:
         """Test bit offset beyond valid range."""
         with pytest.raises(ValueError, match="Invalid 'bit_offset'.*between 0 and 7"):
             S7Tag(MemoryArea.DB, 1, DataType.BIT, 0, 8, 1)
-        
+
         with pytest.raises(ValueError, match="Invalid 'bit_offset'.*between 0 and 7"):
             S7Tag(MemoryArea.DB, 1, DataType.BIT, 0, -1, 1)
 
@@ -90,11 +88,11 @@ class TestStringBoundaries:
         # Single char (minimum)
         tag_one = S7Tag(MemoryArea.DB, 1, DataType.WSTRING, 0, 0, 1)
         assert tag_one.size() == 6  # 4 header + 2 data
-        
+
         # Two chars
         tag_two = S7Tag(MemoryArea.DB, 1, DataType.WSTRING, 0, 0, 2)
         assert tag_two.size() == 8  # 4 header + 4 data
-        
+
         # Large
         tag_large = S7Tag(MemoryArea.DB, 1, DataType.WSTRING, 0, 0, 1000)
         assert tag_large.size() == 2004  # 4 header + 2000 data
@@ -111,7 +109,7 @@ class TestPDUBoundaryConditions:
         # Must be < max_pdu (not <=)
         max_data = pdu_size - 21 - 5 - 1  # 213 bytes to be safe
         tag = S7Tag(MemoryArea.DB, 1, DataType.BYTE, 0, 0, max_data)
-        
+
         # Should not raise
         requests = prepare_requests([tag], pdu_size)
         assert len(requests) == 1
@@ -121,7 +119,7 @@ class TestPDUBoundaryConditions:
         pdu_size = 240
         max_data = pdu_size - 21 - 5  # 214
         tag = S7Tag(MemoryArea.DB, 1, DataType.BYTE, 0, 0, max_data + 1)
-        
+
         with pytest.raises(S7PDUError, match=r"requires \d+ bytes but PDU size is"):
             prepare_requests([tag], pdu_size)
 
@@ -129,7 +127,7 @@ class TestPDUBoundaryConditions:
         """Test with minimal PDU size."""
         pdu_size = 50  # Very small PDU
         tag = S7Tag(MemoryArea.DB, 1, DataType.INT, 0, 0, 1)
-        
+
         # Should work with small tag
         requests = prepare_requests([tag], pdu_size)
         assert len(requests) == 1
@@ -141,7 +139,7 @@ class TestPDUBoundaryConditions:
         max_data = pdu_size - 18 - 12 - 4
         tag = S7Tag(MemoryArea.DB, 1, DataType.BYTE, 0, 0, max_data)
         values = [tuple([0] * max_data)]
-        
+
         # Should split into multiple requests if too large
         requests, _ = prepare_write_requests_and_values([tag], values, pdu_size)
         assert len(requests) >= 1
@@ -155,15 +153,15 @@ class TestNumericBoundaries:
         # All bits off
         assert extract_bit_from_byte(0, 0) is False
         assert extract_bit_from_byte(0, 7) is False
-        
+
         # All bits on
         assert extract_bit_from_byte(255, 0) is True
         assert extract_bit_from_byte(255, 7) is True
-        
+
         # Only bit 0
         assert extract_bit_from_byte(1, 0) is True
         assert extract_bit_from_byte(1, 1) is False
-        
+
         # Only bit 7
         assert extract_bit_from_byte(128, 7) is True
         assert extract_bit_from_byte(128, 6) is False
@@ -172,7 +170,7 @@ class TestNumericBoundaries:
         """Test bit extraction with invalid offset."""
         with pytest.raises(ValueError, match="bit_offset must be between 0 and 7"):
             extract_bit_from_byte(100, 8)
-        
+
         with pytest.raises(ValueError, match="bit_offset must be between 0 and 7"):
             extract_bit_from_byte(100, -1)
 
@@ -180,7 +178,7 @@ class TestNumericBoundaries:
         """Test bit extraction with invalid byte value."""
         with pytest.raises(ValueError, match="byte_value must be between 0 and 255"):
             extract_bit_from_byte(256, 0)
-        
+
         with pytest.raises(ValueError, match="byte_value must be between 0 and 255"):
             extract_bit_from_byte(-1, 0)
 
@@ -191,10 +189,10 @@ class TestResponseParsing:
     def test_parse_read_response_truncated(self) -> None:
         """Test parsing truncated response."""
         tags = [S7Tag(MemoryArea.DB, 1, DataType.BYTE, 0, 0, 1)]
-        
+
         # Response too short
         response = b"\x03\x00\x00\x10" + b"\x00" * 12
-        
+
         with pytest.raises(S7ReadResponseError, match="response too short"):
             parse_read_response(response, tags)
 
@@ -251,7 +249,7 @@ class TestTagContainment:
         byte_tag = S7Tag(MemoryArea.DB, 1, DataType.BYTE, 5, 0, 1)
         bit0 = S7Tag(MemoryArea.DB, 1, DataType.BIT, 5, 0, 1)
         bit7 = S7Tag(MemoryArea.DB, 1, DataType.BIT, 5, 7, 1)
-        
+
         assert bit0 in byte_tag
         assert bit7 in byte_tag
         # Containment logic doesn't check bit_offset, only start address
@@ -274,7 +272,7 @@ class TestArrayBoundaries:
         # 1000 REALs = 4000 bytes
         tag = S7Tag(MemoryArea.DB, 1, DataType.REAL, 0, 0, 1000)
         assert tag.size() == 4000
-        
+
         # 500 DINTs = 2000 bytes
         tag2 = S7Tag(MemoryArea.DB, 1, DataType.DINT, 0, 0, 500)
         assert tag2.size() == 2000
@@ -293,7 +291,7 @@ class TestMemoryAreaBoundaries:
             MemoryArea.TIMER,
             MemoryArea.COUNTER,
         ]
-        
+
         for area in areas:
             db_num = 1 if area == MemoryArea.DB else 0
             tag = S7Tag(area, db_num, DataType.INT, 0, 0, 1)

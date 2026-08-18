@@ -1,25 +1,16 @@
 """Tests for AsyncS7Client."""
 
 import asyncio
-from typing import Any, List, Optional
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from pyS7.async_client import AsyncBatchWriteTransaction, AsyncS7Client
-from pyS7.client import ReadResult, WriteResult
+from pyS7.async_client import AsyncS7Client
 from pyS7.constants import (
-    MAX_JOB_CALLED,
-    MAX_JOB_CALLING,
     MAX_PDU,
     ConnectionState,
-    ConnectionType,
-    DataType,
-    MemoryArea,
 )
 from pyS7.errors import S7CommunicationError, S7ConnectionError, S7TimeoutError
-from pyS7.tag import S7Tag
-
 
 # -- Protocol response fixtures -----------------------------------------------
 

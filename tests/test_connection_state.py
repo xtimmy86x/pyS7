@@ -1,13 +1,13 @@
 """Tests for connection state management."""
 
-from unittest.mock import MagicMock, patch
 import socket
+from unittest.mock import MagicMock
 
 import pytest
 
-from pyS7 import S7Client, ConnectionState
+from pyS7 import ConnectionState, S7Client
 from pyS7.constants import ConnectionType
-from pyS7.errors import S7ConnectionError, S7TimeoutError, S7ProtocolError
+from pyS7.errors import S7ConnectionError, S7ProtocolError, S7TimeoutError
 
 
 @pytest.fixture
@@ -41,7 +41,6 @@ class TestConnectionState:
             states_observed.append(client.connection_state)
 
         # Patch socket creation
-        original_socket = socket.socket
 
         def mock_socket_create(*args, **kwargs):
             track_state()

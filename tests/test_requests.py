@@ -8,8 +8,8 @@ from pyS7.constants import (
     MAX_PDU,
     TPKT_SIZE,
     WRITE_REQ_HEADER_SIZE,
-    WRITE_REQ_PARAM_SIZE_TAG,
     WRITE_REQ_PARAM_SIZE_NO_TAGS,
+    WRITE_REQ_PARAM_SIZE_TAG,
     WRITE_RES_HEADER_SIZE,
     WRITE_RES_PARAM_SIZE,
     ConnectionType,
@@ -18,18 +18,18 @@ from pyS7.constants import (
     DataTypeSize,
     MemoryArea,
 )
-from pyS7.errors import S7AddressError, S7PDUError
-from pyS7.tag import S7Tag
+from pyS7.errors import S7PDUError
 from pyS7.requests import (
     ConnectionRequest,
     PDUNegotiationRequest,
     ReadRequest,
     Value,
     WriteRequest,
-    prepare_requests,
     prepare_optimized_requests,
+    prepare_requests,
     prepare_write_requests_and_values,
 )
+from pyS7.tag import S7Tag
 
 
 def test_connection_request() -> None:
@@ -41,7 +41,7 @@ def test_connection_request() -> None:
     )
 
     packet = connection_request.request
-    
+
     # Verify packet structure (Source Reference at bytes 8-9 is now random)
     assert len(packet) == 22
     assert packet[0:8] == bytearray([0x03, 0x00, 0x00, 0x16, 0x11, 0xE0, 0x00, 0x00])
@@ -62,7 +62,7 @@ def test_connection_request() -> None:
         connection_type.value,
         rack * 32 + slot,
     ])
-    
+
     assert connection_request.serialize() == bytes(packet)
 
 
@@ -383,7 +383,7 @@ def test_prepare_optimized_request() -> None:
             (9, S7Tag(MemoryArea.INPUT, 0, DataType.BYTE, 20, 0, 2)),
         ],
     }
-    
+
     expected_requests: List[List[S7Tag]] = [[
         S7Tag(MemoryArea.INPUT, 0, DataType.BYTE, 16, 0, 6),
         S7Tag(MemoryArea.MERKER, 0, DataType.REAL, 40, 0, 1),

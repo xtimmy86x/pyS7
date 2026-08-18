@@ -29,10 +29,10 @@ class TestTSAPStringConversion:
         """Test that invalid TSAP string formats are rejected."""
         with pytest.raises(ValueError, match="must be in format 'XX.YY'"):
             S7Client.tsap_from_string("0300")
-        
+
         with pytest.raises(ValueError, match="must be in format 'XX.YY'"):
             S7Client.tsap_from_string("03.00.01")
-        
+
         with pytest.raises(ValueError, match="must be in format 'XX.YY'"):
             S7Client.tsap_from_string("03")
 
@@ -40,7 +40,7 @@ class TestTSAPStringConversion:
         """Test that non-numeric TSAP strings are rejected."""
         with pytest.raises(ValueError, match="must contain hexadecimal numbers"):
             S7Client.tsap_from_string("XX.YY")
-        
+
         with pytest.raises(ValueError, match="must contain hexadecimal numbers"):
             S7Client.tsap_from_string("03.gg")
 
@@ -48,10 +48,10 @@ class TestTSAPStringConversion:
         """Test that TSAP string values out of byte range are rejected."""
         with pytest.raises(ValueError, match="First byte must be in range 0x00-0xFF"):
             S7Client.tsap_from_string("100.00")  # 0x100 > 0xFF
-        
+
         with pytest.raises(ValueError, match="Second byte must be in range 0x00-0xFF"):
             S7Client.tsap_from_string("03.100")  # 0x100 > 0xFF
-        
+
         with pytest.raises(ValueError, match="First byte must be in range 0x00-0xFF"):
             S7Client.tsap_from_string("-1.00")  # -1 parses but is out of range
 
@@ -59,7 +59,7 @@ class TestTSAPStringConversion:
         """Test that non-string input is rejected."""
         with pytest.raises(ValueError, match="tsap_str must be a string"):
             S7Client.tsap_from_string(0x0300)  # type: ignore
-        
+
         with pytest.raises(ValueError, match="tsap_str must be a string"):
             S7Client.tsap_from_string(None)  # type: ignore
 
@@ -84,7 +84,7 @@ class TestTSAPStringConversion:
         """Test that TSAP values out of range are rejected."""
         with pytest.raises(ValueError, match="tsap must be in range 0x0000-0xFFFF"):
             S7Client.tsap_to_string(0x10000)
-        
+
         with pytest.raises(ValueError, match="tsap must be in range 0x0000-0xFFFF"):
             S7Client.tsap_to_string(-1)
 
@@ -92,7 +92,7 @@ class TestTSAPStringConversion:
         """Test that non-integer input is rejected."""
         with pytest.raises(ValueError, match="tsap must be an integer"):
             S7Client.tsap_to_string("03.00")  # type: ignore
-        
+
         with pytest.raises(ValueError, match="tsap must be an integer"):
             S7Client.tsap_to_string(None)  # type: ignore
 
@@ -379,7 +379,7 @@ class TestTSAPIntegration:
             remote_tsap=0x0102,
             timeout=1.0
         )
-        
+
         assert client1.remote_tsap == 0x0101
         assert client2.remote_tsap == 0x0102
         assert client1.address != client2.address

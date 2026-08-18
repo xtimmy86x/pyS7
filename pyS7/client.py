@@ -14,18 +14,17 @@ from .constants import (
     MAX_PDU,
     MAX_PDU_SIZE,
     MIN_PDU_SIZE,
+    READ_RES_OVERHEAD,
+    READ_RES_PARAM_SIZE_TAG,
     RECOMMENDED_MIN_PDU,
     TPKT_SIZE,
+    WRITE_REQ_OVERHEAD,
+    WRITE_REQ_PARAM_SIZE_TAG,
     ConnectionState,
     ConnectionType,
     DataType,
-    READ_RES_OVERHEAD,
-    READ_RES_PARAM_SIZE_TAG,
     SZLId,
-    WRITE_REQ_OVERHEAD,
-    WRITE_REQ_PARAM_SIZE_TAG,
 )
-from .metrics import ClientMetrics
 from .errors import (
     S7AddressError,
     S7CommunicationError,
@@ -33,6 +32,7 @@ from .errors import (
     S7ProtocolError,
     S7TimeoutError,
 )
+from .metrics import ClientMetrics
 from .requests import (
     ConnectionRequest,
     PDUNegotiationRequest,
@@ -59,7 +59,7 @@ from .tag import S7Tag
 @dataclass
 class WriteResult:
     """Result of a single write operation.
-    
+
     Attributes:
         tag: The S7Tag that was written
         success: True if write succeeded, False if failed
@@ -75,7 +75,7 @@ class WriteResult:
 @dataclass
 class ReadResult:
     """Result of a single read operation.
-    
+
     Attributes:
         tag: The S7Tag that was read
         success: True if read succeeded, False if failed
@@ -93,16 +93,16 @@ class ReadResult:
 @dataclass
 class BatchWriteTransaction:
     """Batch write transaction for atomic multi-tag writes.
-    
+
     Allows grouping multiple write operations into a single transaction
     with rollback support if any write fails.
-    
+
     Attributes:
         tags: List of tags to write
         values: List of values to write
         auto_commit: If True, commit automatically on __exit__. Default True.
         rollback_on_error: If True, rollback on any error. Default True.
-    
+
     Example:
         >>> with client.batch_write() as batch:
         ...     batch.add('DB1,I0', 100)
@@ -115,7 +115,7 @@ class BatchWriteTransaction:
     _original_values: Optional[List[Any]]
     auto_commit: bool = True
     rollback_on_error: bool = True
-    
+
     def __init__(
         self,
         client: 'S7Client',
@@ -129,34 +129,34 @@ class BatchWriteTransaction:
         self._original_values = None
         self.auto_commit = auto_commit
         self.rollback_on_error = rollback_on_error
-    
+
     def add(self, tag: Union[str, S7Tag], value: Value) -> 'BatchWriteTransaction':
         """Add a tag/value pair to the batch.
-        
+
         Args:
             tag: Tag address string or S7Tag object
             value: Value to write
-            
+
         Returns:
             Self for method chaining
         """
         self._tags.append(tag)
         self._values.append(value)
         return self
-    
+
     def commit(self) -> List[WriteResult]:
         """Execute all writes in the batch.
-        
+
         Returns:
             List of WriteResult objects for each write operation
-            
+
         Raises:
             ValueError: If no tags have been added
             S7CommunicationError: If communication fails
         """
         if not self._tags:
             raise ValueError("No tags added to batch")
-        
+
         # Save original values if rollback is enabled
         if self.rollback_on_error:
             try:
@@ -166,10 +166,10 @@ class BatchWriteTransaction:
                     f"Could not read original values for rollback: {e}"
                 )
                 self._original_values = None
-        
+
         # Execute writes
         results = self._client.write_detailed(self._tags, self._values)
-        
+
         # Check for failures and rollback if needed
         if self.rollback_on_error:
             failed_results = [r for r in results if not r.success]
@@ -182,12 +182,12 @@ class BatchWriteTransaction:
                     self._client.write(self._tags, self._original_values)
                 except Exception as e:
                     self._client.logger.error(f"Rollback failed: {e}")
-        
+
         return results
-    
+
     def rollback(self) -> None:
         """Manually rollback to original values.
-        
+
         Raises:
             RuntimeError: If no original values were saved
         """
@@ -196,14 +196,14 @@ class BatchWriteTransaction:
                 "Cannot rollback: no original values saved. "
                 "Ensure rollback_on_error=True or call commit() first."
             )
-        
+
         self._client.write(self._tags, self._original_values)
         self._client.logger.info("Batch write transaction rolled back")
-    
+
     def __enter__(self) -> 'BatchWriteTransaction':
         """Enter context manager."""
         return self
-    
+
     def __exit__(
         self,
         exc_type: Optional[Type[BaseException]],
@@ -278,7 +278,7 @@ class S7Client:
         self.pdu_size: int = max_pdu
         self.max_jobs_calling: int = MAX_JOB_CALLING
         self.max_jobs_called: int = MAX_JOB_CALLED
-        
+
         # Initialize metrics tracking
         self.metrics: Optional[ClientMetrics] = ClientMetrics() if enable_metrics else None
 
@@ -303,10 +303,10 @@ class S7Client:
     @property
     def connection_state(self) -> ConnectionState:
         """Get current connection state.
-        
+
         Returns:
             ConnectionState: Current connection state
-            
+
         Example:
             >>> client = S7Client('192.168.0.1', 0, 1)
             >>> print(client.connection_state)
@@ -316,14 +316,14 @@ class S7Client:
             ConnectionState.CONNECTED
         """
         return self._connection_state
-    
+
     @property
     def last_error(self) -> Optional[str]:
         """Get the last connection error message.
-        
+
         Returns:
             Optional[str]: Last error message, or None if no error
-            
+
         Example:
             >>> client = S7Client('192.168.0.1', 0, 1)
             >>> try:
@@ -332,23 +332,23 @@ class S7Client:
             ...     print(client.last_error)
         """
         return self._last_error
-    
+
     def _set_connection_state(self, state: ConnectionState, error: Optional[str] = None) -> None:
         """Set connection state and optionally store error.
-        
+
         Args:
             state: New connection state
             error: Optional error message for ERROR state
         """
         old_state = self._connection_state
         self._connection_state = state
-        
+
         if state == ConnectionState.ERROR:
             self._last_error = error
         elif state == ConnectionState.CONNECTED:
             # Clear error when successfully connected
             self._last_error = None
-        
+
         if old_state != state:
             self.logger.debug(f"Connection state: {old_state.value} → {state.value}")
             if error:
@@ -357,10 +357,10 @@ class S7Client:
     @property
     def is_connected(self) -> bool:
         """Check if the client is currently connected to the PLC.
-        
+
         Returns:
             bool: True if connected, False otherwise
-            
+
         Example:
             >>> client = S7Client('192.168.0.1', 0, 1)
             >>> print(client.is_connected)
@@ -376,15 +376,15 @@ class S7Client:
 
     def _read_large_string(self, tag: S7Tag) -> str:
         """Read a STRING or WSTRING that exceeds PDU size by chunking.
-        
+
         Args:
             tag: The S7Tag representing a STRING or WSTRING
-            
+
         Returns:
             The complete string value
         """
         chunks: List[str] = []
-        
+
         if tag.data_type == DataType.STRING:
             # STRING: 1 byte max_length + 1 byte current_length + data
             header_size = 2
@@ -405,13 +405,13 @@ class S7Client:
                 )
             max_length = int(header_bytes[0])
             current_length = int(header_bytes[1])
-            
+
             if current_length == 0:
                 return ""
-            
+
             # Calculate chunk size
             max_data_per_read = self.pdu_size - READ_RES_OVERHEAD - READ_RES_PARAM_SIZE_TAG
-            
+
             # Read data in chunks
             offset = 0
             while offset < current_length:
@@ -431,9 +431,9 @@ class S7Client:
                     )
                 chunks.append(chunk_data)
                 offset += chunk_size
-            
+
             return "".join(chunks)
-            
+
         elif tag.data_type == DataType.WSTRING:
             # WSTRING: 2 bytes max_length + 2 bytes current_length + UTF-16 data
             header_size = 4
@@ -454,10 +454,10 @@ class S7Client:
                 )
             max_length = (int(header_bytes[0]) << 8) | int(header_bytes[1])
             current_length = (int(header_bytes[2]) << 8) | int(header_bytes[3])
-            
+
             if current_length == 0:
                 return ""
-            
+
             # Validate current_length does not exceed max_length
             if current_length > max_length:
                 self.logger.warning(
@@ -465,12 +465,12 @@ class S7Client:
                     current_length, max_length,
                 )
                 current_length = max_length
-            
+
             # Calculate chunk size (in bytes, not characters)
             max_data_per_read = self.pdu_size - READ_RES_OVERHEAD - READ_RES_PARAM_SIZE_TAG
             # WSTRING uses 2 bytes per character
             bytes_to_read = current_length * 2
-            
+
             # Read data in chunks
             offset = 0
             while offset < bytes_to_read:
@@ -478,7 +478,7 @@ class S7Client:
                 # Make sure chunk_size is even (UTF-16 uses 2 bytes per char)
                 if chunk_size % 2 != 0:
                     chunk_size -= 1
-                
+
                 chunk_tag = S7Tag(
                     memory_area=tag.memory_area,
                     db_number=tag.db_number,
@@ -496,14 +496,14 @@ class S7Client:
                 byte_array = bytes(int(b) for b in chunk_bytes)
                 chunks.append(byte_array.decode("utf-16-be"))
                 offset += chunk_size
-            
+
             return "".join(chunks)
-        
+
         raise ValueError(f"Unsupported data type for large string read: {tag.data_type}")
 
     def _write_large_string(self, tag: S7Tag, value: str) -> None:
         """Write a STRING or WSTRING that exceeds PDU size by chunking.
-        
+
         Args:
             tag: The S7Tag representing a STRING or WSTRING
             value: The string value to write
@@ -514,10 +514,10 @@ class S7Client:
             # both length fields are single bytes (0-255), and 255 is often reserved
             header_size = 2
             max_length = tag.length
-            
+
             # Validate string length
             encoded_value = value.encode('ascii', errors='replace')
-            
+
             # Check if current string length exceeds byte range
             if len(encoded_value) > 254:
                 raise S7AddressError(
@@ -525,14 +525,14 @@ class S7Client:
                     f"S7 STRING uses single-byte length fields and cannot store more than 254 characters. "
                     f"Consider using WSTRING for longer strings or splitting into multiple STRING variables."
                 )
-            
+
             if len(encoded_value) > max_length:
                 raise ValueError(
                     f"String value length ({len(encoded_value)}) exceeds declared maximum length ({max_length})"
                 )
-            
+
             current_length = len(encoded_value)
-            
+
             # Write header (max_length and current_length)
             # Note: max_length is stored in a single byte, so it's clamped to 254
             header_tag = S7Tag(
@@ -554,13 +554,13 @@ class S7Client:
                 header_max_length = max_length
             header_values = (header_max_length, current_length)
             self.write([header_tag], [header_values])
-            
+
             if current_length == 0:
                 return
-            
+
             # Calculate chunk size
             max_data_per_write = self.pdu_size - WRITE_REQ_OVERHEAD - WRITE_REQ_PARAM_SIZE_TAG - 4
-            
+
             # Write data in chunks
             offset = 0
             while offset < current_length:
@@ -576,20 +576,20 @@ class S7Client:
                 chunk_value = encoded_value[offset:offset + chunk_size].decode('ascii')
                 self.write([chunk_tag], [chunk_value])
                 offset += chunk_size
-            
+
         elif tag.data_type == DataType.WSTRING:
             # WSTRING: 2 bytes max_length + 2 bytes current_length + UTF-16 data
             header_size = 4
             max_length = tag.length
-            
+
             # Validate string length (in characters)
             if len(value) > max_length:
                 raise ValueError(
                     f"String value length ({len(value)}) exceeds maximum length ({max_length})"
                 )
-            
+
             current_length = len(value)
-            
+
             # Write header (max_length and current_length)
             header_tag = S7Tag(
                 memory_area=tag.memory_area,
@@ -615,16 +615,16 @@ class S7Client:
                 current_length & 0xFF
             )
             self.write([header_tag], [header_bytes])
-            
+
             if current_length == 0:
                 return
-            
+
             # Calculate chunk size (in bytes, not characters)
             max_data_per_write = self.pdu_size - WRITE_REQ_OVERHEAD - WRITE_REQ_PARAM_SIZE_TAG - 4
             # WSTRING uses 2 bytes per character
             encoded_value = value.encode('utf-16-be')
             bytes_to_write = len(encoded_value)
-            
+
             # Write data in chunks
             offset = 0
             while offset < bytes_to_write:
@@ -632,7 +632,7 @@ class S7Client:
                 # Make sure chunk_size is even (UTF-16 uses 2 bytes per char)
                 if chunk_size % 2 != 0:
                     chunk_size -= 1
-                
+
                 chunk_tag = S7Tag(
                     memory_area=tag.memory_area,
                     db_number=tag.db_number,
@@ -764,11 +764,11 @@ class S7Client:
     @staticmethod
     def _validate_single_tsap(tsap_value: int, tsap_name: str) -> None:
         """Validate a single TSAP value.
-        
+
         Args:
             tsap_value: TSAP value to validate (0x0000 to 0xFFFF)
             tsap_name: Name of the TSAP parameter for error messages
-            
+
         Raises:
             ValueError: If TSAP value is invalid
         """
@@ -782,14 +782,14 @@ class S7Client:
 
     def _validate_and_adjust_pdu(self, requested: int, negotiated: int) -> int:
         """Validate the negotiated PDU size and warn user if needed.
-        
+
         Args:
             requested: PDU size requested by client
             negotiated: PDU size returned by PLC
-            
+
         Returns:
             Validated and possibly adjusted PDU size
-            
+
         Raises:
             S7ConnectionError: If negotiated PDU is invalid
         """
@@ -801,7 +801,7 @@ class S7Client:
                 f"Consider reducing max_pdu parameter in S7Client constructor."
             )
             requested = MAX_PDU_SIZE
-        
+
         # 1. Check protocol limits
         if negotiated <= 0 or negotiated < MIN_PDU_SIZE:
             raise S7ConnectionError(
@@ -809,14 +809,14 @@ class S7Client:
                 f"Minimum required: {MIN_PDU_SIZE} bytes. "
                 f"Check PLC configuration or try a different connection type."
             )
-        
+
         if negotiated > MAX_PDU_SIZE:
             self.logger.warning(
                 f"PLC returned unusually large PDU size: {negotiated} bytes, "
                 f"clamping to protocol maximum: {MAX_PDU_SIZE} bytes"
             )
             negotiated = MAX_PDU_SIZE
-        
+
         # 2. Warn if PDU is very small
         if negotiated < RECOMMENDED_MIN_PDU:
             self.logger.warning(
@@ -826,7 +826,7 @@ class S7Client:
                 f"Consider: 1) Checking PLC configuration, 2) Using larger PDU in TIA Portal, "
                 f"3) Reading/writing smaller data chunks."
             )
-        
+
         # 3. Info if significantly reduced from request
         if negotiated < requested:
             reduction_percent = ((requested - negotiated) / requested) * 100
@@ -836,7 +836,7 @@ class S7Client:
                     f"requested {requested} bytes, negotiated {negotiated} bytes. "
                     f"Operations will be automatically adjusted to fit smaller PDU."
                 )
-        
+
         return negotiated
 
     @staticmethod
@@ -856,7 +856,7 @@ class S7Client:
                 "Both local_tsap and remote_tsap must be provided together, or neither. "
                 f"Got local_tsap={local_tsap}, remote_tsap={remote_tsap}"
             )
-        
+
         # Validate individual TSAP values if provided
         if local_tsap is not None:
             S7Client._validate_single_tsap(local_tsap, "local_tsap")
@@ -865,16 +865,16 @@ class S7Client:
 
     def connect(self) -> None:
         """Establishes a TCP connection to the S7 PLC and sets up initial communication parameters."""
-        
+
         # Check if already connected or connecting
         if self._connection_state == ConnectionState.CONNECTED:
             self.logger.warning("Already connected to PLC")
             return
-        
+
         if self._connection_state == ConnectionState.CONNECTING:
             self.logger.warning("Connection already in progress")
             return
-        
+
         self._set_connection_state(ConnectionState.CONNECTING)
 
         if self.local_tsap is not None and self.remote_tsap is not None:
@@ -922,11 +922,11 @@ class S7Client:
                 self.logger.debug(f"Sending COTP connection request (local_tsap={self.local_tsap:#06x}, remote_tsap={self.remote_tsap:#06x})")
             else:
                 self.logger.debug(f"Sending COTP connection request (rack={self.rack}, slot={self.slot})")
-            
+
             # Log the actual COTP packet for debugging
             cotp_packet = connection_request.serialize()
             self.logger.debug(f"COTP CR packet: {cotp_packet.hex()}")
-            
+
             connection_bytes_response: bytes = self.__send(connection_request)
             ConnectionResponse(response=connection_bytes_response)
             self.logger.debug("COTP connection accepted")
@@ -945,16 +945,16 @@ class S7Client:
                 self.max_jobs_called,
                 negotiated_pdu,
             ) = pdu_negotiation_response.parse()
-            
+
             # Validate and adjust PDU size
             self.pdu_size = self._validate_and_adjust_pdu(requested_pdu, negotiated_pdu)
-            
+
             self._set_connection_state(ConnectionState.CONNECTED)
             self.logger.debug(
                 f"Connected to PLC {self.address}:{self.port} - "
                 f"PDU: {self.pdu_size} bytes, Jobs: {self.max_jobs_calling}/{self.max_jobs_called}"
             )
-            
+
             # Record successful connection in metrics
             if self.metrics:
                 self.metrics.record_connection()
@@ -994,11 +994,11 @@ class S7Client:
 
     def disconnect(self) -> None:
         """Closes the TCP connection with the S7 PLC."""
-        
+
         if self._connection_state == ConnectionState.DISCONNECTED:
             self.logger.debug("Already disconnected")
             return
-        
+
         # Don't change state if we're cleaning up after an error during connection
         if self._connection_state != ConnectionState.ERROR:
             self._set_connection_state(ConnectionState.DISCONNECTING)
@@ -1018,17 +1018,17 @@ class S7Client:
             except (socket.error, OSError) as e:
                 # Socket may already be closed or in invalid state
                 self.logger.debug(f"Socket shutdown failed (expected if already closed): {e}")
-            
+
             try:
                 sock.close()
                 self.logger.debug(f"Disconnected from PLC {self.address}:{self.port}")
             except (socket.error, OSError) as e:
                 self.logger.warning(f"Socket close failed: {e}")
-        
+
         # Record disconnection in metrics
         if self.metrics:
             self.metrics.record_disconnection()
-        
+
         # Set to DISCONNECTED unless we were in ERROR state (preserve ERROR)
         if self._connection_state != ConnectionState.ERROR:
             self._set_connection_state(ConnectionState.DISCONNECTED)
@@ -1065,7 +1065,7 @@ class S7Client:
         if not list_tags:
             self.logger.debug("Read called with empty tag list")
             return []
-        
+
         self.logger.debug(
             f"Reading {len(list_tags)} tag(s) - optimize={optimize}, "
             f"PDU={self.pdu_size} bytes"
@@ -1076,16 +1076,16 @@ class S7Client:
                 raise S7CommunicationError(
                     "Not connected to PLC. Call 'connect' before performing read operations."
                 )
-            
+
             # Start timing for metrics
             start_time = time() if self.metrics else None
-            
+
             try:
                 # Check for large tags (strings and arrays) and handle them separately
                 regular_tags = []
                 large_string_indices = []
                 large_string_tags = []
-                
+
                 for i, tag in enumerate(list_tags):
                     # Check if tag response exceeds PDU size
                     tag_response_size = READ_RES_OVERHEAD + READ_RES_PARAM_SIZE_TAG + tag.size()
@@ -1111,18 +1111,18 @@ class S7Client:
                                 f"For STRING/WSTRING, automatic chunking is supported."
                             )
                     regular_tags.append((i, tag))
-                
+
                 # Read regular tags (initialize with Optional[Value])
                 data: List[Optional[Value]] = [None] * len(list_tags)
 
                 # Read large strings separately with chunking
                 for idx, tag in zip(large_string_indices, large_string_tags):
                     data[idx] = self._read_large_string(tag)
-                
+
                 # Read regular tags if any
                 if regular_tags:
                     tags_only = [tag for _, tag in regular_tags]
-                    
+
                     if optimize:
                         requests, tags_map = prepare_optimized_requests(
                             tags=tags_only, max_pdu=self.pdu_size
@@ -1155,23 +1155,23 @@ class S7Client:
                             bytes_reponse = self.__send(ReadRequest(tags=request))
                             read_response = ReadResponse(response=bytes_reponse, tags=request)
                             regular_data.extend(read_response.parse())
-                    
+
                     # Fill in regular data at correct indices
                     for (orig_idx, _), value in zip(regular_tags, regular_data):
                         data[orig_idx] = value
 
                 # All elements have been filled at this point (either large strings or regular tags)
                 self.logger.debug(f"Read completed: {len(list_tags)} tag(s) retrieved successfully")
-                
+
                 # Record successful read in metrics
                 if self.metrics and start_time is not None:
                     duration = time() - start_time
                     bytes_read = sum(tag.size() for tag in list_tags)
                     self.metrics.record_read(duration, bytes_read, success=True)
-                
+
                 return cast(List[Value], data)
-            
-            except Exception as e:
+
+            except Exception:
                 # Record failed read in metrics
                 if self.metrics and start_time is not None:
                     duration = time() - start_time
@@ -1182,24 +1182,24 @@ class S7Client:
         self, tags: Sequence[Union[str, S7Tag]], optimize: bool = True
     ) -> List[ReadResult]:
         """Reads data from an S7 PLC with detailed results for each tag.
-        
+
         Unlike read(), this method does not raise an exception on read failures.
         Instead, it returns detailed results for each tag, allowing you to see
         which reads succeeded and which failed.
-        
+
         Args:
             tags (Sequence[S7Tag | str]): A sequence of S7Tag or string addresses.
             optimize (bool): If True, optimize reads by merging adjacent tags.
                 Default True.
-        
+
         Returns:
             List[ReadResult]: A list of ReadResult objects, one for each tag,
                 containing success status, value, and error information.
-        
+
         Raises:
             ValueError: If no tags are provided.
             S7CommunicationError: If not connected to PLC.
-        
+
         Example:
             >>> client = S7Client('192.168.100.10', 0, 1)
             >>> client.connect()
@@ -1213,30 +1213,30 @@ class S7Client:
         """
         if not tags:
             raise ValueError("Tags list cannot be empty")
-        
+
         # Convert string addresses to S7Tag objects
         list_tags: List[S7Tag] = [
             map_address_to_tag(address=tag) if isinstance(tag, str) else tag
             for tag in tags
         ]
-        
+
         self.logger.debug(
             f"Reading {len(list_tags)} tag(s) with detailed results - "
             f"optimize={optimize}, PDU={self.pdu_size} bytes"
         )
-        
+
         with self._io_lock:
             if not self.is_connected:
                 raise S7CommunicationError(
                     "Not connected to PLC. Call 'connect' before performing read operations."
                 )
-            
+
             # Initialize results list
             results: List[ReadResult] = []
-            
+
             # Track which tags have been processed
             processed_indices = set()
-            
+
             # Handle large strings separately
             for i, tag in enumerate(list_tags):
                 tag_response_size = READ_RES_OVERHEAD + READ_RES_PARAM_SIZE_TAG + tag.size()
@@ -1260,7 +1260,7 @@ class S7Client:
                             self.logger.warning(f"Large string read failed: {tag} - {e}")
                     else:
                         # Tag too large for PDU
-                        tag_size = tag.size()
+                        tag.size()
                         max_data_size = self.pdu_size - READ_RES_OVERHEAD - READ_RES_PARAM_SIZE_TAG
                         results.append(
                             ReadResult(
@@ -1271,16 +1271,16 @@ class S7Client:
                             )
                         )
                         processed_indices.add(i)
-            
+
             # Collect regular tags (not yet processed)
             regular_tags = [
                 (i, tag) for i, tag in enumerate(list_tags) if i not in processed_indices
             ]
-            
+
             # Read regular tags if any
             if regular_tags:
                 tags_only = [tag for _, tag in regular_tags]
-                
+
                 try:
                     if optimize:
                         requests, tags_map = prepare_optimized_requests(
@@ -1289,11 +1289,11 @@ class S7Client:
                         self.logger.debug(
                             f"Optimized {len(tags_only)} tags into {len(requests[0])} request(s)"
                         )
-                        
+
                         # Process all requests and parse with detailed error handling
                         all_bytes_responses = []
                         all_requests = []
-                        
+
                         for request in requests:
                             try:
                                 bytes_response = self.__send(ReadRequest(tags=request))
@@ -1314,7 +1314,7 @@ class S7Client:
                                             )
                                             processed_indices.add(orig_idx)
                                 self.logger.warning(f"Read request failed: {e}")
-                        
+
                         # Parse responses with detailed error handling
                         for bytes_response, request in zip(all_bytes_responses, all_requests):
                             request_map = {
@@ -1323,23 +1323,23 @@ class S7Client:
                             detailed_results = self._parse_optimized_read_response_detailed(
                                 bytes_response, request_map
                             )
-                            
+
                             # Map back to original indices
                             for orig_idx, result in detailed_results:
                                 if orig_idx not in processed_indices:
                                     results.append(result)
                                     processed_indices.add(orig_idx)
-                    
+
                     else:
                         requests = prepare_requests(tags=tags_only, max_pdu=self.pdu_size)
-                        
+
                         for request in requests:
                             try:
                                 bytes_response = self.__send(ReadRequest(tags=request))
                                 read_results = self._parse_read_response_detailed(
                                     bytes_response, request, None
                                 )
-                                
+
                                 # Map back to original indices
                                 for result in read_results:
                                     for orig_idx, orig_tag in regular_tags:
@@ -1347,7 +1347,7 @@ class S7Client:
                                             results.append(result)
                                             processed_indices.add(orig_idx)
                                             break
-                            
+
                             except Exception as e:
                                 # Mark all tags in failed request as failed
                                 for req_tag in request:
@@ -1362,7 +1362,7 @@ class S7Client:
                                             )
                                             processed_indices.add(orig_idx)
                                 self.logger.warning(f"Read request failed: {e}")
-                
+
                 except Exception as e:
                     # Unexpected error, mark all remaining tags as failed
                     self.logger.error(f"Unexpected error during read_detailed: {e}")
@@ -1375,7 +1375,7 @@ class S7Client:
                                     error=f"Unexpected error: {str(e)}"
                                 )
                             )
-            
+
             # Sort results by original order
             results_dict = {}
             for result in results:
@@ -1383,14 +1383,14 @@ class S7Client:
                     if tag == result.tag and i not in results_dict:
                         results_dict[i] = result
                         break
-            
+
             sorted_results = [results_dict[i] for i in sorted(results_dict.keys())]
-            
+
             success_count = sum(1 for r in sorted_results if r.success)
             self.logger.debug(
                 f"Read detailed completed: {success_count}/{len(list_tags)} tags succeeded"
             )
-            
+
             return sorted_results
 
     def write(self, tags: Sequence[Union[str, S7Tag]], values: Sequence[Value]) -> None:
@@ -1425,7 +1425,7 @@ class S7Client:
         if not tags_list:
             self.logger.debug("Write called with empty tag list")
             return
-        
+
         self.logger.debug(f"Writing {len(tags_list)} tag(s) to PLC")
 
         with self._io_lock:
@@ -1433,16 +1433,16 @@ class S7Client:
                 raise S7CommunicationError(
                     "Not connected to PLC. Call 'connect' before performing write operations."
                 )
-            
+
             # Start timing for metrics
             start_time = time() if self.metrics else None
-            
+
             try:
                 # Check for large tags (strings) and handle them separately
                 regular_tags = []
                 regular_values = []
                 large_string_indices = []
-                
+
                 for i, (tag, value) in enumerate(zip(tags_list, values)):
                     # Check if tag request exceeds PDU size
                     tag_request_size = WRITE_REQ_OVERHEAD + WRITE_REQ_PARAM_SIZE_TAG + tag.size() + 4
@@ -1469,7 +1469,7 @@ class S7Client:
                             )
                     regular_tags.append(tag)
                     regular_values.append(value)
-                
+
                 # Write regular tags if any
                 if regular_tags:
                     requests, requests_values = prepare_write_requests_and_values(
@@ -1482,16 +1482,16 @@ class S7Client:
                         )
                         response = WriteResponse(response=bytes_response, tags=request)
                         response.parse()
-                
+
                 self.logger.debug(f"Write completed: {len(tags_list)} tag(s) written successfully")
-                
+
                 # Record successful write in metrics
                 if self.metrics and start_time is not None:
                     duration = time() - start_time
                     bytes_written = sum(tag.size() for tag in tags_list)
                     self.metrics.record_write(duration, bytes_written, success=True)
-            
-            except Exception as e:
+
+            except Exception:
                 # Record failed write in metrics
                 if self.metrics and start_time is not None:
                     duration = time() - start_time
@@ -1502,7 +1502,7 @@ class S7Client:
         self, tags: Sequence[Union[str, S7Tag]], values: Sequence[Value]
     ) -> List[WriteResult]:
         """Writes data to an S7 PLC with detailed results for each tag.
-        
+
         Unlike write(), this method does not raise an exception on write failures.
         Instead, it returns detailed results for each tag, allowing you to see
         which writes succeeded and which failed.
@@ -1534,7 +1534,7 @@ class S7Client:
         # Validate input lengths
         if not tags or not values:
             raise ValueError("Tags and values lists cannot be empty")
-            
+
         if len(tags) != len(values):
             raise ValueError("Tags and values must have the same length")
 
@@ -1543,7 +1543,7 @@ class S7Client:
             map_address_to_tag(address=tag) if isinstance(tag, str) else tag
             for tag in tags
         ]
-        
+
         self.logger.debug(f"Writing {len(tags_list)} tag(s) to PLC with detailed results")
 
         with self._io_lock:
@@ -1552,10 +1552,10 @@ class S7Client:
 
             # Initialize results list
             results: List[WriteResult] = []
-            
+
             # Track which tags have been processed
             processed_indices = set()
-            
+
             # Handle large strings separately
             for i, (tag, value) in enumerate(zip(tags_list, values)):
                 tag_request_size = WRITE_REQ_OVERHEAD + WRITE_REQ_PARAM_SIZE_TAG + tag.size() + 4
@@ -1579,7 +1579,7 @@ class S7Client:
                             self.logger.warning(f"Large string write failed: {tag} - {e}")
                     else:
                         # Tag too large for PDU
-                        tag_size = tag.size()
+                        tag.size()
                         max_data_size = self.pdu_size - WRITE_REQ_OVERHEAD - WRITE_REQ_PARAM_SIZE_TAG - 4
                         results.append(
                             WriteResult(
@@ -1590,18 +1590,18 @@ class S7Client:
                             )
                         )
                         processed_indices.add(i)
-            
+
             # Collect regular tags (not yet processed)
             regular_tags = []
             regular_values = []
             regular_indices = []
-            
+
             for i, (tag, value) in enumerate(zip(tags_list, values)):
                 if i not in processed_indices:
                     regular_tags.append(tag)
                     regular_values.append(value)
                     regular_indices.append(i)
-            
+
             # Write regular tags in batches
             if regular_tags:
                 requests, requests_values = prepare_write_requests_and_values(
@@ -1619,19 +1619,19 @@ class S7Client:
                         batch_results = self._parse_write_response_detailed(
                             bytes_response, request
                         )
-                        
+
                         # Map batch results back to original indices
                         for j, batch_result in enumerate(batch_results):
-                            orig_idx = regular_indices[tag_offset + j]
+                            regular_indices[tag_offset + j]
                             results.append(batch_result)
-                        
+
                         tag_offset += len(request)
-                        
+
                     except Exception as e:
                         # Communication error - mark all tags in this batch as failed
                         self.logger.error(f"Batch {batch_idx + 1} communication error: {e}")
                         for j in range(len(request)):
-                            orig_idx = regular_indices[tag_offset + j]
+                            regular_indices[tag_offset + j]
                             results.append(
                                 WriteResult(
                                     tag=request[j],
@@ -1640,12 +1640,12 @@ class S7Client:
                                 )
                             )
                         tag_offset += len(request)
-            
+
             # Sort results by original tag order
             # Create mapping of tag to original index
             tag_to_index = {id(tag): i for i, tag in enumerate(tags_list)}
             results_sorted = sorted(results, key=lambda r: tag_to_index.get(id(r.tag), 0))
-            
+
             # Log summary
             success_count = sum(1 for r in results_sorted if r.success)
             failure_count = len(results_sorted) - success_count
@@ -1653,28 +1653,28 @@ class S7Client:
                 f"Write detailed completed: {success_count} succeeded, {failure_count} failed "
                 f"(total: {len(results_sorted)} tags)"
             )
-            
+
             return results_sorted
 
     def _parse_write_response_detailed(
         self, bytes_response: bytes, tags: List[S7Tag]
     ) -> List[WriteResult]:
         """Parse write response and return detailed results for each tag.
-        
+
         Unlike the standard parse that raises on first error, this collects
         all results and returns them.
         """
         from .constants import WRITE_RES_OVERHEAD, ReturnCode
         from .responses import _return_code_name
-        
+
         results = []
         offset = WRITE_RES_OVERHEAD
-        
+
         for tag in tags:
             try:
                 return_code = struct.unpack_from(">B", bytes_response, offset)[0]
                 offset += 1
-                
+
                 if return_code == ReturnCode.SUCCESS.value:
                     results.append(WriteResult(tag=tag, success=True))
                 else:
@@ -1696,7 +1696,7 @@ class S7Client:
                         error=f"Failed to parse response: {str(e)}"
                     )
                 )
-        
+
         return results
 
     @staticmethod
@@ -1723,29 +1723,29 @@ class S7Client:
         tags_map: Optional[Dict[S7Tag, S7Tag]] = None
     ) -> List[ReadResult]:
         """Parse read response and return detailed results for each tag.
-        
+
         Unlike the standard parse that raises on first error, this collects
         all results and returns them.
-        
+
         Args:
             bytes_response: Raw response bytes from PLC
             tags: List of tags that were requested
             tags_map: Optional mapping for optimized reads (merged tags)
-        
+
         Returns:
             List of ReadResult objects, one per tag
         """
         from .constants import READ_RES_OVERHEAD, ReturnCode
         from .responses import _return_code_name
-        
+
         results = []
         offset = READ_RES_OVERHEAD
-        
-        for i, tag in enumerate(tags):
+
+        for _i, tag in enumerate(tags):
             try:
                 # Read return code
                 return_code = struct.unpack_from(">B", bytes_response, offset)[0]
-                
+
                 if return_code == ReturnCode.SUCCESS.value:
                     transport_size = struct.unpack_from(">B", bytes_response, offset + 1)[0]
                     length_field = struct.unpack_from(">H", bytes_response, offset + 2)[0]
@@ -1765,7 +1765,7 @@ class S7Client:
 
                     # Alignment fill byte after odd payload length.
                     offset += data_length & 1
-                    
+
                     # Parse value based on data type
                     try:
                         parse_bytes = data_bytes[:tag.size()]
@@ -1792,7 +1792,7 @@ class S7Client:
                     )
                     # Add fill byte for alignment after single-byte return code
                     offset += 2
-            
+
             except Exception as e:
                 # Parsing error for this tag
                 results.append(
@@ -1802,7 +1802,7 @@ class S7Client:
                         error=f"Failed to parse response: {str(e)}"
                     )
                 )
-        
+
         return results
 
     def _parse_optimized_read_response_detailed(
@@ -1943,37 +1943,33 @@ class S7Client:
         tags_map: Optional[Dict[S7Tag, S7Tag]] = None
     ) -> Value:
         """Parse tag value from data bytes.
-        
+
         Args:
             tag: The tag being parsed
             data_bytes: Raw data bytes for this tag
             tags_map: Optional mapping for optimized reads
-        
+
         Returns:
             Parsed value
         """
-        from .responses import (
-            _parse_string,
-            _parse_wstring,
-            extract_bit_from_byte
-        )
-        
+        from .responses import _parse_string, _parse_wstring
+
         # Handle bit extraction for BIT type or from larger types
         if tag.data_type == DataType.BIT:
             # For non-optimized BIT reads, PLC returns the bit value directly (0 or 1)
             return bool(data_bytes[0])
-        
+
         # Handle string types
         if tag.data_type == DataType.STRING:
             return _parse_string(data_bytes, 0, tag.length)
-        
+
         if tag.data_type == DataType.WSTRING:
             return _parse_wstring(data_bytes, 0, tag.length)
-        
+
         # Handle arrays (length > 1)
         if tag.length > 1:
             item_size = tag.data_type.value
-            
+
             # Use generator expressions for memory efficiency (no intermediate list)
             if tag.data_type == DataType.BYTE or tag.data_type == DataType.USINT:
                 return tuple(
@@ -2015,38 +2011,38 @@ class S7Client:
                     float(struct.unpack('>d', data_bytes[i * item_size:(i + 1) * item_size])[0])
                     for i in range(tag.length)
                 )
-            
+
             # Fallback (should not reach here with current DataType enum)
-            return tuple()
-        
+            return ()
+
         # Handle single numeric types (length == 1)
         if tag.data_type == DataType.BYTE or tag.data_type == DataType.USINT:
             return int(struct.unpack('>B', data_bytes)[0])
-        
+
         if tag.data_type == DataType.SINT:
             return int(struct.unpack('>b', data_bytes)[0])
-        
+
         if tag.data_type == DataType.CHAR:
             return str(struct.unpack('>c', data_bytes)[0].decode('ascii'))
-        
+
         if tag.data_type == DataType.INT:
             return int(struct.unpack('>h', data_bytes)[0])
-        
+
         if tag.data_type == DataType.WORD:
             return int(struct.unpack('>H', data_bytes)[0])
-        
+
         if tag.data_type == DataType.DINT:
             return int(struct.unpack('>i', data_bytes)[0])
-        
+
         if tag.data_type == DataType.DWORD:
             return int(struct.unpack('>I', data_bytes)[0])
-        
+
         if tag.data_type == DataType.REAL:
             return float(struct.unpack('>f', data_bytes)[0])
 
         if tag.data_type == DataType.LREAL:
             return float(struct.unpack('>d', data_bytes)[0])
-        
+
         raise ValueError(f"Unsupported data type for parsing: {tag.data_type}")
 
     def batch_write(
@@ -2055,26 +2051,26 @@ class S7Client:
         rollback_on_error: bool = True
     ) -> BatchWriteTransaction:
         """Create a batch write transaction for atomic multi-tag writes.
-        
+
         Allows grouping multiple write operations with optional automatic
         rollback on failure.
-        
+
         Args:
             auto_commit: If True, commit automatically when context exits.
                 Default True.
             rollback_on_error: If True, restore original values if any write
                 fails. Default True.
-        
+
         Returns:
             BatchWriteTransaction context manager
-        
+
         Example:
             >>> # Automatic commit with rollback on error
             >>> with client.batch_write() as batch:
             ...     batch.add('DB1,I0', 100)
             ...     batch.add('DB1,I2', 200)
             ...     batch.add('DB1,I4', 300)
-            
+
             >>> # Manual commit without rollback
             >>> with client.batch_write(auto_commit=False, rollback_on_error=False) as batch:
             ...     batch.add('DB1,I0', 100)
@@ -2082,7 +2078,7 @@ class S7Client:
             ...     results = batch.commit()
             ...     if all(r.success for r in results):
             ...         print("All writes succeeded")
-            
+
             >>> # Method chaining
             >>> with client.batch_write() as batch:
             ...     batch.add('DB1,I0', 100).add('DB1,I2', 200).add('DB1,I4', 300)
@@ -2253,7 +2249,7 @@ class S7Client:
                         self.socket = None
                     self._set_connection_state(ConnectionState.DISCONNECTED)
                     raise S7CommunicationError(error_msg)
-                
+
                 # Check if connection is truly closed (first empty read)
                 if empty_reads == 1:
                     error_msg = "The connection has been closed by the peer"
@@ -2268,10 +2264,10 @@ class S7Client:
                         self.socket = None
                     self._set_connection_state(ConnectionState.DISCONNECTED)
                     raise S7CommunicationError(error_msg)
-                
+
                 # Rare case: continue if between first and max retries
                 continue
-            
+
             # Reset counter on successful read
             empty_reads = 0
             data.extend(chunk)

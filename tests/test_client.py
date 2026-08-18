@@ -6,7 +6,13 @@ from typing import Any, Callable, Dict, Optional, cast
 import pytest
 
 from pyS7.client import S7Client
-from pyS7.constants import MAX_JOB_CALLED, MAX_JOB_CALLING, MAX_PDU, ConnectionState, ConnectionType
+from pyS7.constants import (
+    MAX_JOB_CALLED,
+    MAX_JOB_CALLING,
+    MAX_PDU,
+    ConnectionState,
+    ConnectionType,
+)
 from pyS7.errors import S7ConnectionError
 from pyS7.requests import ReadRequest, Request, WriteRequest
 
@@ -275,7 +281,7 @@ def test_read_optimized(client: S7Client, monkeypatch: pytest.MonkeyPatch) -> No
 def test_write(client: S7Client, monkeypatch: pytest.MonkeyPatch) -> None:
     def mock_sendall(self: Any, bytes_request: bytes) -> None:
         return None
-    
+
     write_response = (
         b"\x03\x00\x00\x18\x02\xf0\x802\x03\x00\x00\x00\x00\x00\x02\x00\x03\x00\x00\x05\x03\xff\xff\xff"
     )
@@ -297,9 +303,6 @@ def test_write(client: S7Client, monkeypatch: pytest.MonkeyPatch) -> None:
 def test_read_empty_tags(
     client: S7Client, monkeypatch: pytest.MonkeyPatch, optimize: bool
 ) -> None:
-    read_response = (
-        b"\x03\x00\x00'\x02\xf0\x802\x03\x00\x00\x00\x00\x00\x02\x00\x12\x00\x00\x04\x03\xff\x03\x00\x01\x01\x00\xff\x03\x00\x01\x01\x00\xff\x05\x00\x10\x00\x00"
-    )
 
     sent_requests: list[Request] = []
 
@@ -345,9 +348,6 @@ def test_read_bits_optimized_handles_bit_offsets(
 
 
 def test_write_empty_tags(client: S7Client, monkeypatch: pytest.MonkeyPatch) -> None:
-    write_response = (
-        b"\x03\x00\x00\x18\x02\xf0\x802\x03\x00\x00\x00\x00\x00\x02\x00\x03\x00\x00\x05\x03\xff\xff\xff"
-    )
 
     sent_requests: list[WriteRequest] = []
 
@@ -498,7 +498,7 @@ def test_client_serializes_socket_access(client: S7Client) -> None:
         try:
             barrier.wait()
             response = cast(
-                Callable[[Any], bytes], getattr(client, "_S7Client__send")
+                Callable[[Any], bytes], client._S7Client__send
             )(request)
             results[payload] = response
         except BaseException as exc:  # pragma: no cover - surfaced via errors list

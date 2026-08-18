@@ -1,13 +1,17 @@
 """Tests for write_detailed method with detailed results."""
 
 import socket
-from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
 
 from pyS7 import S7Client, WriteResult
-from pyS7.constants import ConnectionState, ConnectionType, DataType, MemoryArea, ReturnCode
+from pyS7.constants import (
+    ConnectionState,
+    ConnectionType,
+    DataType,
+    MemoryArea,
+)
 from pyS7.tag import S7Tag
 
 
@@ -46,13 +50,13 @@ class TestWriteDetailed:
             b"\x05\x03"  # Parameter: function=5, item_count=3
             b"\xff\xff\xff"  # 3 success codes
         )
-        
+
         # Mock __send to return our response
         def mock_send(self, bytes_request: bytes) -> bytes:
             return write_response
-        
+
         monkeypatch.setattr("pyS7.client.S7Client._S7Client__send", mock_send)
-        
+
         # Ensure socket is initialized and state is connected
         _set_client_connected(client, MagicMock())
 
@@ -78,10 +82,10 @@ class TestWriteDetailed:
             b"\x05\x03"  # Parameter: function=5, item_count=3
             b"\xff\x05\xff"  # success, error, success
         )
-        
+
         def mock_send(self, bytes_request: bytes) -> bytes:
             return write_response
-        
+
         monkeypatch.setattr("pyS7.client.S7Client._S7Client__send", mock_send)
 
         _set_client_connected(client, MagicMock())
@@ -114,10 +118,10 @@ class TestWriteDetailed:
             b"\x05\x03"  # Parameter: function=5, item_count=3
             b"\x0a\x0a\x0a"  # 3 failures
         )
-        
+
         def mock_send(self, bytes_request: bytes) -> bytes:
             return write_response
-        
+
         monkeypatch.setattr("pyS7.client.S7Client._S7Client__send", mock_send)
 
         _set_client_connected(client, MagicMock())
@@ -145,7 +149,7 @@ class TestWriteDetailed:
     def test_write_detailed_not_connected(self, client: S7Client) -> None:
         """Test write_detailed when not connected raises ConnectionError."""
         client.socket = None
-        
+
         with pytest.raises(ConnectionError, match="Not connected to PLC"):
             client.write_detailed(["DB1,I0"], [100])
 
@@ -160,10 +164,10 @@ class TestWriteDetailed:
             b"\x05\x01"  # Parameter: function=5, item_count=1
             b"\xff"  # Single success
         )
-        
+
         def mock_send(self, bytes_request: bytes) -> bytes:
             return write_response
-        
+
         monkeypatch.setattr("pyS7.client.S7Client._S7Client__send", mock_send)
 
         _set_client_connected(client, MagicMock())
@@ -186,10 +190,10 @@ class TestWriteDetailed:
             b"\x05\x05"  # Parameter: function=5, item_count=5
             b"\xff\x05\xff\x0a\xff"  # success, error, success, error, success
         )
-        
+
         def mock_send(self, bytes_request: bytes) -> bytes:
             return write_response
-        
+
         monkeypatch.setattr("pyS7.client.S7Client._S7Client__send", mock_send)
 
         _set_client_connected(client, MagicMock())
@@ -225,10 +229,10 @@ class TestWriteDetailed:
             b"\x05\x02"  # Parameter: function=5, item_count=2
             b"\xff\xff"  # 2 successes
         )
-        
+
         def mock_send(self, bytes_request: bytes) -> bytes:
             return write_response
-        
+
         monkeypatch.setattr("pyS7.client.S7Client._S7Client__send", mock_send)
 
         _set_client_connected(client, MagicMock())

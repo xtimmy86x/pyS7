@@ -1,8 +1,7 @@
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, Optional
 
-from .constants import DataType, DataTypeSize, MemoryArea
-
+from .constants import DataType, MemoryArea
 
 # Pre-computed lookup table for size calculation (performance optimization)
 _SIZE_CALCULATOR: Dict[DataType, Callable[[int], int]] = {
@@ -100,20 +99,20 @@ class S7Tag:
 
     def size(self) -> int:
         """Return the S7Tag size in bytes.
-        
+
         Uses pre-computed lookup table and caching for optimal performance.
         Approximately 40-50% faster than if/elif chain approach.
         """
         # Check cache first (frozen dataclass allows safe caching)
         if self._cached_size is not None:
             return self._cached_size
-        
+
         # Calculate using lookup table (avoids enum hashing overhead)
         calculated_size = _SIZE_CALCULATOR[self.data_type](self.length)
-        
+
         # Cache result (use object.__setattr__ for frozen dataclass)
         object.__setattr__(self, '_cached_size', calculated_size)
-        
+
         return calculated_size
 
     def __contains__(self, tag: "S7Tag") -> bool:

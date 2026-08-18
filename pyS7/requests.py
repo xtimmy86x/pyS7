@@ -67,13 +67,13 @@ HEADER_SIZE = TPKT_SIZE + COTP_SIZE + S7_HEADER_SIZE
 
 def _init_s7_packet(message_type: MessageType) -> Tuple[bytearray, int]:
     """Initialize an S7 packet with TPKT, COTP, and S7 headers.
-    
+
     Creates the base packet structure with placeholders for lengths.
     Placeholders are filled by _finalize_packet after adding parameters and data.
-    
+
     Args:
         message_type: Type of S7 message (JOB, ACK_DATA, USERDATA)
-        
+
     Returns:
         Tuple of (packet bytearray, header size offset)
     """
@@ -92,10 +92,10 @@ def _init_s7_packet(message_type: MessageType) -> Tuple[bytearray, int]:
 
 def _finalize_packet(packet: bytearray, parameter_start: int, data_start: int) -> None:
     """Finalize S7 packet by updating length fields.
-    
+
     Updates TPKT total length, S7 parameter length, and S7 data length
     based on the final packet size and section boundaries.
-    
+
     Args:
         packet: Packet to finalize (modified in-place)
         parameter_start: Byte offset where parameters begin
@@ -155,7 +155,7 @@ class ConnectionRequest(Request):
         packet.extend(COTP_PDU_TYPE_CR.to_bytes(1, byteorder="big"))  # PDU Type = CR (Connection Request)
         packet.extend(b"\x00")  # Destination Reference (MSB)
         packet.extend(b"\x00")  # Destination Reference (LSB)
-        
+
         # Generate a random Source Reference (16-bit, 0x0000-0xFFFF)
         # ISO 8073 uses this to identify the connection endpoint. A random value
         # prevents connection conflicts when reconnecting to the same PLC after
@@ -281,16 +281,16 @@ class ReadRequest(Request):
 
 
 # Helper functions for data packing to reduce code duplication
-def _pack_numeric_data(data: Union[int, float, Tuple[Union[int, float], ...]], 
-                       format_char: str, 
+def _pack_numeric_data(data: Union[int, float, Tuple[Union[int, float], ...]],
+                       format_char: str,
                        length: int) -> bytes:
     """Pack numeric data (int, float) using struct.pack.
-    
+
     Args:
         data: Single value or tuple of values
         format_char: struct format character (e.g., 'h' for INT, 'f' for REAL)
         length: Number of elements to pack
-        
+
     Returns:
         Packed bytes
     """
@@ -302,16 +302,16 @@ def _pack_numeric_data(data: Union[int, float, Tuple[Union[int, float], ...]],
 
 def _pack_string_data(data: str, max_length: int, tag: S7Tag, encoding: str = "ascii") -> bytes:
     """Pack STRING data with header and padding.
-    
+
     Args:
         data: String to pack
         max_length: Maximum string length
         tag: Tag for error messages
         encoding: Character encoding (default: ascii)
-        
+
     Returns:
         Packed bytes with header and padding
-        
+
     Raises:
         S7AddressError: If data type is incorrect or string is too long
     """
@@ -331,15 +331,15 @@ def _pack_string_data(data: str, max_length: int, tag: S7Tag, encoding: str = "a
 
 def _pack_wstring_data(data: str, max_length: int, tag: S7Tag) -> bytes:
     """Pack WSTRING data with header and padding.
-    
+
     Args:
         data: String to pack
         max_length: Maximum string length in characters
         tag: Tag for error messages
-        
+
     Returns:
         Packed bytes with header and padding
-        
+
     Raises:
         S7AddressError: If data type is incorrect or string is too long
     """
@@ -510,7 +510,7 @@ def prepare_requests(tags: List[S7Tag], max_pdu: int) -> List[List[S7Tag]]:
     for tag in tags:
         # Cache tag size to avoid multiple calls (performance optimization)
         tag_size = tag.size()
-        
+
         tag_request_size = READ_REQ_PARAM_SIZE_TAG
         tag_response_size = READ_RES_PARAM_SIZE_TAG + tag_size
 
@@ -547,14 +547,14 @@ def prepare_requests(tags: List[S7Tag], max_pdu: int) -> List[List[S7Tag]]:
 
 def _bucket_bit_tags(tags: List[S7Tag]) -> Tuple[List[Tuple[int, S7Tag]], TagsMap]:
     """Pre-bucket BIT tags by byte address to optimize reads.
-    
+
     Groups BIT tags that share the same byte address into a single BYTE read.
     This avoids duplicate packed keys and works around PLCs that don't support
     single BIT reads reliably.
-    
+
     Args:
         tags: List of tags to process
-        
+
     Returns:
         Tuple of (work_items, initial_groups) where:
         - work_items: List of (index, tag) tuples ready for processing
@@ -599,17 +599,17 @@ def _bucket_bit_tags(tags: List[S7Tag]) -> Tuple[List[Tuple[int, S7Tag]], TagsMa
 
 def _check_tag_fits_pdu(tag: S7Tag, max_pdu: int) -> None:
     """Check if a single tag fits within PDU size limits.
-    
+
     Args:
         tag: Tag to check
         max_pdu: Maximum PDU size
-        
+
     Raises:
         S7AddressError: If tag doesn't fit in PDU
     """
     tag_request_size = READ_REQ_PARAM_SIZE_TAG
     tag_response_size = READ_RES_PARAM_SIZE_TAG + tag.size()
-    
+
     if (
         READ_REQ_OVERHEAD + tag_request_size >= max_pdu
         or READ_RES_OVERHEAD + tag_response_size > max_pdu
@@ -622,20 +622,20 @@ def _check_tag_fits_pdu(tag: S7Tag, max_pdu: int) -> None:
 
 def _try_merge_tags(prev: S7Tag, tag: S7Tag, max_gap_bytes: int, allow_overlap: bool) -> Optional[S7Tag]:
     """Try to merge two adjacent tags into a single read.
-    
+
     Args:
         prev: Previous tag
         tag: Current tag to merge
         max_gap_bytes: Maximum gap allowed between tags
         allow_overlap: Whether to allow overlapping tags
-        
+
     Returns:
         Merged tag if merge is possible, None otherwise
     """
     # Only merge tags in the same memory area and DB
     if prev.memory_area != tag.memory_area or prev.db_number != tag.db_number:
         return None
-    
+
     prev_start = prev.start
     prev_end = prev.start + prev.size()  # exclusive end in bytes
     tag_start = tag.start
@@ -654,7 +654,7 @@ def _try_merge_tags(prev: S7Tag, tag: S7Tag, max_gap_bytes: int, allow_overlap: 
 
     if not merge_ok:
         return None
-    
+
     new_start = prev_start
     new_end = max(prev_end, tag_end)
     new_len = new_end - new_start
@@ -693,10 +693,10 @@ def prepare_optimized_requests(
       in the optimized response parser
     """
     requests: List[List[S7Tag]] = [[]]
-    
+
     # Pre-bucket BIT tags and prepare work items
     work, groups = _bucket_bit_tags(tags)
-    
+
     cum_req = READ_REQ_OVERHEAD
     cum_res = READ_RES_OVERHEAD
 
@@ -723,7 +723,7 @@ def prepare_optimized_requests(
         # Calculate sizes for current tag
         tag_req_size = READ_REQ_PARAM_SIZE_TAG
         tag_res_size = READ_RES_PARAM_SIZE_TAG + tag.size()
-        
+
         # If there is no room in the current request, start a new one
         if not (
             cum_req + tag_req_size < max_pdu

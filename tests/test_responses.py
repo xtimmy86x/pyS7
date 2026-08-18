@@ -4,7 +4,6 @@ from typing import List
 import pytest
 
 from pyS7.constants import DataType, MemoryArea
-from pyS7.tag import S7Tag
 from pyS7.responses import (
     ConnectionResponse,
     PDUNegotiationResponse,
@@ -13,6 +12,7 @@ from pyS7.responses import (
     parse_optimized_read_response,
     parse_read_response,
 )
+from pyS7.tag import S7Tag
 
 
 def test_conenction_response() -> None:
