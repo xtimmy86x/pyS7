@@ -70,4 +70,3 @@ def test_missing_write_return_code_chains_low_level_error() -> None:
         parse_write_response(b"", [TAG])
 
     assert info.value.__cause__ is not None
-    
