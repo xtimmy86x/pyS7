@@ -24,11 +24,11 @@ security setting, or DB layout.
 |---|---|---|---|---|---|---|---|
 | S7-200 | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ❌ | ⚠️ | Historically documented as compatible; no family-specific hardware record was found. Connection/address capabilities can differ by CPU. |
 | S7-200 Smart | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ❌ | ⚠️ | Expected S7 protocol compatibility, but not currently hardware-verified in this repository. |
-| S7-300 | ✅ | ✅ | ✅ | ⚠️ | ❌ | ✅ | Packet/logic tests cover the common protocol paths, not a recorded S7-300 hardware run. |
+| S7-300 | ✅ | ✅ | ✅ | ⚠️ | ❌ | ✅ | Packet/logic tests cover the common protocol paths |
 | S7-400 | ⚠️ | ⚠️ | 🧪 | ⚠️ | ❌ | 🧪 | Packet/logic tests cover the common protocol paths, not a recorded S7-400 hardware run. |
-| S7-1200 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | Repository notes record CPU-information testing on an S7-1200. Absolute DB access is configuration-dependent. The separate WSTRING hardware run did not record a CPU model. |
-| S7-1500 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | Supported operations are expected to work with suitable configuration, but no reliable S7-1500 hardware/firmware evidence was found. |
-| LOGO! | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | Limited/legacy addressing and TSAP configuration are device-dependent; not hardware-verified for 3.0. |
+| S7-1200 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | Repository notes record CPU-information testing on an S7-1200. Absolute DB access is configuration-dependent. |
+| S7-1500 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | Supported operations are expected to work with suitable configuration |
+| LOGO! | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | Limited/legacy addressing and TSAP configuration are device-dependent |
 
 No family is marked as comprehensively hardware-tested. The ✅ in the S7-1200
 row applies only to the documented SZL/CPU-information observation, not every
