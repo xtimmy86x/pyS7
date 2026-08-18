@@ -1,5 +1,7 @@
 """Tests for batch write transaction functionality."""
 
+from __future__ import annotations
+
 import socket
 from typing import Any
 from unittest.mock import MagicMock
