@@ -48,7 +48,7 @@ does not provide PLC-level atomicity or read-back verification.
 Python 3.11, 3.12, 3.13, and 3.14 are CI targets. PLC compatibility remains
 dependent on family, firmware, security, connection, and DB configuration. The
 [compatibility matrix](COMPATIBILITY.md) separates actual hardware observations
-from protocol/unit tests and expected behavior. 
+from protocol/unit tests and expected behavior.
 Hardware validation includes S7-300, S7-1200, S7-1500,
 LOGO! 0BA7, and LOGO! 0BA8. Feature-specific validation
 is documented separately in the compatibility matrix.
@@ -63,4 +63,5 @@ is documented separately in the compatibility matrix.
 - [ ] Run application and hardware tests on the deployed CPU/firmware.
 
 For examples and full guidance, see
-[Migrating from pyS7 2.x to 3.0](MIGRATION_3_0.md).
+[Migrating from pyS7 2.x to 3.0](MIGRATION_3_0.md). Maintainers should complete
+the [hardware sign-off checklist](RELEASE_CHECKLIST_3_0.md) before Step 8B.

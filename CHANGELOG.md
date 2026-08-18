@@ -13,6 +13,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Python compatibility matrix, and draft 3.0 release notes.
 
 ### Changed
+- Batch commits now return an ordered `list[WriteResult]` only when every write
+  succeeds and raise `BatchWriteError` for any failed item, including with
+  `rollback_on_error=False`. Optional rollback is best effort, not PLC-atomic,
+  and a successful PLC response does not imply read-back verification.
+- `S7ReadResponseError` and `S7WriteResponseError` now carry structured `tag`,
+  raw `error_code`, and `operation` metadata while retaining their string form.
 - Optimized BIT reads are now always byte-based: every `BIT` tag in an
   `optimize=True` read is transparently read as the containing `BYTE` and the
   requested bit is extracted client-side. This applies to isolated BITs as well
@@ -27,6 +33,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   updated accordingly.
 - Documented strict batch failure handling, BIT transport behavior, WSTRING
   UTF-16 capacity, structured errors, PLC prerequisites, and sync/async parity.
+
+### Fixed
+- Corrected WSTRING storage sizing for non-BMP Unicode by enforcing capacity in
+  UTF-16 code units while retaining `4 + max_length * 2` bytes of storage.
+- Preserved multi-item alignment when a WSTRING is followed by another value.
+- Made large/chunked WSTRING reads and writes preserve surrogate pairs that
+  cross chunk boundaries.
 
 
 ## [2.8.2]

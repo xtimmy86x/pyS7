@@ -408,7 +408,8 @@ print(data[0])  # "Hell▒▒▒World"
 including WSTRING and PDU negotiation. Compatibility depends on the CPU,
 firmware, security settings, and absolute-address-compatible DB layout. The
 [compatibility matrix](COMPATIBILITY.md) states what is hardware-tested versus
-protocol/unit-tested; it does not currently claim S7-1500 hardware validation.
+protocol/unit-tested. Maintainer hardware use confirms basic S7-1500 reads and
+writes, while feature-level validation remains conservative.
 
 ### Q: Can I use pyS7 in multi-threaded applications?
 

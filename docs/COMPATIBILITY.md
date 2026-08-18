@@ -24,16 +24,18 @@ security setting, or DB layout.
 |---|---|---|---|---|---|---|---|
 | S7-200 | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ❌ | ⚠️ | Historically documented as compatible; no family-specific hardware record was found. Connection/address capabilities can differ by CPU. |
 | S7-200 Smart | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ❌ | ⚠️ | Expected S7 protocol compatibility, but not currently hardware-verified in this repository. |
-| S7-300 | ✅ | ✅ | ✅ | ⚠️ | ❌ | ✅ | Packet/logic tests cover the common protocol paths |
+| S7-300 | ✅ | ✅ | 🧪 | ⚠️ | ❌ | 🧪 | Maintainer hardware use confirms basic reads and writes; feature-level coverage remains conservative. |
 | S7-400 | ⚠️ | ⚠️ | 🧪 | ⚠️ | ❌ | 🧪 | Packet/logic tests cover the common protocol paths, not a recorded S7-400 hardware run. |
-| S7-1200 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | Repository notes record CPU-information testing on an S7-1200. Absolute DB access is configuration-dependent. |
-| S7-1500 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | Supported operations are expected to work with suitable configuration |
-| LOGO! | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | Limited/legacy addressing and TSAP configuration are device-dependent |
+| S7-1200 | ✅ | ✅ | 🧪 | ⚠️ | ⚠️ | ✅ | Maintainer hardware use confirms basic reads and writes, and repository notes record CPU-information testing. Absolute DB access is configuration-dependent. |
+| S7-1500 | ✅ | ✅ | 🧪 | ⚠️ | ⚠️ | 🧪 | Maintainer hardware use confirms basic reads and writes; feature-level coverage remains conservative and configuration-dependent. |
+| LOGO! 0BA7 | ✅ | ✅ | 🧪 | ❌ | ❌ | ❌ | Maintainer hardware use confirms basic reads and writes; limited/legacy addressing and TSAP configuration are device-dependent. |
+| LOGO! 0BA8 | ✅ | ✅ | 🧪 | ❌ | ❌ | ❌ | Maintainer hardware use confirms basic reads and writes; limited/legacy addressing and TSAP configuration are device-dependent. |
 
-No family is marked as comprehensively hardware-tested. The ✅ in the S7-1200
-row applies only to the documented SZL/CPU-information observation, not every
-column. Automated tests exercise shared read/write, BIT, STRING/WSTRING, PDU,
-TSAP, and SZL protocol logic without identifying a physical PLC family.
+Hardware use confirms the basic read/write scope shown for S7-300, S7-1200,
+S7-1500, LOGO! 0BA7, and LOGO! 0BA8. Feature-column evidence is intentionally
+separate and conservative: automated tests exercise shared read/write, BIT,
+STRING/WSTRING, PDU, TSAP, and SZL protocol logic without identifying a
+physical PLC family.
 
 ## WSTRING hardware evidence
 
