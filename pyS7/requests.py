@@ -11,6 +11,7 @@ from typing import (
     runtime_checkable,
 )
 
+from ._wstring import encode_wstring
 from .constants import (
     COTP_CR_LENGTH,
     COTP_CR_PACKET_LENGTH,
@@ -361,16 +362,10 @@ def _pack_wstring_data(data: str, max_length: int, tag: S7Tag) -> bytes:
     Raises:
         S7AddressError: If data type is incorrect or string is too long
     """
-    if not isinstance(data, str):
-        raise S7AddressError(f"WSTRING data must be str, got {type(data).__name__}")
-    encoded = data.encode(encoding="utf-16-be")
-    if len(encoded) // 2 > max_length:  # Each char is 2 bytes
-        raise S7AddressError(
-            f"WSTRING data too long for {tag}: max length is {max_length} chars, got {len(encoded) // 2}"
-        )
+    encoded = encode_wstring(data, max_length, tag)
     # WSTRING uses 2-byte headers (unlike STRING which uses 1-byte headers)
     header = struct.pack(">HH", max_length, len(data))  # Big-endian 16-bit values
-    padding = b"\x00" * ((max_length - len(data)) * 2)  # 2 bytes per char
+    padding = b"\x00" * (max_length * 2 - len(encoded))
     return header + encoded + padding
 
 

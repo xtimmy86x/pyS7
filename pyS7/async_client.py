@@ -17,6 +17,7 @@ Example:
 """
 
 import asyncio
+import codecs
 import logging
 import struct
 from dataclasses import dataclass
@@ -36,6 +37,7 @@ from ._protocol import (
     validate_and_adjust_pdu,
     validate_tsap,
 )
+from ._wstring import encode_wstring
 from .address_parser import map_address_to_tag
 from .constants import (
     MAX_JOB_CALLED,
@@ -1134,22 +1136,25 @@ class AsyncS7Client:
             if current_length == 0:
                 return ""
 
-            # Validate current_length does not exceed max_length
-            if current_length > max_length:
-                self.logger.warning(
-                    "WSTRING current_length (%d) exceeds max_length (%d), clamping",
-                    current_length,
-                    max_length,
+            if current_length > max_length or current_length > tag.length:
+                raise S7CommunicationError(
+                    f"Invalid WSTRING header: current_length ({current_length}) "
+                    f"exceeds storage capacity ({min(max_length, tag.length)})"
                 )
-                current_length = max_length
 
             max_data = self.pdu_size - READ_RES_OVERHEAD - READ_RES_PARAM_SIZE_TAG
-            bytes_to_read = current_length * 2
+            payload_capacity = min(max_length, tag.length) * 2
+            decoder = codecs.getincrementaldecoder("utf-16-be")()
+            decoded = ""
             offset = 0
-            while offset < bytes_to_read:
-                chunk_size = min(max_data, bytes_to_read - offset)
+            while offset < payload_capacity:
+                chunk_size = min(max_data, payload_capacity - offset)
                 if chunk_size % 2 != 0:
                     chunk_size -= 1
+                if chunk_size <= 0:
+                    raise S7CommunicationError(
+                        "Negotiated PDU is too small for a UTF-16 WSTRING chunk"
+                    )
                 chunk_tag = S7Tag(
                     memory_area=tag.memory_area,
                     db_number=tag.db_number,
@@ -1165,9 +1170,27 @@ class AsyncS7Client:
                     raise S7CommunicationError(
                         f"Invalid WSTRING chunk: expected tuple, got {type(raw).__name__}"
                     )
-                chunks.append(bytes(int(b) for b in raw).decode("utf-16-be"))
+                byte_array = bytes(int(b) for b in raw)
+                try:
+                    for index in range(0, len(byte_array), 2):
+                        decoded += decoder.decode(byte_array[index : index + 2])
+                        if len(decoded) >= current_length:
+                            return decoded[:current_length]
+                except UnicodeDecodeError as exc:
+                    raise S7CommunicationError(
+                        f"Malformed UTF-16-BE payload for WSTRING {tag}"
+                    ) from exc
                 offset += chunk_size
-            return "".join(chunks)
+            try:
+                decoder.decode(b"", final=True)
+            except UnicodeDecodeError as exc:
+                raise S7CommunicationError(
+                    f"Malformed UTF-16-BE payload for WSTRING {tag}"
+                ) from exc
+            raise S7CommunicationError(
+                f"WSTRING payload exhausted after {payload_capacity} bytes before "
+                f"producing {current_length} characters"
+            )
 
         raise ValueError(
             f"Unsupported data type for large string read: {tag.data_type}"
@@ -1243,10 +1266,7 @@ class AsyncS7Client:
 
         elif tag.data_type == DataType.WSTRING:
             max_length = tag.length
-            if len(value) > max_length:
-                raise ValueError(
-                    f"String length ({len(value)}) exceeds max ({max_length})"
-                )
+            encoded_ws = encode_wstring(value, max_length, tag)
             current_length = len(value)
             header_tag = S7Tag(
                 memory_area=tag.memory_area,
@@ -1275,13 +1295,16 @@ class AsyncS7Client:
                 return
 
             max_data = self.pdu_size - WRITE_REQ_OVERHEAD - WRITE_REQ_PARAM_SIZE_TAG - 4
-            encoded_ws = value.encode("utf-16-be")
             bytes_to_write = len(encoded_ws)
             offset = 0
             while offset < bytes_to_write:
                 chunk_size = min(max_data, bytes_to_write - offset)
                 if chunk_size % 2 != 0:
                     chunk_size -= 1
+                if chunk_size <= 0:
+                    raise S7CommunicationError(
+                        "Negotiated PDU is too small for a UTF-16 WSTRING chunk"
+                    )
                 chunk_tag = S7Tag(
                     memory_area=tag.memory_area,
                     db_number=tag.db_number,

@@ -1,3 +1,4 @@
+import codecs
 import logging
 import socket
 import struct
@@ -20,6 +21,7 @@ from ._protocol import (
     validate_single_tsap,
     validate_tsap,
 )
+from ._wstring import encode_wstring
 from .address_parser import map_address_to_tag
 from .constants import (
     MAX_JOB_CALLED,
@@ -466,29 +468,31 @@ class S7Client:
             if current_length == 0:
                 return ""
 
-            # Validate current_length does not exceed max_length
-            if current_length > max_length:
-                self.logger.warning(
-                    "WSTRING current_length (%d) exceeds max_length (%d), clamping",
-                    current_length,
-                    max_length,
+            if current_length > max_length or current_length > tag.length:
+                raise S7CommunicationError(
+                    f"Invalid WSTRING header: current_length ({current_length}) "
+                    f"exceeds storage capacity ({min(max_length, tag.length)})"
                 )
-                current_length = max_length
 
             # Calculate chunk size (in bytes, not characters)
             max_data_per_read = (
                 self.pdu_size - READ_RES_OVERHEAD - READ_RES_PARAM_SIZE_TAG
             )
-            # WSTRING uses 2 bytes per character
-            bytes_to_read = current_length * 2
+            payload_capacity = min(max_length, tag.length) * 2
+            decoder = codecs.getincrementaldecoder("utf-16-be")()
+            decoded = ""
 
             # Read data in chunks
             offset = 0
-            while offset < bytes_to_read:
-                chunk_size = min(max_data_per_read, bytes_to_read - offset)
+            while offset < payload_capacity:
+                chunk_size = min(max_data_per_read, payload_capacity - offset)
                 # Make sure chunk_size is even (UTF-16 uses 2 bytes per char)
                 if chunk_size % 2 != 0:
                     chunk_size -= 1
+                if chunk_size <= 0:
+                    raise S7CommunicationError(
+                        "Negotiated PDU is too small for a UTF-16 WSTRING chunk"
+                    )
 
                 chunk_tag = S7Tag(
                     memory_area=tag.memory_area,
@@ -505,10 +509,28 @@ class S7Client:
                         f"Invalid WSTRING chunk response: expected tuple of bytes, got {type(chunk_bytes).__name__}"
                     )
                 byte_array = bytes(int(b) for b in chunk_bytes)
-                chunks.append(byte_array.decode("utf-16-be"))
+                try:
+                    # Feed one UTF-16 code unit at a time so bytes following the
+                    # logical string (which may be stale) are never decoded.
+                    for index in range(0, len(byte_array), 2):
+                        decoded += decoder.decode(byte_array[index : index + 2])
+                        if len(decoded) >= current_length:
+                            return decoded[:current_length]
+                except UnicodeDecodeError as exc:
+                    raise S7CommunicationError(
+                        f"Malformed UTF-16-BE payload for WSTRING {tag}"
+                    ) from exc
                 offset += chunk_size
-
-            return "".join(chunks)
+            try:
+                decoder.decode(b"", final=True)
+            except UnicodeDecodeError as exc:
+                raise S7CommunicationError(
+                    f"Malformed UTF-16-BE payload for WSTRING {tag}"
+                ) from exc
+            raise S7CommunicationError(
+                f"WSTRING payload exhausted after {payload_capacity} bytes before "
+                f"producing {current_length} characters"
+            )
 
         raise ValueError(
             f"Unsupported data type for large string read: {tag.data_type}"
@@ -599,12 +621,7 @@ class S7Client:
             header_size = 4
             max_length = tag.length
 
-            # Validate string length (in characters)
-            if len(value) > max_length:
-                raise ValueError(
-                    f"String value length ({len(value)}) exceeds maximum length ({max_length})"
-                )
-
+            encoded_value = encode_wstring(value, max_length, tag)
             current_length = len(value)
 
             # Write header (max_length and current_length)
@@ -641,7 +658,6 @@ class S7Client:
                 self.pdu_size - WRITE_REQ_OVERHEAD - WRITE_REQ_PARAM_SIZE_TAG - 4
             )
             # WSTRING uses 2 bytes per character
-            encoded_value = value.encode("utf-16-be")
             bytes_to_write = len(encoded_value)
 
             # Write data in chunks
@@ -651,6 +667,10 @@ class S7Client:
                 # Make sure chunk_size is even (UTF-16 uses 2 bytes per char)
                 if chunk_size % 2 != 0:
                     chunk_size -= 1
+                if chunk_size <= 0:
+                    raise S7CommunicationError(
+                        "Negotiated PDU is too small for a UTF-16 WSTRING chunk"
+                    )
 
                 chunk_tag = S7Tag(
                     memory_area=tag.memory_area,

@@ -224,7 +224,7 @@ values = client.read(tags)  # Complete string returned transparently
 
 ### WSTRING (Unicode)
 
-**Encoding**: UTF-16 BE (2 bytes per character)
+**Encoding**: UTF-16 BE (one or two UTF-16 code units per character)
 **Max length**: 254 characters
 **Size**: (length × 2) + 4 bytes (header)
 **PLC compatibility**: S7-1200/1500 (NOT available on S7-300/400)
@@ -237,6 +237,13 @@ Byte 0-1: Max length (declared, big-endian)
 Byte 2-3: Current length (actual, big-endian)
 Byte 4-N: UTF-16 character data (big-endian)
 ```
+
+`current_length` is the logical Python character count, matching behavior
+verified against Siemens S7 hardware during pyS7 3.0 development. Non-BMP
+characters such as `🌍` and `😀😁` remain fully supported, but each consumes two
+UTF-16 code units of payload capacity. Thus `WSTRING[10]` can store
+`"ABCDEFGHIJ"`, but not `"🌍" * 10`, which requires 20 code units. This
+observation does not claim compatibility with every CPU or firmware version.
 
 **Example:**
 ```python
