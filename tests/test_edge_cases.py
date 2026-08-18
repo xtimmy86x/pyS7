@@ -3,7 +3,7 @@
 import pytest
 
 from pyS7.constants import DataType, MemoryArea
-from pyS7.errors import S7PDUError, S7ReadResponseError
+from pyS7.errors import S7PDUError, S7ProtocolError
 from pyS7.requests import prepare_requests, prepare_write_requests_and_values
 from pyS7.responses import extract_bit_from_byte, parse_read_response
 from pyS7.tag import S7Tag
@@ -192,7 +192,7 @@ class TestResponseParsing:
         # Response too short
         response = b"\x03\x00\x00\x10" + b"\x00" * 12
 
-        with pytest.raises(S7ReadResponseError, match="response too short"):
+        with pytest.raises(S7ProtocolError, match="response too short"):
             parse_read_response(response, tags)
 
 

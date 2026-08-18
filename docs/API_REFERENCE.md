@@ -1000,3 +1000,23 @@ Delegated from `S7Client`:
 
 - **[Advanced Usage: Async Client](ADVANCED_USAGE.md#async-client)** - Patterns and use cases
 - **[Example](../examples/async_client_demo.py)** - Complete async example
+
+## Structured PLC item errors
+
+PLC item failures retain a useful message and also expose machine-readable
+context. `S7ReadResponseError` and `S7WriteResponseError` provide the affected
+`S7Tag` as `tag`, the raw integer PLC item return code as `error_code` (or
+`None` when unavailable), and an `operation` value of `"read"` or `"write"`.
+Existing code that only catches these exceptions or displays `str(exc)` remains
+valid.
+
+```python
+from pyS7 import S7ReadResponseError
+
+try:
+    values = client.read(["DB99,I0"])
+except S7ReadResponseError as exc:
+    print(exc.tag)
+    print(exc.error_code)
+    print(exc.operation)  # "read"
+```

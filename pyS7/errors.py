@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
     from .results import WriteResult
+    from .tag import S7Tag
 
 
 class S7Error(Exception):
@@ -60,15 +61,35 @@ class S7AddressError(S7Error):
 
 
 class S7ReadResponseError(S7Error):
-    """Raised when it is impossible to correctly parse a 'read' response from the peer."""
+    """Raised when the PLC rejects a read item."""
 
-    pass
+    def __init__(
+        self,
+        message: str | None = None,
+        *,
+        tag: S7Tag | None = None,
+        error_code: int | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.tag = tag
+        self.error_code = error_code
+        self.operation = "read"
 
 
 class S7WriteResponseError(S7Error):
-    """Raised when it is impossible to correctly parse a 'write' response from the peer."""
+    """Raised when the PLC rejects a write item."""
 
-    pass
+    def __init__(
+        self,
+        message: str | None = None,
+        *,
+        tag: S7Tag | None = None,
+        error_code: int | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.tag = tag
+        self.error_code = error_code
+        self.operation = "write"
 
 
 class S7TimeoutError(S7CommunicationError):

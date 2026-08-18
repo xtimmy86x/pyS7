@@ -19,7 +19,7 @@ from .constants import (
     MessageType,
     ReturnCode,
 )
-from .errors import S7ReadResponseError, S7WriteResponseError
+from .errors import S7ProtocolError, S7ReadResponseError, S7WriteResponseError
 from .requests import TagsMap, Value
 from .tag import S7Tag
 
@@ -300,14 +300,14 @@ def _return_code_name(return_code: int) -> str:
         return f"UNKNOWN_RETURN_CODE_0x{return_code:02X}"
 
 
-def parse_read_response(bytes_response: bytes, tags: List[S7Tag]) -> List[Value]:
+def _parse_read_response(bytes_response: bytes, tags: List[S7Tag]) -> List[Value]:
     parsed_data: List[Tuple[Union[bool, int, float], ...]] = []
     offset = READ_RES_OVERHEAD  # Response offset where data starts
 
     for i, tag in enumerate(tags):
         # Check if we have enough data for the return code
         if offset >= len(bytes_response):
-            raise S7ReadResponseError(
+            raise S7ProtocolError(
                 f"{tag}: response too short (got {len(bytes_response)} bytes, "
                 f"expected at least {offset + 1} bytes for return code)"
             )
@@ -408,10 +408,16 @@ def parse_read_response(bytes_response: bytes, tags: List[S7Tag]) -> List[Value]
                     f"Some S7 PLCs do not support reading individual bits. "
                     f"Workaround: Read the entire byte using 'DB{tag.db_number},B{tag.start}' "
                     f"and extract bit {tag.bit_offset} using extract_bit_from_byte() function "
-                    f"from pyS7.responses, or use optimized read operations."
+                    f"from pyS7.responses, or use optimized read operations.",
+                    tag=tag,
+                    error_code=return_code,
                 )
             else:
-                raise S7ReadResponseError(f"{tag}: {_return_code_name(return_code)}")
+                raise S7ReadResponseError(
+                    f"{tag}: {_return_code_name(return_code)}",
+                    tag=tag,
+                    error_code=return_code,
+                )
 
     processed_data: List[Value] = [
         data[0] if isinstance(data, tuple) and len(data) == 1 else data
@@ -421,7 +427,15 @@ def parse_read_response(bytes_response: bytes, tags: List[S7Tag]) -> List[Value]
     return processed_data
 
 
-def parse_optimized_read_response(
+def parse_read_response(bytes_response: bytes, tags: List[S7Tag]) -> List[Value]:
+    """Parse a read response and normalize malformed packets."""
+    try:
+        return _parse_read_response(bytes_response, tags)
+    except (struct.error, IndexError, UnicodeDecodeError) as exc:
+        raise S7ProtocolError(f"Malformed read response: {exc}") from exc
+
+
+def _parse_optimized_read_response(
     bytes_responses: List[bytes], tags_map: List[TagsMap]
 ) -> List[Value]:
     parsed_data: List[Tuple[int, Value]] = []
@@ -449,7 +463,7 @@ def parse_optimized_read_response(
         # Iterate over packed tags inside this response
         for packed_tag, tags in tags_map[i].items():
             if offset >= len(mv):
-                raise S7ReadResponseError(
+                raise S7ProtocolError(
                     f"{packed_tag}: response too short (got {len(mv)} bytes, "
                     f"expected at least {offset + 1} bytes for return code). "
                 )
@@ -457,12 +471,14 @@ def parse_optimized_read_response(
             return_code = mv[offset]
             if return_code != ReturnCodeSuccess:
                 raise S7ReadResponseError(
-                    f"{packed_tag}: {_return_code_name(return_code)}"
+                    f"{packed_tag}: {_return_code_name(return_code)}",
+                    tag=packed_tag,
+                    error_code=return_code,
                 )
 
             # Response header is 4 bytes (status + transport_size + length)
             if offset + 4 > len(mv):
-                raise S7ReadResponseError(
+                raise S7ProtocolError(
                     f"{packed_tag}: response too short while reading header"
                 )
             transport_size = mv[offset + 1]
@@ -482,7 +498,7 @@ def parse_optimized_read_response(
             if data_length <= 0:
                 data_length = packed_size
             if base_off + data_length > len(mv):
-                raise S7ReadResponseError(
+                raise S7ProtocolError(
                     f"{packed_tag}: response too short for packed data"
                 )
 
@@ -492,7 +508,7 @@ def parse_optimized_read_response(
                 abs_off = base_off + rel
                 dt = tag.data_type
                 if abs_off + tag.size() > len(mv):
-                    raise S7ReadResponseError(f"{tag}: response too short for tag data")
+                    raise S7ProtocolError(f"{tag}: response too short for tag data")
 
                 if dt == DataType.BIT:
                     # Check if this is a packed BIT tag (when the packed_tag is a BYTE)
@@ -541,18 +557,35 @@ def parse_optimized_read_response(
     return [v for _, v in parsed_data]
 
 
+def parse_optimized_read_response(
+    bytes_responses: List[bytes], tags_map: List[TagsMap]
+) -> List[Value]:
+    """Parse optimized read responses and normalize malformed packets."""
+    try:
+        return _parse_optimized_read_response(bytes_responses, tags_map)
+    except (struct.error, IndexError, UnicodeDecodeError) as exc:
+        raise S7ProtocolError(f"Malformed optimized read response: {exc}") from exc
+
+
 def parse_write_response(bytes_response: bytes, tags: List[S7Tag]) -> None:
     offset = WRITE_RES_OVERHEAD  # Response offset where data starts
 
     for tag in tags:
-        return_code = struct.unpack_from(">B", bytes_response, offset)[0]
+        try:
+            return_code = struct.unpack_from(">B", bytes_response, offset)[0]
+        except struct.error as exc:
+            raise S7ProtocolError(
+                f"Malformed write response: missing return code for {tag}"
+            ) from exc
 
         if return_code == ReturnCode.SUCCESS.value:
             offset += 1
 
         else:
             raise S7WriteResponseError(
-                f"Impossible to write tag {tag} - {_return_code_name(return_code)} "
+                f"Impossible to write tag {tag} - {_return_code_name(return_code)} ",
+                tag=tag,
+                error_code=return_code,
             )
 
 
