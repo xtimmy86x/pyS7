@@ -5,8 +5,21 @@ import threading
 from dataclasses import dataclass
 from time import time
 from types import TracebackType
-from typing import Any, Dict, List, Optional, Sequence, Tuple, Type, Union, cast
+from typing import Any, Dict, List, Optional, Sequence, Type, Union, cast
 
+from ._protocol import (
+    parse_optimized_read_response_detailed,
+    parse_read_response_detailed,
+    parse_tag_value,
+    parse_write_response_detailed,
+    read_item_data_length,
+    tsap_from_rack_slot,
+    tsap_from_string,
+    tsap_to_string,
+    validate_and_adjust_pdu,
+    validate_single_tsap,
+    validate_tsap,
+)
 from .address_parser import map_address_to_tag
 from .constants import (
     MAX_JOB_CALLED,
@@ -16,7 +29,6 @@ from .constants import (
     MIN_PDU_SIZE,
     READ_RES_OVERHEAD,
     READ_RES_PARAM_SIZE_TAG,
-    RECOMMENDED_MIN_PDU,
     TPKT_SIZE,
     WRITE_REQ_OVERHEAD,
     WRITE_REQ_PARAM_SIZE_TAG,
@@ -53,43 +65,9 @@ from .responses import (
     SZLResponse,
     WriteResponse,
 )
+from .results import ReadResult as ReadResult
+from .results import WriteResult as WriteResult
 from .tag import S7Tag
-
-
-@dataclass
-class WriteResult:
-    """Result of a single write operation.
-
-    Attributes:
-        tag: The S7Tag that was written
-        success: True if write succeeded, False if failed
-        error: Error message if write failed, None if succeeded
-        error_code: PLC return code if available
-    """
-
-    tag: S7Tag
-    success: bool
-    error: Optional[str] = None
-    error_code: Optional[int] = None
-
-
-@dataclass
-class ReadResult:
-    """Result of a single read operation.
-
-    Attributes:
-        tag: The S7Tag that was read
-        success: True if read succeeded, False if failed
-        value: The value read from PLC if successful, None if failed
-        error: Error message if read failed, None if succeeded
-        error_code: PLC return code if available
-    """
-
-    tag: S7Tag
-    success: bool
-    value: Optional[Value] = None
-    error: Optional[str] = None
-    error_code: Optional[int] = None
 
 
 @dataclass
@@ -680,227 +658,18 @@ class S7Client:
                 f"Unsupported data type for large string write: {tag.data_type}"
             )
 
-    @staticmethod
-    def tsap_from_string(tsap_str: str) -> int:
-        """Convert Siemens TIA Portal TSAP notation to integer value.
+    tsap_from_string = staticmethod(tsap_from_string)
 
-        TIA Portal uses the format "XX.YY" where XX and YY are hexadecimal bytes.
-        For example: "03.00" = 0x0300, "03.01" = 0x0301, "22.00" = 0x2200
+    tsap_to_string = staticmethod(tsap_to_string)
 
-        Args:
-            tsap_str: TSAP string in format "XX.YY" (e.g., "03.00", "22.00")
+    tsap_from_rack_slot = staticmethod(tsap_from_rack_slot)
 
-        Returns:
-            int: TSAP value as integer
-
-        Raises:
-            ValueError: If format is invalid or values are out of range
-
-        Example:
-            >>> local_tsap = S7Client.tsap_from_string("03.00")   # 0x0300
-            >>> remote_tsap = S7Client.tsap_from_string("03.01")  # 0x0301
-            >>> remote_tsap = S7Client.tsap_from_string("22.00")  # 0x2200
-            >>> client = S7Client(address="192.168.0.1", local_tsap=local_tsap, remote_tsap=remote_tsap)
-        """
-        if not isinstance(tsap_str, str):
-            raise ValueError(
-                f"tsap_str must be a string, got {type(tsap_str).__name__}"
-            )
-
-        parts = tsap_str.split(".")
-        if len(parts) != 2:
-            raise ValueError(
-                f"TSAP string must be in format 'XX.YY' (e.g., '03.00', '22.00'), got '{tsap_str}'"
-            )
-
-        try:
-            # Interpret as hexadecimal values (as TIA Portal does)
-            byte1 = int(parts[0], 16)
-            byte2 = int(parts[1], 16)
-        except ValueError as e:
-            raise ValueError(
-                f"TSAP string must contain hexadecimal numbers (e.g., '03.00', '22.00'), got '{tsap_str}'"
-            ) from e
-
-        if not 0 <= byte1 <= 255:
-            raise ValueError(
-                f"First byte must be in range 0x00-0xFF, got 0x{byte1:02X}"
-            )
-        if not 0 <= byte2 <= 255:
-            raise ValueError(
-                f"Second byte must be in range 0x00-0xFF, got 0x{byte2:02X}"
-            )
-
-        return (byte1 << 8) | byte2
-
-    @staticmethod
-    def tsap_to_string(tsap: int) -> str:
-        """Convert TSAP integer value to Siemens TIA Portal notation.
-
-        Converts an integer TSAP value to TIA Portal format "XX.YY" where
-        XX and YY are hexadecimal bytes.
-        For example: 0x0300 = "03.00", 0x0301 = "03.01", 0x2200 = "22.00"
-
-        Args:
-            tsap: TSAP value as integer (0x0000 to 0xFFFF)
-
-        Returns:
-            str: TSAP string in format "XX.YY" (hexadecimal)
-
-        Raises:
-            ValueError: If TSAP value is out of range
-
-        Example:
-            >>> tsap_str = S7Client.tsap_to_string(0x0301)
-            >>> print(tsap_str)  # "03.01"
-            >>> tsap_str = S7Client.tsap_to_string(0x2200)
-            >>> print(tsap_str)  # "22.00"
-        """
-        if not isinstance(tsap, int):
-            raise ValueError(f"tsap must be an integer, got {type(tsap).__name__}")
-        if not 0x0000 <= tsap <= 0xFFFF:
-            raise ValueError(
-                f"tsap must be in range 0x0000-0xFFFF (0-65535), got 0x{tsap:04X} ({tsap})"
-            )
-
-        byte1 = (tsap >> 8) & 0xFF
-        byte2 = tsap & 0xFF
-        return f"{byte1:02x}.{byte2:02x}"
-
-    @staticmethod
-    def tsap_from_rack_slot(rack: int, slot: int) -> int:
-        """Calculate remote TSAP value from rack and slot numbers.
-
-        This is a helper method for users who want to use TSAP connection
-        but need to calculate the TSAP value from rack/slot.
-
-        Args:
-            rack: Rack number (0-7)
-            slot: Slot number (0-31)
-
-        Returns:
-            int: Remote TSAP value (0x0100 | (rack * 32 + slot))
-
-        Raises:
-            ValueError: If rack or slot values are out of range
-
-        Example:
-            >>> tsap = S7Client.tsap_from_rack_slot(0, 1)
-            >>> print(f"0x{tsap:04X}")  # 0x0101
-            >>> client = S7Client(address="192.168.0.1", local_tsap=0x0100, remote_tsap=tsap)
-        """
-        if not isinstance(rack, int) or not isinstance(slot, int):
-            raise ValueError("rack and slot must be integers")
-        if not 0 <= rack <= 7:
-            raise ValueError(f"rack must be in range 0-7, got {rack}")
-        if not 0 <= slot <= 31:
-            raise ValueError(f"slot must be in range 0-31, got {slot}")
-
-        return 0x0100 | (rack * 32 + slot)
-
-    @staticmethod
-    def _validate_single_tsap(tsap_value: int, tsap_name: str) -> None:
-        """Validate a single TSAP value.
-
-        Args:
-            tsap_value: TSAP value to validate (0x0000 to 0xFFFF)
-            tsap_name: Name of the TSAP parameter for error messages
-
-        Raises:
-            ValueError: If TSAP value is invalid
-        """
-        if not isinstance(tsap_value, int):
-            raise ValueError(
-                f"{tsap_name} must be an integer, got {type(tsap_value).__name__}"
-            )
-        if not 0x0000 <= tsap_value <= 0xFFFF:
-            raise ValueError(
-                f"{tsap_name} must be in range 0x0000-0xFFFF (0-65535), "
-                f"got 0x{tsap_value:04X} ({tsap_value})"
-            )
+    _validate_single_tsap = staticmethod(validate_single_tsap)
 
     def _validate_and_adjust_pdu(self, requested: int, negotiated: int) -> int:
-        """Validate the negotiated PDU size and warn user if needed.
+        return validate_and_adjust_pdu(requested, negotiated, self.logger)
 
-        Args:
-            requested: PDU size requested by client
-            negotiated: PDU size returned by PLC
-
-        Returns:
-            Validated and possibly adjusted PDU size
-
-        Raises:
-            S7ConnectionError: If negotiated PDU is invalid
-        """
-        # 0. Validate requested PDU doesn't exceed protocol maximum
-        if requested > MAX_PDU_SIZE:
-            self.logger.warning(
-                f"Requested PDU size ({requested} bytes) exceeds protocol maximum ({MAX_PDU_SIZE} bytes). "
-                f"Using {MAX_PDU_SIZE} bytes instead. "
-                f"Consider reducing max_pdu parameter in S7Client constructor."
-            )
-            requested = MAX_PDU_SIZE
-
-        # 1. Check protocol limits
-        if negotiated <= 0 or negotiated < MIN_PDU_SIZE:
-            raise S7ConnectionError(
-                f"PLC returned invalid PDU size: {negotiated} bytes. "
-                f"Minimum required: {MIN_PDU_SIZE} bytes. "
-                f"Check PLC configuration or try a different connection type."
-            )
-
-        if negotiated > MAX_PDU_SIZE:
-            self.logger.warning(
-                f"PLC returned unusually large PDU size: {negotiated} bytes, "
-                f"clamping to protocol maximum: {MAX_PDU_SIZE} bytes"
-            )
-            negotiated = MAX_PDU_SIZE
-
-        # 2. Warn if PDU is very small
-        if negotiated < RECOMMENDED_MIN_PDU:
-            self.logger.warning(
-                f"⚠️  PLC negotiated very small PDU: {negotiated} bytes. "
-                f"This may limit functionality and performance. "
-                f"Recommended minimum: {RECOMMENDED_MIN_PDU} bytes. "
-                f"Consider: 1) Checking PLC configuration, 2) Using larger PDU in TIA Portal, "
-                f"3) Reading/writing smaller data chunks."
-            )
-
-        # 3. Info if significantly reduced from request
-        if negotiated < requested:
-            reduction_percent = ((requested - negotiated) / requested) * 100
-            if reduction_percent >= 20:
-                self.logger.info(
-                    f"PDU size reduced by {reduction_percent:.0f}%: "
-                    f"requested {requested} bytes, negotiated {negotiated} bytes. "
-                    f"Operations will be automatically adjusted to fit smaller PDU."
-                )
-
-        return negotiated
-
-    @staticmethod
-    def _validate_tsap(local_tsap: Optional[int], remote_tsap: Optional[int]) -> None:
-        """Validate TSAP values are within valid ranges.
-
-        Args:
-            local_tsap: Local TSAP value (0x0000 to 0xFFFF)
-            remote_tsap: Remote TSAP value (0x0000 to 0xFFFF)
-
-        Raises:
-            ValueError: If TSAP values are invalid
-        """
-        # If only one TSAP is provided, raise error
-        if (local_tsap is None) != (remote_tsap is None):
-            raise ValueError(
-                "Both local_tsap and remote_tsap must be provided together, or neither. "
-                f"Got local_tsap={local_tsap}, remote_tsap={remote_tsap}"
-            )
-
-        # Validate individual TSAP values if provided
-        if local_tsap is not None:
-            S7Client._validate_single_tsap(local_tsap, "local_tsap")
-        if remote_tsap is not None:
-            S7Client._validate_single_tsap(remote_tsap, "remote_tsap")
+    _validate_tsap = staticmethod(validate_tsap)
 
     def connect(self) -> None:
         """Establishes a TCP connection to the S7 PLC and sets up initial communication parameters."""
@@ -1769,430 +1538,17 @@ class S7Client:
 
             return results_sorted
 
-    def _parse_write_response_detailed(
-        self, bytes_response: bytes, tags: List[S7Tag]
-    ) -> List[WriteResult]:
-        """Parse write response and return detailed results for each tag.
+    _parse_write_response_detailed = staticmethod(parse_write_response_detailed)
 
-        Unlike the standard parse that raises on first error, this collects
-        all results and returns them.
-        """
-        from .constants import WRITE_RES_OVERHEAD, ReturnCode
-        from .responses import _return_code_name
+    _read_item_data_length = staticmethod(read_item_data_length)
 
-        results = []
-        offset = WRITE_RES_OVERHEAD
+    _parse_read_response_detailed = staticmethod(parse_read_response_detailed)
 
-        for tag in tags:
-            try:
-                return_code = struct.unpack_from(">B", bytes_response, offset)[0]
-                offset += 1
+    _parse_optimized_read_response_detailed = staticmethod(
+        parse_optimized_read_response_detailed
+    )
 
-                if return_code == ReturnCode.SUCCESS.value:
-                    results.append(WriteResult(tag=tag, success=True))
-                else:
-                    error_name = _return_code_name(return_code)
-                    results.append(
-                        WriteResult(
-                            tag=tag,
-                            success=False,
-                            error=f"PLC returned error: {error_name}",
-                            error_code=return_code,
-                        )
-                    )
-            except Exception as e:
-                # Parsing error for this tag
-                results.append(
-                    WriteResult(
-                        tag=tag,
-                        success=False,
-                        error=f"Failed to parse response: {str(e)}",
-                    )
-                )
-
-        return results
-
-    @staticmethod
-    def _read_item_data_length(
-        transport_size: int, length_field: int, fallback_size: int
-    ) -> int:
-        """Compute response item payload length in bytes from S7 item header."""
-        # BIT / BYTE|WORD|DWORD / INTEGER are reported in bits in many PLC responses.
-        if transport_size in (0x03, 0x04, 0x05):
-            data_length = (length_field + 7) // 8
-        # REAL and OCTET-STRING style items are typically reported in bytes.
-        elif transport_size in (0x07, 0x09):
-            data_length = length_field
-        else:
-            # Conservative fallback for unknown transport sizes.
-            data_length = (length_field + 7) // 8 if length_field > 0 else 0
-
-        return data_length if data_length > 0 else fallback_size
-
-    def _parse_read_response_detailed(
-        self,
-        bytes_response: bytes,
-        tags: List[S7Tag],
-        tags_map: Optional[Dict[S7Tag, S7Tag]] = None,
-    ) -> List[ReadResult]:
-        """Parse read response and return detailed results for each tag.
-
-        Unlike the standard parse that raises on first error, this collects
-        all results and returns them.
-
-        Args:
-            bytes_response: Raw response bytes from PLC
-            tags: List of tags that were requested
-            tags_map: Optional mapping for optimized reads (merged tags)
-
-        Returns:
-            List of ReadResult objects, one per tag
-        """
-        from .constants import READ_RES_OVERHEAD, ReturnCode
-        from .responses import _return_code_name
-
-        results = []
-        offset = READ_RES_OVERHEAD
-
-        for _i, tag in enumerate(tags):
-            try:
-                # Read return code
-                return_code = struct.unpack_from(">B", bytes_response, offset)[0]
-
-                if return_code == ReturnCode.SUCCESS.value:
-                    transport_size = struct.unpack_from(
-                        ">B", bytes_response, offset + 1
-                    )[0]
-                    length_field = struct.unpack_from(">H", bytes_response, offset + 2)[
-                        0
-                    ]
-                    # Skip response item header (return code + transport size + length)
-                    offset += 4
-                    data_length = self._read_item_data_length(
-                        transport_size, length_field, tag.size()
-                    )
-                    data_bytes = bytes_response[offset : offset + data_length]
-
-                    if len(data_bytes) < data_length:
-                        raise ValueError(
-                            f"Response too short for tag data: expected {data_length} bytes, "
-                            f"got {len(data_bytes)}"
-                        )
-                    offset += data_length
-
-                    # Alignment fill byte after odd payload length.
-                    offset += data_length & 1
-
-                    # Parse value based on data type
-                    try:
-                        parse_bytes = data_bytes[: tag.size()]
-                        value = self._parse_tag_value(tag, parse_bytes, tags_map)
-                        results.append(ReadResult(tag=tag, success=True, value=value))
-                    except Exception as e:
-                        results.append(
-                            ReadResult(
-                                tag=tag,
-                                success=False,
-                                error=f"Failed to parse value: {str(e)}",
-                            )
-                        )
-                else:
-                    # Error return code - no data follows, just add fill byte for alignment
-                    error_name = _return_code_name(return_code)
-                    results.append(
-                        ReadResult(
-                            tag=tag,
-                            success=False,
-                            error=f"PLC returned error: {error_name}",
-                            error_code=return_code,
-                        )
-                    )
-                    # Add fill byte for alignment after single-byte return code
-                    offset += 2
-
-            except Exception as e:
-                # Parsing error for this tag
-                results.append(
-                    ReadResult(
-                        tag=tag,
-                        success=False,
-                        error=f"Failed to parse response: {str(e)}",
-                    )
-                )
-
-        return results
-
-    def _parse_optimized_read_response_detailed(
-        self,
-        bytes_response: bytes,
-        tags_map: Dict[S7Tag, List[Tuple[int, S7Tag]]],
-    ) -> List[Tuple[int, ReadResult]]:
-        """Parse optimized read response into detailed results per original tag.
-
-        Args:
-            bytes_response: Raw response bytes from PLC.
-            tags_map: Mapping packed_tag -> list of (original_index, original_tag).
-
-        Returns:
-            List of (original_index, ReadResult), sorted by original_index.
-        """
-        from .constants import READ_RES_OVERHEAD, ReturnCode
-        from .responses import _return_code_name, extract_bit_from_byte
-
-        indexed_results: List[Tuple[int, ReadResult]] = []
-        offset = READ_RES_OVERHEAD
-        response_len = len(bytes_response)
-
-        for packed_tag, original_tags in tags_map.items():
-            try:
-                if offset >= response_len:
-                    raise ValueError(
-                        f"Response too short: expected return code at offset {offset}, "
-                        f"got {response_len} bytes"
-                    )
-
-                return_code = bytes_response[offset]
-                if return_code != ReturnCode.SUCCESS.value:
-                    error_name = _return_code_name(return_code)
-                    for idx, original_tag in original_tags:
-                        indexed_results.append(
-                            (
-                                idx,
-                                ReadResult(
-                                    tag=original_tag,
-                                    success=False,
-                                    error=f"PLC returned error: {error_name}",
-                                    error_code=return_code,
-                                ),
-                            )
-                        )
-                    # Error item contains return code + fill byte.
-                    offset += 2
-                    continue
-
-                # Success item header: return code + transport size + length (4 bytes total)
-                if offset + 4 > response_len:
-                    raise ValueError(
-                        f"Response too short while reading item header at offset {offset}"
-                    )
-
-                transport_size = bytes_response[offset + 1]
-                length_field = struct.unpack_from(">H", bytes_response, offset + 2)[0]
-                offset += 4
-                data_start = offset
-                packed_size = self._read_item_data_length(
-                    transport_size, length_field, packed_tag.size()
-                )
-                data_end = data_start + packed_size
-
-                if data_end > response_len:
-                    raise ValueError(
-                        f"Response too short for packed tag data: need {data_end}, "
-                        f"got {response_len}"
-                    )
-
-                packed_data = bytes_response[data_start:data_end]
-
-                for idx, original_tag in original_tags:
-                    try:
-                        rel_offset = original_tag.start - packed_tag.start
-                        tag_size = original_tag.size()
-
-                        if rel_offset < 0 or rel_offset + tag_size > len(packed_data):
-                            raise ValueError(
-                                f"Tag data out of packed bounds (rel={rel_offset}, "
-                                f"size={tag_size}, packed={len(packed_data)})"
-                            )
-
-                        value: Value
-                        if (
-                            original_tag.data_type == DataType.BIT
-                            and packed_tag.data_type == DataType.BYTE
-                        ):
-                            value = extract_bit_from_byte(
-                                packed_data[rel_offset], original_tag.bit_offset
-                            )
-                        else:
-                            tag_bytes = packed_data[rel_offset : rel_offset + tag_size]
-                            value = self._parse_tag_value(original_tag, tag_bytes, None)
-
-                        indexed_results.append(
-                            (
-                                idx,
-                                ReadResult(tag=original_tag, success=True, value=value),
-                            )
-                        )
-                    except Exception as e:
-                        indexed_results.append(
-                            (
-                                idx,
-                                ReadResult(
-                                    tag=original_tag,
-                                    success=False,
-                                    error=f"Failed to parse value: {str(e)}",
-                                ),
-                            )
-                        )
-
-                # Advance to next packed item with protocol alignment padding.
-                offset += packed_size + (packed_size & 1)
-
-            except Exception as e:
-                for idx, original_tag in original_tags:
-                    indexed_results.append(
-                        (
-                            idx,
-                            ReadResult(
-                                tag=original_tag,
-                                success=False,
-                                error=f"Failed to parse response: {str(e)}",
-                            ),
-                        )
-                    )
-
-        indexed_results.sort(key=lambda item: item[0])
-        return indexed_results
-
-    def _parse_tag_value(
-        self,
-        tag: S7Tag,
-        data_bytes: bytes,
-        tags_map: Optional[Dict[S7Tag, S7Tag]] = None,
-    ) -> Value:
-        """Parse tag value from data bytes.
-
-        Args:
-            tag: The tag being parsed
-            data_bytes: Raw data bytes for this tag
-            tags_map: Optional mapping for optimized reads
-
-        Returns:
-            Parsed value
-        """
-        from .responses import _parse_string, _parse_wstring
-
-        # Handle bit extraction for BIT type or from larger types
-        if tag.data_type == DataType.BIT:
-            # For non-optimized BIT reads, PLC returns the bit value directly (0 or 1)
-            return bool(data_bytes[0])
-
-        # Handle string types
-        if tag.data_type == DataType.STRING:
-            return _parse_string(data_bytes, 0, tag.length)
-
-        if tag.data_type == DataType.WSTRING:
-            return _parse_wstring(data_bytes, 0, tag.length)
-
-        # Handle arrays (length > 1)
-        if tag.length > 1:
-            item_size = tag.data_type.value
-
-            # Use generator expressions for memory efficiency (no intermediate list)
-            if tag.data_type == DataType.BYTE or tag.data_type == DataType.USINT:
-                return tuple(
-                    int(
-                        struct.unpack(
-                            ">B", data_bytes[i * item_size : (i + 1) * item_size]
-                        )[0]
-                    )
-                    for i in range(tag.length)
-                )
-            elif tag.data_type == DataType.SINT:
-                return tuple(
-                    int(
-                        struct.unpack(
-                            ">b", data_bytes[i * item_size : (i + 1) * item_size]
-                        )[0]
-                    )
-                    for i in range(tag.length)
-                )
-            elif tag.data_type == DataType.INT:
-                return tuple(
-                    int(
-                        struct.unpack(
-                            ">h", data_bytes[i * item_size : (i + 1) * item_size]
-                        )[0]
-                    )
-                    for i in range(tag.length)
-                )
-            elif tag.data_type == DataType.WORD:
-                return tuple(
-                    int(
-                        struct.unpack(
-                            ">H", data_bytes[i * item_size : (i + 1) * item_size]
-                        )[0]
-                    )
-                    for i in range(tag.length)
-                )
-            elif tag.data_type == DataType.DINT:
-                return tuple(
-                    int(
-                        struct.unpack(
-                            ">i", data_bytes[i * item_size : (i + 1) * item_size]
-                        )[0]
-                    )
-                    for i in range(tag.length)
-                )
-            elif tag.data_type == DataType.DWORD:
-                return tuple(
-                    int(
-                        struct.unpack(
-                            ">I", data_bytes[i * item_size : (i + 1) * item_size]
-                        )[0]
-                    )
-                    for i in range(tag.length)
-                )
-            elif tag.data_type == DataType.REAL:
-                return tuple(
-                    float(
-                        struct.unpack(
-                            ">f", data_bytes[i * item_size : (i + 1) * item_size]
-                        )[0]
-                    )
-                    for i in range(tag.length)
-                )
-            elif tag.data_type == DataType.LREAL:
-                return tuple(
-                    float(
-                        struct.unpack(
-                            ">d", data_bytes[i * item_size : (i + 1) * item_size]
-                        )[0]
-                    )
-                    for i in range(tag.length)
-                )
-
-            # Fallback (should not reach here with current DataType enum)
-            return ()
-
-        # Handle single numeric types (length == 1)
-        if tag.data_type == DataType.BYTE or tag.data_type == DataType.USINT:
-            return int(struct.unpack(">B", data_bytes)[0])
-
-        if tag.data_type == DataType.SINT:
-            return int(struct.unpack(">b", data_bytes)[0])
-
-        if tag.data_type == DataType.CHAR:
-            return str(struct.unpack(">c", data_bytes)[0].decode("ascii"))
-
-        if tag.data_type == DataType.INT:
-            return int(struct.unpack(">h", data_bytes)[0])
-
-        if tag.data_type == DataType.WORD:
-            return int(struct.unpack(">H", data_bytes)[0])
-
-        if tag.data_type == DataType.DINT:
-            return int(struct.unpack(">i", data_bytes)[0])
-
-        if tag.data_type == DataType.DWORD:
-            return int(struct.unpack(">I", data_bytes)[0])
-
-        if tag.data_type == DataType.REAL:
-            return float(struct.unpack(">f", data_bytes)[0])
-
-        if tag.data_type == DataType.LREAL:
-            return float(struct.unpack(">d", data_bytes)[0])
-
-        raise ValueError(f"Unsupported data type for parsing: {tag.data_type}")
+    _parse_tag_value = staticmethod(parse_tag_value)
 
     def batch_write(
         self, auto_commit: bool = True, rollback_on_error: bool = True

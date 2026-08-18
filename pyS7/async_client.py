@@ -24,8 +24,19 @@ from time import time
 from types import TracebackType
 from typing import Any, Dict, List, Optional, Sequence, Tuple, Type, Union, cast
 
+from ._protocol import (
+    parse_optimized_read_response_detailed,
+    parse_read_response_detailed,
+    parse_tag_value,
+    parse_write_response_detailed,
+    read_item_data_length,
+    tsap_from_rack_slot,
+    tsap_from_string,
+    tsap_to_string,
+    validate_and_adjust_pdu,
+    validate_tsap,
+)
 from .address_parser import map_address_to_tag
-from .client import ReadResult, S7Client, WriteResult
 from .constants import (
     MAX_JOB_CALLED,
     MAX_JOB_CALLING,
@@ -70,6 +81,7 @@ from .responses import (
     SZLResponse,
     WriteResponse,
 )
+from .results import ReadResult, WriteResult
 from .tag import S7Tag
 
 
@@ -211,9 +223,9 @@ class AsyncS7Client:
         self.timeout = timeout
 
         if isinstance(local_tsap, str):
-            local_tsap = S7Client.tsap_from_string(local_tsap)
+            local_tsap = tsap_from_string(local_tsap)
         if isinstance(remote_tsap, str):
-            remote_tsap = S7Client.tsap_from_string(remote_tsap)
+            remote_tsap = tsap_from_string(remote_tsap)
 
         self.local_tsap = local_tsap
         self.remote_tsap = remote_tsap
@@ -242,15 +254,15 @@ class AsyncS7Client:
         )
 
         if local_tsap is not None or remote_tsap is not None:
-            S7Client._validate_tsap(local_tsap, remote_tsap)
+            validate_tsap(local_tsap, remote_tsap)
 
-    # -- Static helpers delegated to S7Client ----------------------------------
+    # -- Shared transport-independent protocol helpers -------------------------
 
-    tsap_from_string = staticmethod(S7Client.tsap_from_string)
-    tsap_to_string = staticmethod(S7Client.tsap_to_string)
-    tsap_from_rack_slot = staticmethod(S7Client.tsap_from_rack_slot)
-    _read_item_data_length = staticmethod(S7Client._read_item_data_length)
-    _parse_tag_value = S7Client._parse_tag_value
+    tsap_from_string = staticmethod(tsap_from_string)
+    tsap_to_string = staticmethod(tsap_to_string)
+    tsap_from_rack_slot = staticmethod(tsap_from_rack_slot)
+    _read_item_data_length = staticmethod(read_item_data_length)
+    _parse_tag_value = staticmethod(parse_tag_value)
 
     # -- Context manager -------------------------------------------------------
 
@@ -366,8 +378,8 @@ class AsyncS7Client:
                 negotiated_pdu,
             ) = pdu_resp.parse()
 
-            self.pdu_size = S7Client._validate_and_adjust_pdu(
-                cast(S7Client, self), requested_pdu, negotiated_pdu
+            self.pdu_size = validate_and_adjust_pdu(
+                requested_pdu, negotiated_pdu, self.logger
             )
 
             self._set_connection_state(ConnectionState.CONNECTED)
@@ -723,10 +735,8 @@ class AsyncS7Client:
                                 batch_map = {
                                     k: tags_map[k] for k in batch if k in tags_map
                                 }
-                                detailed = (
-                                    S7Client._parse_optimized_read_response_detailed(
-                                        cast(S7Client, self), resp_bytes, batch_map
-                                    )
+                                detailed = parse_optimized_read_response_detailed(
+                                    resp_bytes, batch_map
                                 )
                                 for orig_idx, result in detailed:
                                     if orig_idx not in processed:
@@ -752,8 +762,8 @@ class AsyncS7Client:
                                 resp_bytes = await self._send_unlocked(
                                     ReadRequest(tags=req)
                                 )
-                                read_results = S7Client._parse_read_response_detailed(
-                                    cast(S7Client, self), resp_bytes, req, None
+                                read_results = parse_read_response_detailed(
+                                    resp_bytes, req, None
                                 )
                                 for result in read_results:
                                     for orig_idx, orig_tag in regular_tags:
@@ -959,9 +969,7 @@ class AsyncS7Client:
                         resp = await self._send_unlocked(
                             WriteRequest(tags=req, values=reqs_vals[batch_idx])
                         )
-                        batch_results = S7Client._parse_write_response_detailed(
-                            cast(S7Client, self), resp, req
-                        )
+                        batch_results = parse_write_response_detailed(resp, req)
                         for br in batch_results:
                             results.append(br)
                         tag_offset += len(req)
