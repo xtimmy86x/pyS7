@@ -6,6 +6,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [Unreleased]
+
+### Changed
+- Optimized BIT reads are now always byte-based: every `BIT` tag in an
+  `optimize=True` read is transparently read as the containing `BYTE` and the
+  requested bit is extracted client-side. This applies to isolated BITs as well
+  as groups sharing the same byte, eliminating native BIT PDUs entirely in
+  optimized mode.
+- Extracted shared protocol helpers (PDU validation, TSAP utilities, response
+  parsing) into a new internal module `pyS7/_protocol.py` to reduce duplication
+  between `S7Client` and `AsyncS7Client`.
+- Added `pyS7/results.py` as the single source of `ReadResult` and `WriteResult`
+  dataclasses, shared by both sync and async clients.
+- Raised minimum Python version requirement from 3.8 to 3.11. Classifiers and CI
+  updated accordingly.
+
+
 ## [2.8.2]
 
 ### Fixed

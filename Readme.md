@@ -34,7 +34,7 @@ Industrial safety must always remain your top priority. By using pyS7 you accept
 
 ## Installation
 
-Requires Python 3.8 or later.
+Requires Python 3.11 or later.
 
 ```bash
 pip install pys7

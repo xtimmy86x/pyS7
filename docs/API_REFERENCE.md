@@ -327,7 +327,7 @@ def read_detailed(
 
 **Parameters:**
 - `tags`: List of tag addresses (strings) or S7Tag objects
-- `optimize`: Whether to optimize by grouping contiguous tags (default: True)
+- `optimize`: Whether to optimize reads (default: True). When enabled, contiguous tags are merged into fewer PDUs and every `BIT` tag is read as its containing byte with the bit extracted client-side, avoiding native BIT PDUs
 
 **Returns:**
 - List of `ReadResult` objects, one per tag in the same order
