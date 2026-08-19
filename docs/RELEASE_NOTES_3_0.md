@@ -1,7 +1,6 @@
-# pyS7 3.0 release notes (draft)
+# pyS7 3.0.0 release notes
 
-These are draft notes for the upcoming pyS7 3.0 release. They do not announce a
-release, tag, or published package.
+These notes describe pyS7 3.0.0.
 
 ## Highlights
 
@@ -63,5 +62,4 @@ is documented separately in the compatibility matrix.
 - [ ] Run application and hardware tests on the deployed CPU/firmware.
 
 For examples and full guidance, see
-[Migrating from pyS7 2.x to 3.0](MIGRATION_3_0.md). Maintainers should complete
-the [hardware sign-off checklist](RELEASE_CHECKLIST_3_0.md) before Step 8B.
+[Migrating from pyS7 2.x to 3.0](MIGRATION_3_0.md).

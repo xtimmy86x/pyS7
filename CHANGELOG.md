@@ -8,9 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+
+## [3.0.0] - 2026-08-18
+
 ### Added
 - Added a practical pyS7 2.x to 3.0 migration guide, an evidence-based PLC and
-  Python compatibility matrix, and draft 3.0 release notes.
+  Python compatibility matrix, and 3.0 release notes.
 
 ### Changed
 - Batch commits now return an ordered `list[WriteResult]` only when every write

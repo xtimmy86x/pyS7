@@ -1,8 +1,6 @@
 # Migrating from pyS7 2.x to 3.0
 
-This guide describes the user-visible contract for the upcoming pyS7 3.0
-release. It is a migration guide, not an announcement that 3.0 has been
-released.
+This guide describes the user-visible contract for pyS7 3.0.
 
 ## At a glance
 
@@ -145,7 +143,7 @@ to pyS7's `read(..., optimize=True)` request grouping and BYTE-based BIT reads.
 - [ ] Python is 3.11 or newer.
 - [ ] Batch callers catch `BatchWriteError` (including async callers).
 - [ ] No code relies on mixed/silent batch failure results.
-- [ ] Application tests pass with the upcoming pyS7 3.0 release.
+- [ ] Application tests pass with pyS7 3.0.
 - [ ] PLC configuration and DB layouts support absolute addressing.
 - [ ] WSTRING-heavy code tests its UTF-16 code-unit capacity assumptions.
 - [ ] Hardware-dependent behavior is validated on the application's CPUs and firmware.

@@ -36,7 +36,7 @@ Industrial safety must always remain your top priority. By using pyS7 you accept
 
 Requires Python 3.11 or later.
 
-Preparing to upgrade from 2.x? Read the [3.0 migration guide](docs/MIGRATION_3_0.md)
+Upgrading from 2.x? Read the [3.0 migration guide](docs/MIGRATION_3_0.md)
 and the evidence-based [compatibility matrix](docs/COMPATIBILITY.md).
 
 ```bash
@@ -255,7 +255,7 @@ See [docs/METRICS.md](docs/METRICS.md) for complete metrics documentation and in
 
 - **[Migrating from 2.x to 3.0](docs/MIGRATION_3_0.md)** – Breaking changes and practical checklist
 - **[Compatibility](docs/COMPATIBILITY.md)** – Python, PLC, configuration, and testing evidence
-- **[Draft 3.0 release notes](docs/RELEASE_NOTES_3_0.md)** – Upcoming release highlights
+- **[3.0 release notes](docs/RELEASE_NOTES_3_0.md)** – Release highlights
 - **[API Reference](docs/API_REFERENCE.md)** – Data types, address formats, supported operations
 - **[Advanced Usage](docs/ADVANCED_USAGE.md)** – TSAP connections, PDU tuning, chunking, async client, multi-threading
 - **[Metrics and Telemetry](docs/METRICS.md)** – Performance monitoring, diagnostics, integration patterns
