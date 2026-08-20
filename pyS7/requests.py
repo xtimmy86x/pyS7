@@ -1,5 +1,6 @@
 import random
 import struct
+from datetime import timedelta
 from typing import (
     Dict,
     List,
@@ -8,9 +9,11 @@ from typing import (
     Sequence,
     Tuple,
     Union,
+    cast,
     runtime_checkable,
 )
 
+from ._time import timedelta_to_milliseconds
 from ._wstring import encode_wstring
 from .constants import (
     COTP_CR_LENGTH,
@@ -31,6 +34,7 @@ from .constants import (
     READ_RES_OVERHEAD,
     READ_RES_PARAM_SIZE_TAG,
     S7_PROTOCOL_ID,
+    S7ANY_DATA_TYPE,
     SZL_METHOD_REQUEST,
     SZL_PARAM_HEAD,
     SZL_PARAM_LENGTH,
@@ -56,7 +60,15 @@ from .errors import S7AddressError, S7PDUError
 from .tag import S7Tag
 
 TagsMap = Dict[S7Tag, List[Tuple[int, S7Tag]]]
-Value = Union[bool, int, float, str, Tuple[Union[bool, int, float], ...]]
+Value = Union[
+    bool,
+    int,
+    float,
+    str,
+    timedelta,
+    Tuple[Union[bool, int, float], ...],
+    Tuple[timedelta, ...],
+]
 
 
 S7_HEADER_SIZE = 10
@@ -262,22 +274,22 @@ class ReadRequest(Request):
             packet.extend(b"\x0a")  # Length of following address specification
             packet.extend(b"\x10")  # Syntax ID: S7ANY (0x10)
             if tag.data_type == DataType.LREAL:
-                transport_size = DataTypeData.BYTE_WORD_DWORD.value
+                transport_size = S7ANY_DATA_TYPE[tag.data_type]
                 length = tag.length * DataTypeSize[tag.data_type]
             elif tag.data_type == DataType.STRING:
                 # STRING payload is addressed as raw bytes (header + data).
                 # Using WORD transport may cause PLC side OUT_OF_RANGE near DB boundaries.
-                transport_size = DataType.BYTE.value
+                transport_size = S7ANY_DATA_TYPE[tag.data_type]
                 length = tag.size()
             elif tag.data_type == DataType.WSTRING:
                 # WSTRING payload is addressed as raw bytes (header + UTF-16 data).
-                transport_size = DataType.BYTE.value
+                transport_size = S7ANY_DATA_TYPE[tag.data_type]
                 length = tag.size()
             elif tag.data_type in (DataType.USINT, DataType.SINT):
-                transport_size = DataType.BYTE.value
+                transport_size = S7ANY_DATA_TYPE[tag.data_type]
                 length = tag.length
             else:
-                transport_size = tag.data_type.value
+                transport_size = S7ANY_DATA_TYPE[tag.data_type]
                 length = tag.length
             packet.extend(transport_size.to_bytes(1, byteorder="big"))  # Transport size
             packet.extend(length.to_bytes(2, byteorder="big"))  # Length
@@ -495,6 +507,22 @@ class WriteRequest(Request):
                 transport_size = DataTypeData.BYTE_WORD_DWORD
                 new_length = tag.length * DataTypeSize[tag.data_type] * 8
                 packed_data = _pack_numeric_data(data, "d", tag.length)  # type: ignore[arg-type]
+
+            elif tag.data_type == DataType.TIME:
+                transport_size = DataTypeData.BYTE_WORD_DWORD
+                new_length = tag.size() * 8
+                time_values = data if isinstance(data, tuple) else (data,)
+                if len(time_values) != tag.length:
+                    raise ValueError(
+                        f"TIME array length must be {tag.length}, got {len(time_values)}"
+                    )
+                packed_data = struct.pack(
+                    f">{tag.length}i",
+                    *(
+                        timedelta_to_milliseconds(cast(timedelta, value))
+                        for value in time_values
+                    ),
+                )
 
             else:
                 raise RuntimeError(
@@ -777,6 +805,10 @@ def prepare_optimized_requests(
 def prepare_write_requests_and_values(
     tags: Sequence[S7Tag], values: Sequence[Value], max_pdu: int
 ) -> Tuple[List[List[S7Tag]], List[List[Value]]]:
+    # Validate every TIME value before splitting requests, so a local error in a
+    # later PDU can never cause a partial network write.
+    validate_time_values(tags, values)
+
     requests: List[List[S7Tag]] = [[]]
     requests_values: List[List[Value]] = [[]]
 
@@ -825,6 +857,19 @@ def prepare_write_requests_and_values(
             response_size = WRITE_RES_OVERHEAD + 1
 
     return requests, requests_values
+
+
+def validate_time_values(tags: Sequence[S7Tag], values: Sequence[Value]) -> None:
+    """Validate every TIME value in an operation before any request is sent."""
+    for tag, value in zip(tags, values, strict=False):
+        if tag.data_type == DataType.TIME:
+            time_values = value if isinstance(value, tuple) else (value,)
+            if len(time_values) != tag.length:
+                raise ValueError(
+                    f"TIME array length must be {tag.length}, got {len(time_values)}"
+                )
+            for time_value in time_values:
+                timedelta_to_milliseconds(time_value)  # type: ignore[arg-type]
 
 
 class SZLRequest(Request):

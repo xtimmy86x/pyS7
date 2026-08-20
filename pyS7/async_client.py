@@ -75,6 +75,7 @@ from .requests import (
     prepare_optimized_requests,
     prepare_requests,
     prepare_write_requests_and_values,
+    validate_time_values,
 )
 from .responses import (
     ConnectionResponse,
@@ -852,6 +853,8 @@ class AsyncS7Client:
         if not tags_list:
             return
 
+        validate_time_values(tags_list, values)
+
         async with self._io_lock:
             if not self.is_connected:
                 raise S7CommunicationError(
@@ -1088,7 +1091,7 @@ class AsyncS7Client:
                 raise S7CommunicationError(
                     f"Invalid STRING header: expected tuple ≥2, got {type(header_bytes).__name__}"
                 )
-            current_length = int(header_bytes[1])
+            current_length = int(cast(Union[int, float], header_bytes[1]))
             if current_length == 0:
                 return ""
 
@@ -1131,8 +1134,12 @@ class AsyncS7Client:
                 raise S7CommunicationError(
                     f"Invalid WSTRING header: expected tuple ≥4, got {type(header_bytes).__name__}"
                 )
-            max_length = (int(header_bytes[0]) << 8) | int(header_bytes[1])
-            current_length = (int(header_bytes[2]) << 8) | int(header_bytes[3])
+            max_length = (int(cast(Union[int, float], header_bytes[0])) << 8) | int(
+                cast(Union[int, float], header_bytes[1])
+            )
+            current_length = (int(cast(Union[int, float], header_bytes[2])) << 8) | int(
+                cast(Union[int, float], header_bytes[3])
+            )
             if current_length == 0:
                 return ""
 
@@ -1170,7 +1177,7 @@ class AsyncS7Client:
                     raise S7CommunicationError(
                         f"Invalid WSTRING chunk: expected tuple, got {type(raw).__name__}"
                     )
-                byte_array = bytes(int(b) for b in raw)
+                byte_array = bytes(int(cast(Union[int, float], b)) for b in raw)
                 try:
                     for index in range(0, len(byte_array), 2):
                         decoded += decoder.decode(byte_array[index : index + 2])

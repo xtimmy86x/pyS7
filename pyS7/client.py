@@ -59,6 +59,7 @@ from .requests import (
     prepare_optimized_requests,
     prepare_requests,
     prepare_write_requests_and_values,
+    validate_time_values,
 )
 from .responses import (
     ConnectionResponse,
@@ -411,8 +412,8 @@ class S7Client:
                 raise S7CommunicationError(
                     f"Invalid STRING header response: expected tuple with at least 2 bytes, got {type(header_bytes).__name__}"
                 )
-            max_length = int(header_bytes[0])
-            current_length = int(header_bytes[1])
+            max_length = int(cast(Union[int, float], header_bytes[0]))
+            current_length = int(cast(Union[int, float], header_bytes[1]))
 
             if current_length == 0:
                 return ""
@@ -462,8 +463,12 @@ class S7Client:
                 raise S7CommunicationError(
                     f"Invalid WSTRING header response: expected tuple with at least 4 bytes, got {type(header_bytes).__name__}"
                 )
-            max_length = (int(header_bytes[0]) << 8) | int(header_bytes[1])
-            current_length = (int(header_bytes[2]) << 8) | int(header_bytes[3])
+            max_length = (int(cast(Union[int, float], header_bytes[0])) << 8) | int(
+                cast(Union[int, float], header_bytes[1])
+            )
+            current_length = (int(cast(Union[int, float], header_bytes[2])) << 8) | int(
+                cast(Union[int, float], header_bytes[3])
+            )
 
             if current_length == 0:
                 return ""
@@ -508,7 +513,7 @@ class S7Client:
                     raise S7CommunicationError(
                         f"Invalid WSTRING chunk response: expected tuple of bytes, got {type(chunk_bytes).__name__}"
                     )
-                byte_array = bytes(int(b) for b in chunk_bytes)
+                byte_array = bytes(int(cast(Union[int, float], b)) for b in chunk_bytes)
                 try:
                     # Feed one UTF-16 code unit at a time so bytes following the
                     # logical string (which may be stale) are never decoded.
@@ -1313,6 +1318,8 @@ class S7Client:
         if not tags_list:
             self.logger.debug("Write called with empty tag list")
             return
+
+        validate_time_values(tags_list, values)
 
         self.logger.debug(f"Writing {len(tags_list)} tag(s) to PLC")
 

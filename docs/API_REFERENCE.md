@@ -38,6 +38,7 @@ Complete reference for pyS7 data types, address formats, and supported operation
 | **CHAR** | 1 byte | ASCII | `str` | Single ASCII character |
 | **STRING** | Variable | 0-254 chars | `str` | ASCII string (1 byte/char + 2 byte header) |
 | **WSTRING** | Variable | 0-254 declared UTF-16 code units | `str` | UTF-16-BE; characters use one or two code units, plus a 4-byte header |
+| **TIME** | 4 bytes | −2,147,483,648 to 2,147,483,647 ms | `datetime.timedelta` | Signed big-endian milliseconds; exact millisecond precision |
 
 ## Address Format
 
@@ -66,6 +67,7 @@ pyS7 uses a flexible address format inspired by nodeS7 and nodes7.
 "DB1,I20"       # INT at offset 20 in DB1
 "DB1,R30"       # REAL at offset 30 in DB1
 "DB1,S40.50"    # STRING of length 50 at offset 40 in DB1
+"DB1,TIME100"   # TIME at byte offset 100 in DB1 (DB only)
 
 # Marker (Merker) memory
 "M0.0"          # Bit 0 of marker byte 0
@@ -79,6 +81,21 @@ pyS7 uses a flexible address format inspired by nodeS7 and nodes7.
 "Q0.0"          # Bit 0 of output byte 0
 "QW4"           # WORD at output offset 4
 ```
+
+`TIME` reads return `datetime.timedelta`; writes accept only `timedelta`:
+
+```python
+from datetime import timedelta
+
+value = client.read(["DB1,TIME100"])[0]
+client.write(["DB1,TIME100"], [timedelta(seconds=1)])
+```
+
+The storage range is signed 32-bit milliseconds (−2,147,483,648 through
+2,147,483,647 inclusive). Values must have exact millisecond precision;
+sub-millisecond values are rejected without rounding or truncation, and an
+integer millisecond count is not accepted. For 3.1.0, parsed `TIME` addresses
+are deliberately DB-only.
 
 ## Memory Areas
 

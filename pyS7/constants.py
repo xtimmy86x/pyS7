@@ -167,7 +167,28 @@ class DataType(Enum):
     WSTRING = 10  # S7 wide string UTF-16 (max length + current length header, 2 bytes per char)
     USINT = 11  # unsigned INT 8 bit
     SINT = 12  # signed INT 8 bit
+    TIME = 13  # signed 32-bit duration in milliseconds
     LREAL = 0x1F  # FLOAT 64 bit
+
+
+# S7ANY transport codes are a wire-level concern and are intentionally kept
+# separate from the public DataType enum values.
+S7ANY_DATA_TYPE: Dict[DataType, int] = {
+    DataType.BIT: 0x01,
+    DataType.BYTE: 0x02,
+    DataType.CHAR: 0x03,
+    DataType.WORD: 0x04,
+    DataType.INT: 0x05,
+    DataType.DWORD: 0x06,
+    DataType.DINT: 0x07,
+    DataType.REAL: 0x08,
+    DataType.STRING: 0x02,
+    DataType.WSTRING: 0x02,
+    DataType.USINT: 0x02,
+    DataType.SINT: 0x02,
+    DataType.TIME: 0x07,
+    DataType.LREAL: 0x04,
+}
 
 
 DataTypeSize: Dict[DataType, int] = {
@@ -183,6 +204,7 @@ DataTypeSize: Dict[DataType, int] = {
     DataType.WSTRING: 2,  # 2 bytes per character (UTF-16)
     DataType.USINT: 1,
     DataType.SINT: 1,
+    DataType.TIME: 4,
     DataType.LREAL: 8,
 }
 

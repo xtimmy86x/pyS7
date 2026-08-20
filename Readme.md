@@ -24,6 +24,7 @@ pyS7 is a lightweight, pure Python library that implements the Siemens S7 commun
 - **Strict batch writes** – Batch execution with structured failures and optional best-effort rollback
 - **Optimized multi-variable reads** – Automatically groups contiguous tags to reduce network requests
 - **Automatic chunking** – Transparently splits large STRING/WSTRING reads exceeding PDU size
+- **Siemens TIME** – DB `TIME` values represented by exact `datetime.timedelta` values
 - **CPU diagnostics** – Read PLC status (RUN/STOP) and information (model, firmware) via SZL protocol
 - **Broad compatibility** – Supports S7-200/300/400/1200/1500 series
 - **Validated protocol core** – Extensive automated tests and strict type checking
@@ -216,6 +217,21 @@ print(data[0])  # "Hello 世界! 🌍"
 tags = ["DB1,S100.254"]  # STRING[254] - handled transparently
 data = client.read(tags)  # Complete string returned
 ```
+
+### Siemens TIME
+
+```python
+from datetime import timedelta
+
+value = client.read(["DB1,TIME100"])[0]  # returns timedelta
+client.write(["DB1,TIME100"], [timedelta(seconds=1)])
+```
+
+`TIME` uses signed 32-bit big-endian milliseconds, with an inclusive range of
+−2,147,483,648 through 2,147,483,647 ms. Writes accept only `timedelta` values
+with exact millisecond precision; integers and sub-millisecond values are
+rejected rather than converted, rounded, or truncated. The 3.1.0 string-address
+contract is DB-only, using canonical syntax such as `DB1,TIME100`.
 
 ### Monitoring and Metrics
 

@@ -2,6 +2,7 @@
 
 import logging
 import struct
+from datetime import timedelta
 
 from .constants import (
     MAX_PDU_SIZE,
@@ -10,6 +11,7 @@ from .constants import (
     RECOMMENDED_MIN_PDU,
     WRITE_RES_OVERHEAD,
     DataType,
+    DataTypeSize,
     ReturnCode,
 )
 from .errors import S7ConnectionError
@@ -159,12 +161,22 @@ def parse_tag_value(
         DataType.DWORD: ">I",
         DataType.REAL: ">f",
         DataType.LREAL: ">d",
+        DataType.TIME: ">i",
     }
     if tag.length > 1:
         fmt = formats.get(tag.data_type)
         if fmt is None:
             return ()
-        size = tag.data_type.value
+        size = DataTypeSize[tag.data_type]
+        if tag.data_type == DataType.TIME:
+            return tuple(
+                timedelta(
+                    milliseconds=struct.unpack(
+                        fmt, data_bytes[i * size : (i + 1) * size]
+                    )[0]
+                )
+                for i in range(tag.length)
+            )
         return tuple(
             struct.unpack(fmt, data_bytes[i * size : (i + 1) * size])[0]
             for i in range(tag.length)
@@ -173,7 +185,10 @@ def parse_tag_value(
         return str(struct.unpack(">c", data_bytes)[0].decode("ascii"))
     fmt = formats.get(tag.data_type)
     if fmt is not None:
-        return struct.unpack(fmt, data_bytes)[0]  # type: ignore[no-any-return]
+        result = struct.unpack(fmt, data_bytes)[0]
+        if tag.data_type == DataType.TIME:
+            return timedelta(milliseconds=result)
+        return result  # type: ignore[no-any-return]
     raise ValueError(f"Unsupported data type for parsing: {tag.data_type}")
 
 

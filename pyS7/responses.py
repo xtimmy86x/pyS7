@@ -1,4 +1,5 @@
 import struct
+from datetime import timedelta
 from typing import Any, Dict, List, Optional, Protocol, Tuple, Union, runtime_checkable
 
 # Forward declaration for extract_bit_from_byte (defined later in this file)
@@ -301,7 +302,7 @@ def _return_code_name(return_code: int) -> str:
 
 
 def _parse_read_response(bytes_response: bytes, tags: List[S7Tag]) -> List[Value]:
-    parsed_data: List[Tuple[Union[bool, int, float], ...]] = []
+    parsed_data: List[Any] = []
     offset = READ_RES_OVERHEAD  # Response offset where data starts
 
     for i, tag in enumerate(tags):
@@ -390,6 +391,13 @@ def _parse_read_response(bytes_response: bytes, tags: List[S7Tag]) -> List[Value
                 data = struct.unpack_from(
                     f">{tag.length * 'd'}", bytes_response, offset
                 )
+                offset += tag.size()
+
+            elif tag.data_type == DataType.TIME:
+                milliseconds = struct.unpack_from(
+                    f">{tag.length}i", bytes_response, offset
+                )
+                data = tuple(timedelta(milliseconds=value) for value in milliseconds)
                 offset += tag.size()
 
             else:
@@ -533,6 +541,13 @@ def _parse_optimized_read_response(
 
                 elif dt == DataType.WSTRING:
                     value = _parse_wstring(mv, abs_off, tag.length)
+
+                elif dt == DataType.TIME:
+                    milliseconds = unpack_from(f">{tag.length}i", mv, abs_off)
+                    durations = tuple(
+                        timedelta(milliseconds=item) for item in milliseconds
+                    )
+                    value = durations if tag.length > 1 else durations[0]
 
                 else:
                     # Numeric scalar/array types

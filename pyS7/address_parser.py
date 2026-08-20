@@ -82,6 +82,7 @@ TOKEN_TABLE: Dict[str, _TokenInfo] = {
     "REAL": _TokenInfo(DataType.REAL),
     "LR": _TokenInfo(DataType.LREAL),
     "LREAL": _TokenInfo(DataType.LREAL),
+    "TIME": _TokenInfo(DataType.TIME),
     "S": _TokenInfo(
         DataType.STRING, bit_offset_required=True, bit_offset_is_length=True
     ),
@@ -160,6 +161,8 @@ def _token_to_tag(
     info = TOKEN_TABLE.get(token)
     if info is None:
         raise S7AddressError(f"Impossible to parse address: '{address}'")
+    if info.data_type == DataType.TIME and memory_area != MemoryArea.DB:
+        raise S7AddressError("TIME string addresses are supported only in DB memory")
 
     if info.bit_offset_is_length:
         if bit_offset is None:
@@ -223,7 +226,7 @@ def map_address_to_tag(address: str) -> S7Tag:
     match: Optional[re.Match[str]]
 
     if address.startswith("DB"):
-        match = re.match(r"DB(\d+),([A-Z]+)(\d+)(?:\.(\d+))?", address)
+        match = re.fullmatch(r"DB(\d+),([A-Z]+)(\d+)(?:\.(\d+))?", address)
 
         if match is None:
             raise S7AddressError(f"Impossible to parse address '{address}'")

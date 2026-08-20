@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Added Siemens `TIME` support using `datetime.timedelta`, with signed 32-bit
+  millisecond storage and DB-only string addresses such as `DB1,TIME100`.
+
 
 ## [3.0.0] - 2026-08-18
 
