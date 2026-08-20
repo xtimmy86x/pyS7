@@ -8,9 +8,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+
+## [3.1.0] - 2026-08-20
+
 ### Added
-- Added Siemens `TIME` support using `datetime.timedelta`, with signed 32-bit
-  millisecond storage and DB-only string addresses such as `DB1,TIME100`.
+- Added Siemens `TIME` support as `DataType.TIME`, represented publicly by
+  `datetime.timedelta` with exact, signed 32-bit millisecond semantics.
+- Added DB-only string addresses such as `DB1,TIME100`, programmatic arrays,
+  sync and async operations, optimized and non-optimized reads, detailed APIs,
+  and batch compatibility.
+- Hardware validated `TIME` reads and writes on a Siemens S7-1200, including
+  negative values, both optimization modes, and adjacent-variable integrity.
+  Native `TIME` reads use a DINT-compatible S7ANY representation for S7-1200
+  compatibility while retaining `timedelta` semantics.
 
 
 ## [3.0.0] - 2026-08-18

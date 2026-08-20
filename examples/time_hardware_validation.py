@@ -53,7 +53,9 @@ def main() -> None:
                     f"guard={read_dint!r}, expected_guard={original_dint!r}"
                 )
 
-        adjacent_ok = client.read([args.dint_address], optimize=False)[0] == original_dint
+        adjacent_ok = (
+            client.read([args.dint_address], optimize=False)[0] == original_dint
+        )
         all_ok = print_case("adjacent DINT unchanged", adjacent_ok) and all_ok
         if not adjacent_ok:
             raise AssertionError("Adjacent DINT changed unexpectedly")
@@ -73,7 +75,9 @@ def main() -> None:
 
         client.write([args.time_address], [original_time])
         restored = client.read([args.time_address], optimize=False)[0]
-        all_ok = print_case("original TIME restored", restored == original_time) and all_ok
+        all_ok = (
+            print_case("original TIME restored", restored == original_time) and all_ok
+        )
         if restored != original_time:
             raise AssertionError(
                 f"TIME restore mismatch: got {restored!r}, expected {original_time!r}"
