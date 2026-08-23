@@ -104,6 +104,22 @@ class S7ProtocolError(S7CommunicationError):
     pass
 
 
+class S7CommPlusError(S7Error):
+    """Base error for the experimental, explicitly selected S7CommPlus API."""
+
+
+class S7CommPlusProtocolError(S7ProtocolError, S7CommPlusError):
+    """Raised for malformed or unexpected S7CommPlus protocol data."""
+
+
+class S7SymbolicAccessError(S7CommPlusError):
+    """Raised when a PLC rejects a symbolic read or write item."""
+
+    def __init__(self, message: str, *, error_code: int | None = None) -> None:
+        super().__init__(message)
+        self.error_code = error_code
+
+
 class S7PDUError(S7Error):
     """Raised when PDU size limits are exceeded."""
 

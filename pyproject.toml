@@ -49,7 +49,7 @@ dev = [
 ]
 
 [tool.setuptools]
-packages = ["pyS7"]
+packages = ["pyS7", "pyS7.s7commplus"]
 
 [tool.setuptools.package-data]
 pyS7 = ["py.typed"]
