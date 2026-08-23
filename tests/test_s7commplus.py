@@ -1,16 +1,20 @@
+import asyncio
 import socket
 import struct
+import threading
+import time
 from collections import deque
 
 import pytest
 
 from pyS7.errors import (
     S7CommPlusProtocolError,
+    S7CommPlusUnsupportedProtocolError,
     S7ConnectionError,
     S7SymbolicAccessError,
     S7TimeoutError,
 )
-from pyS7.s7commplus import S7SymbolicTag, db_access_area
+from pyS7.s7commplus import AsyncS7CommPlusClient, S7SymbolicTag, db_access_area
 from pyS7.s7commplus.codec import (
     build_symbolic_read,
     decode_frame,
@@ -21,7 +25,7 @@ from pyS7.s7commplus.codec import (
     parse_symbolic_read,
     parse_symbolic_write,
 )
-from pyS7.s7commplus.connection import S7CommPlusConnection
+from pyS7.s7commplus.connection import S7CommPlusConnection, _cotp_connection_request
 from pyS7.s7commplus.protocol import DataType, FunctionCode, ProtocolVersion
 from pyS7.s7commplus.vlq import decode_uint32, decode_uint64, encode_uint32
 
@@ -57,6 +61,24 @@ def test_access_area_and_symbolic_address_encoding() -> None:
     assert nonzero_crc.startswith(b"\xa4\x34")
     assert fields == 5
     assert nested_fields == 6
+
+
+def test_static_cotp_connection_request_fixture() -> None:
+    # Independently described RFC 1006/COTP CR with Siemens' public HMI TSAP.
+    fixture = bytes.fromhex(
+        "030000241fe00000000100c1020600c210" "53494d415449432d524f4f542d484d49c0010a"
+    )
+    assert _cotp_connection_request() == fixture
+
+
+def test_static_v1_symbolic_read_fixture_has_no_integrity_id() -> None:
+    # Sanitized V1 GetMultiVariables payload; this is a wire fixture, not a
+    # value produced and decoded by the implementation under test.
+    fixture = bytes.fromhex(
+        "000000000106a43488d0b88001039376108203"
+        "000004e88969001200000000896a001300896b00040000000000000000"
+    )
+    assert build_symbolic_read(db_access_area(1), [0x10, 0x103], 0x1234, 1) == fixture
 
 
 @pytest.mark.parametrize("sequence", [[], [-1], [0x100000000], [True], range(65)])
@@ -174,3 +196,52 @@ def test_failed_connect_cleans_state(monkeypatch: pytest.MonkeyPatch) -> None:
     assert not connection.connected
     assert connection.session_id == 0
     assert fake.closed
+
+
+def test_connect_rejects_detected_v3_before_session_use(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake = FakeSocket([])
+    fake.sendall = lambda data: None  # type: ignore[attr-defined]
+    fake.settimeout = lambda timeout: None  # type: ignore[attr-defined]
+    monkeypatch.setattr(socket, "create_connection", lambda *args: fake)
+    connection = S7CommPlusConnection("plc")
+    monkeypatch.setattr(connection, "_receive_tpkt", lambda: b"\x1f\xd0\0\0\0\1\0")
+
+    def exchange(*args: object, **kwargs: object) -> object:
+        return (ProtocolVersion.V3, b"") if kwargs.get("accept_any_version") else b""
+
+    monkeypatch.setattr(connection, "_exchange", exchange)
+    with pytest.raises(S7CommPlusUnsupportedProtocolError) as exc:
+        connection.connect()
+    assert exc.value.protocol_version == ProtocolVersion.V3
+    assert not connection.connected
+    assert connection.session_id == 0
+
+
+@pytest.mark.asyncio
+async def test_async_symbolic_read_does_not_block_event_loop(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = AsyncS7CommPlusClient("plc")
+    worker_thread = 0
+
+    def blocking_read(*args: object) -> bytes:
+        nonlocal worker_thread
+        worker_thread = threading.get_ident()
+        time.sleep(0.08)
+        return b"ok"
+
+    monkeypatch.setattr(client._client, "read_symbolic", blocking_read)
+    ticks = 0
+
+    async def ticker() -> None:
+        nonlocal ticks
+        while ticks < 3:
+            await asyncio.sleep(0.01)
+            ticks += 1
+
+    result, _ = await asyncio.gather(client.read_symbolic(1, [1]), ticker())
+    assert result == b"ok"
+    assert ticks == 3
+    assert worker_thread != threading.get_ident()

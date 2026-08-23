@@ -125,15 +125,18 @@ def build_symbolic_read(
     access_area: int, access_sequence: Sequence[int], symbol_crc: int, version: int
 ) -> bytes:
     address, fields = encode_item_address(access_area, access_sequence, symbol_crc)
-    return (
+    result = (
         struct.pack(">I", 0)
         + encode_uint32(1)
         + encode_uint32(fields)
         + address
         + encode_object_qualifier(version)
-        + encode_uint32(1)
-        + struct.pack(">I", 0)
     )
+    # V1 has no IntegrityId.  V2+ insertion belongs to the authenticated
+    # session layer; these builders remain useful for fixture inspection only.
+    if version != ProtocolVersion.V1:
+        result += encode_uint32(1)
+    return result + struct.pack(">I", 0)
 
 
 def build_symbolic_write(
@@ -219,6 +222,9 @@ def parse_symbolic_read(payload: bytes) -> bytes:
                 f"symbolic item {error_item} failed with PLC status 0x{code:x}",
                 error_code=code,
             )
+        pos += error_used
+    if pos != len(payload):
+        raise S7CommPlusProtocolError("unexpected trailing symbolic read data")
     return value
 
 
@@ -230,7 +236,11 @@ def parse_symbolic_write(payload: bytes) -> None:
         )
     item, item_used = decode_uint32(payload, used)
     if item:
-        code, _ = decode_uint64(payload, used + item_used)
+        code, code_used = decode_uint64(payload, used + item_used)
+        if used + item_used + code_used != len(payload):
+            raise S7CommPlusProtocolError("unexpected trailing symbolic write data")
         raise S7SymbolicAccessError(
             f"symbolic item {item} failed with PLC status 0x{code:x}", error_code=code
         )
+    if used + item_used != len(payload):
+        raise S7CommPlusProtocolError("unexpected trailing symbolic write data")

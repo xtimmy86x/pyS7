@@ -27,6 +27,26 @@ class S7CommPlusClient:
     def connected(self) -> bool:
         return self._connection.connected
 
+    @property
+    def protocol_version(self) -> int:
+        return self._connection.protocol_version
+
+    @property
+    def session_id(self) -> int:
+        return self._connection.session_id
+
+    @property
+    def tls_active(self) -> bool:
+        return self._connection.tls_active
+
+    @property
+    def authentication_supported(self) -> bool:
+        return False
+
+    @property
+    def last_response(self) -> bytes:
+        return self._connection.last_response
+
     def connect(self) -> None:
         self._connection.connect()
 

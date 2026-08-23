@@ -11,13 +11,22 @@ before it is declared stable.
 
 ## Supported subset
 
-Phase 1/2 implements ISO-on-TCP (TPKT/COTP), InitSSL negotiation, an
+Phase 1/2 implements ISO-on-TCP (TPKT/COTP), InitSSL probing, an
 **unauthenticated protocol V1 session**, and raw GetMultiVariables /
-SetMultiVariables symbolic access. Protocol V2/V3 integrity/authentication and
-TLS are not implemented. Consequently, support is expected only for older or
-appropriately configured S7-1200/1500 firmware that accepts an unauthenticated
-V1 session. It has not yet been verified on real hardware. TLS verification is
-not weakened: TLS is simply unavailable in this phase.
+SetMultiVariables symbolic access. The CreateObject response is the source of
+the negotiated protocol version. Protocol V2/V3 integrity, SessionKey/HMAC,
+authentication, and TLS-in-COTP are not implemented; those modes fail at
+session negotiation with a typed, version-bearing exception rather than later
+as a malformed data operation. Plaintext V3 is not merely V1 with a different
+frame byte: known hardware flows require session activation and integrity/HMAC
+state, so claiming it without that security state would be unsafe.
+
+Consequently, support is expected only for older or appropriately configured
+S7-1200/1500 firmware that accepts an unauthenticated V1 session. It has not
+yet been verified on real hardware. TLS verification is not weakened: TLS is
+simply unavailable in this phase. S7CommPlus TLS records are tunneled inside
+COTP data frames, so wrapping the TCP socket with ``ssl.wrap_socket()`` would
+be architecturally incorrect.
 
 ```python
 from pyS7.s7commplus import S7CommPlusClient, db_access_area
@@ -45,3 +54,13 @@ No Siemens dictionaries or code/data from LGPL S7CommPlusDriver were included.
 The wire design was cross-checked against the MIT python-snap7 implementation
 and the Wireshark protocol model; licensing provenance must be reviewed again
 before importing future protocol tables or dictionaries.
+
+## Async cancellation
+
+``AsyncS7CommPlusClient`` currently uses ``asyncio.to_thread()`` rather than a
+native asyncio transport. Every connect, disconnect, read, and write is run off
+the event-loop thread and serialized by one session lock. Cancelling a caller
+cannot stop an already-running operating-system socket call; the facade keeps
+the lock until the worker exits and then propagates cancellation. This prevents
+a later coroutine from overlapping the cancelled request and consuming its
+response or sequence number.

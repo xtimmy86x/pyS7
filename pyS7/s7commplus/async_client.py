@@ -3,15 +3,22 @@
 import asyncio
 from collections.abc import Sequence
 from types import TracebackType
-from typing import Type
+from typing import Callable, Type, TypeVar
 
 from .client import S7CommPlusClient
 from .protocol import DEFAULT_PORT
 from .tag import S7SymbolicTag
 
+_T = TypeVar("_T")
+
 
 class AsyncS7CommPlusClient:
-    """Non-blocking facade that runs bounded socket operations in worker threads."""
+    """Serialize synchronous operations in worker threads.
+
+    Cancellation stops waiting for an operation, not the underlying socket call.  The
+    lock is deliberately retained until that worker finishes so a cancelled operation
+    can never overlap and corrupt the session used by a following coroutine.
+    """
 
     def __init__(
         self, host: str, port: int = DEFAULT_PORT, timeout: float = 5.0
@@ -23,21 +30,32 @@ class AsyncS7CommPlusClient:
     def connected(self) -> bool:
         return self._client.connected
 
-    async def connect(self) -> None:
+    async def _run(self, operation: Callable[..., _T], *args: object) -> _T:
         async with self._lock:
-            await asyncio.to_thread(self._client.connect)
+            worker = asyncio.create_task(asyncio.to_thread(operation, *args))
+            try:
+                return await asyncio.shield(worker)
+            except asyncio.CancelledError:
+                # asyncio.to_thread cannot cancel a running OS call.  Finish it while
+                # still holding the session lock, then propagate cancellation.
+                try:
+                    await worker
+                except Exception:
+                    pass
+                raise
+
+    async def connect(self) -> None:
+        await self._run(self._client.connect)
 
     async def disconnect(self) -> None:
-        async with self._lock:
-            await asyncio.to_thread(self._client.disconnect)
+        await self._run(self._client.disconnect)
 
     async def read_symbolic(
         self, access_area: int, access_sequence: Sequence[int], symbol_crc: int = 0
     ) -> bytes:
-        async with self._lock:
-            return await asyncio.to_thread(
-                self._client.read_symbolic, access_area, access_sequence, symbol_crc
-            )
+        return await self._run(
+            self._client.read_symbolic, access_area, access_sequence, symbol_crc
+        )
 
     async def read_symbolic_raw(self, tag: S7SymbolicTag) -> bytes:
         return await self.read_symbolic(
@@ -51,14 +69,13 @@ class AsyncS7CommPlusClient:
         data: bytes,
         symbol_crc: int = 0,
     ) -> None:
-        async with self._lock:
-            await asyncio.to_thread(
-                self._client.write_symbolic,
-                access_area,
-                access_sequence,
-                data,
-                symbol_crc,
-            )
+        await self._run(
+            self._client.write_symbolic,
+            access_area,
+            access_sequence,
+            data,
+            symbol_crc,
+        )
 
     async def write_symbolic_raw(self, tag: S7SymbolicTag, data: bytes) -> None:
         await self.write_symbolic(

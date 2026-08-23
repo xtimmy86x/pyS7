@@ -112,6 +112,18 @@ class S7CommPlusProtocolError(S7ProtocolError, S7CommPlusError):
     """Raised for malformed or unexpected S7CommPlus protocol data."""
 
 
+class S7CommPlusUnsupportedProtocolError(S7CommPlusError):
+    """Raised when the PLC selects a protocol version the client cannot use."""
+
+    def __init__(self, message: str, *, protocol_version: int) -> None:
+        super().__init__(message)
+        self.protocol_version = protocol_version
+
+
+class S7CommPlusUnsupportedSecurityError(S7CommPlusError):
+    """Raised when the PLC requires an unsupported security mechanism."""
+
+
 class S7SymbolicAccessError(S7CommPlusError):
     """Raised when a PLC rejects a symbolic read or write item."""
 

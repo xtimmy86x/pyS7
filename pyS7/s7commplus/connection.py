@@ -1,12 +1,18 @@
 """Synchronous ISO-on-TCP transport and unauthenticated V1 session setup."""
 
+import logging
 import socket
 import struct
 import threading
 from types import TracebackType
-from typing import Type
+from typing import Literal, Type, overload
 
-from ..errors import S7CommPlusProtocolError, S7ConnectionError, S7TimeoutError
+from ..errors import (
+    S7CommPlusProtocolError,
+    S7CommPlusUnsupportedProtocolError,
+    S7ConnectionError,
+    S7TimeoutError,
+)
 from .codec import decode_frame, encode_frame, encode_request_header, parse_response
 from .protocol import (
     DEFAULT_PORT,
@@ -17,6 +23,8 @@ from .protocol import (
     ProtocolVersion,
 )
 from .vlq import decode_uint32, decode_uint64, encode_uint32
+
+logger = logging.getLogger(__name__)
 
 
 def _cotp_connection_request() -> bytes:
@@ -48,6 +56,12 @@ class S7CommPlusConnection:
         self.session_id = 0
         self.protocol_version = 0
         self._sequence = 0
+        self.last_response = b""
+
+    @property
+    def tls_active(self) -> bool:
+        """TLS-in-COTP is deliberately not implemented by this transport."""
+        return False
 
     @property
     def connected(self) -> bool:
@@ -67,6 +81,7 @@ class S7CommPlusConnection:
         """Connect, negotiate COTP, send InitSSL, then create a V1 session."""
         with self._lock:
             self._reset()
+            self.last_response = b""
             try:
                 self._socket = socket.create_connection(
                     (self.host, self.port), self.timeout
@@ -85,12 +100,21 @@ class S7CommPlusConnection:
                     flags=0x30,
                     version=1,
                 )
-                response = self._exchange(
+                negotiated_version, response = self._exchange(
                     FunctionCode.CREATE_OBJECT,
                     self._create_object_payload(),
                     session_id=288,
                     version=1,
+                    accept_any_version=True,
                 )
+                self.protocol_version = negotiated_version
+                if negotiated_version != ProtocolVersion.V1:
+                    raise S7CommPlusUnsupportedProtocolError(
+                        "Unsupported S7CommPlus protocol/security mode: "
+                        f"PLC negotiated V{negotiated_version} but this client "
+                        "currently supports unauthenticated V1 sessions only",
+                        protocol_version=negotiated_version,
+                    )
                 status, used = decode_uint64(response)
                 if status:
                     raise S7ConnectionError(
@@ -111,13 +135,17 @@ class S7CommPlusConnection:
                         "PLC returned an invalid zero session ID"
                     )
                 self.session_id = session
-                self.protocol_version = ProtocolVersion.V1
+                self.protocol_version = negotiated_version
             except socket.timeout as exc:
                 self._reset()
                 raise S7TimeoutError(
                     f"S7CommPlus connection to {self.host} timed out"
                 ) from exc
-            except (S7CommPlusProtocolError, S7ConnectionError):
+            except (
+                S7CommPlusProtocolError,
+                S7CommPlusUnsupportedProtocolError,
+                S7ConnectionError,
+            ):
                 self._reset()
                 raise
             except OSError as exc:
@@ -133,21 +161,37 @@ class S7CommPlusConnection:
 
     @staticmethod
     def _create_object_payload() -> bytes:
-        # NullServerSession PObject, deliberately minimal for unauthenticated V1 PLCs.
-        return (
-            struct.pack(">I", 285)
-            + bytes((0, 4, 0))
-            + struct.pack(">I", 0)
-            + b"\xa1"
-            + struct.pack(">I", 211)
-            + encode_uint32(287)
-            + b"\0\0\xa3"
-            + encode_uint32(300)
-            + bytes((0, 0x12))
-            + struct.pack(">I", 0x80C3C901)
-            + b"\xa2"
-            + struct.pack(">I", 0)
-        )
+        """Build the full V1 NullServerSession identity object.
+
+        Real S7-1200 firmware may return an incomplete session for the former
+        minimal ClientRID-only object, even though a synthetic peer accepts it.
+        """
+
+        def wstring(attribute: int, value: str) -> bytes:
+            encoded = value.encode()
+            return (
+                b"\xa3"
+                + encode_uint32(attribute)
+                + bytes((0, 0x15))
+                + encode_uint32(len(encoded))
+                + encoded
+            )
+
+        name = "pyS7"
+        payload = bytearray(struct.pack(">I", 285))
+        payload += bytes((0, 4, 0)) + struct.pack(">I", 0)
+        payload += b"\xa1" + struct.pack(">I", 211)
+        payload += encode_uint32(287) + b"\0\0"
+        payload += wstring(233, name)
+        payload += wstring(289, f"1:::6.0::{name}")
+        payload += wstring(296, name) + wstring(297, "") + wstring(298, name)
+        payload += b"\xa3" + encode_uint32(299) + bytes((0, 4)) + encode_uint32(1)
+        payload += b"\xa3" + encode_uint32(300) + bytes((0, 0x12))
+        payload += struct.pack(">I", 0x80C3C901) + wstring(301, "")
+        payload += b"\xa1" + struct.pack(">I", 211) + encode_uint32(255) + b"\0\0"
+        payload += wstring(233, "SubscriptionContainer") + b"\xa2\xa2"
+        payload += struct.pack(">I", 0)
+        return bytes(payload)
 
     def disconnect(self) -> None:
         with self._lock:
@@ -161,12 +205,37 @@ class S7CommPlusConnection:
                 return self._exchange(
                     function, payload, self.session_id, version=self.protocol_version
                 )
+            except socket.timeout as exc:
+                self._reset()
+                raise S7TimeoutError("S7CommPlus request timed out") from exc
             except (S7CommPlusProtocolError, S7ConnectionError, S7TimeoutError):
                 self._reset()
                 raise
             except OSError as exc:
                 self._reset()
                 raise S7ConnectionError("S7CommPlus transport failed") from exc
+
+    @overload
+    def _exchange(
+        self,
+        function: int,
+        payload: bytes,
+        session_id: int,
+        flags: int = 0x36,
+        version: int = 1,
+        accept_any_version: Literal[False] = False,
+    ) -> bytes: ...
+
+    @overload
+    def _exchange(
+        self,
+        function: int,
+        payload: bytes,
+        session_id: int,
+        flags: int = 0x36,
+        version: int = 1,
+        accept_any_version: Literal[True] = True,
+    ) -> tuple[int, bytes]: ...
 
     def _exchange(
         self,
@@ -175,7 +244,8 @@ class S7CommPlusConnection:
         session_id: int,
         flags: int = 0x36,
         version: int = 1,
-    ) -> bytes:
+        accept_any_version: bool = False,
+    ) -> bytes | tuple[int, bytes]:
         if self._socket is None:
             raise S7ConnectionError("S7CommPlus transport is not connected")
         sequence = self._sequence
@@ -183,9 +253,14 @@ class S7CommPlusConnection:
         packet = encode_request_header(function, sequence, session_id, flags) + payload
         self._send_cotp(encode_frame(version, packet))
         response_version, body = decode_frame(self._receive_cotp())
-        if response_version != version:
+        self.last_response = body
+        logger.debug("S7CommPlus raw response: %s", body.hex(" "))
+        if response_version != version and not accept_any_version:
             raise S7CommPlusProtocolError("unexpected S7CommPlus protocol version")
-        return parse_response(body, function, sequence)
+        parsed = parse_response(body, function, sequence)
+        if accept_any_version:
+            return response_version, parsed
+        return parsed
 
     def _send_cotp(self, data: bytes) -> None:
         assert self._socket is not None

@@ -21,6 +21,24 @@ parser.add_argument("--debug", action="store_true")
 args = parser.parse_args()
 
 logging.basicConfig(level=logging.DEBUG if args.debug else logging.INFO)
-with S7CommPlusClient(args.host, args.port, args.timeout) as client:
+client = S7CommPlusClient(args.host, args.port, args.timeout)
+try:
+    client.connect()
+    if args.debug:
+        print(
+            "session: "
+            f"protocol=V{client.protocol_version} established={client.connected} "
+            f"session_id=0x{client.session_id:08x} tls={client.tls_active} "
+            f"authentication_supported={client.authentication_supported}"
+        )
+        print(f"address: AccessArea=0x{args.access_area:08x} LIDs={args.lid!r}")
     value = client.read_symbolic(args.access_area, args.lid, args.symbol_crc)
-print(f"{len(value)} byte(s): {value.hex(' ')}")
+    if args.debug:
+        print(f"raw response: {client.last_response.hex(' ')}")
+    print(f"{len(value)} byte(s): {value.hex(' ')}")
+except Exception:
+    if args.debug and client.last_response:
+        print(f"last raw response: {client.last_response.hex(' ')}")
+    raise
+finally:
+    client.disconnect()
