@@ -60,6 +60,7 @@ from .errors import (
     S7AddressError,
     S7CommunicationError,
     S7ConnectionError,
+    S7PDUError,
     S7ProtocolError,
     S7TimeoutError,
 )
@@ -1075,6 +1076,16 @@ class AsyncS7Client:
         """Shared implementation for large string reads."""
         chunks: List[str] = []
 
+        def single_request(read_tag: S7Tag) -> List[S7Tag]:
+            """Build one non-empty read batch or report a protocol-size error."""
+            requests = prepare_requests(tags=[read_tag], max_pdu=self.pdu_size)
+            if len(requests) != 1 or not requests[0]:
+                raise S7PDUError(
+                    f"Could not build a read request for {read_tag} with PDU "
+                    f"size {self.pdu_size}"
+                )
+            return requests[0]
+
         if tag.data_type == DataType.STRING:
             header_tag = S7Tag(
                 memory_area=tag.memory_area,
@@ -1084,9 +1095,12 @@ class AsyncS7Client:
                 bit_offset=0,
                 length=2,
             )
-            reqs = prepare_requests(tags=[header_tag], max_pdu=self.pdu_size)
-            resp = await send_fn(ReadRequest(tags=reqs[0]))
-            header_bytes = ReadResponse(response=resp, tags=reqs[0]).parse()[0]
+            request_tags = single_request(header_tag)
+            resp = await send_fn(ReadRequest(tags=request_tags))
+            parsed = ReadResponse(response=resp, tags=request_tags).parse()
+            if not parsed:
+                raise S7CommunicationError("STRING header response contained no items")
+            header_bytes = parsed[0]
             if not isinstance(header_bytes, tuple) or len(header_bytes) < 2:
                 raise S7CommunicationError(
                     f"Invalid STRING header: expected tuple ≥2, got {type(header_bytes).__name__}"
@@ -1107,9 +1121,14 @@ class AsyncS7Client:
                     bit_offset=0,
                     length=chunk_size,
                 )
-                reqs = prepare_requests(tags=[chunk_tag], max_pdu=self.pdu_size)
-                resp = await send_fn(ReadRequest(tags=reqs[0]))
-                chunk = ReadResponse(response=resp, tags=reqs[0]).parse()[0]
+                request_tags = single_request(chunk_tag)
+                resp = await send_fn(ReadRequest(tags=request_tags))
+                parsed = ReadResponse(response=resp, tags=request_tags).parse()
+                if not parsed:
+                    raise S7CommunicationError(
+                        "STRING chunk response contained no items"
+                    )
+                chunk = parsed[0]
                 if not isinstance(chunk, str):
                     raise S7CommunicationError(
                         f"Invalid STRING chunk: expected str, got {type(chunk).__name__}"
@@ -1127,9 +1146,12 @@ class AsyncS7Client:
                 bit_offset=0,
                 length=4,
             )
-            reqs = prepare_requests(tags=[header_tag], max_pdu=self.pdu_size)
-            resp = await send_fn(ReadRequest(tags=reqs[0]))
-            header_bytes = ReadResponse(response=resp, tags=reqs[0]).parse()[0]
+            request_tags = single_request(header_tag)
+            resp = await send_fn(ReadRequest(tags=request_tags))
+            parsed = ReadResponse(response=resp, tags=request_tags).parse()
+            if not parsed:
+                raise S7CommunicationError("WSTRING header response contained no items")
+            header_bytes = parsed[0]
             if not isinstance(header_bytes, tuple) or len(header_bytes) < 4:
                 raise S7CommunicationError(
                     f"Invalid WSTRING header: expected tuple ≥4, got {type(header_bytes).__name__}"
@@ -1170,9 +1192,14 @@ class AsyncS7Client:
                     bit_offset=0,
                     length=chunk_size,
                 )
-                reqs = prepare_requests(tags=[chunk_tag], max_pdu=self.pdu_size)
-                resp = await send_fn(ReadRequest(tags=reqs[0]))
-                raw = ReadResponse(response=resp, tags=reqs[0]).parse()[0]
+                request_tags = single_request(chunk_tag)
+                resp = await send_fn(ReadRequest(tags=request_tags))
+                parsed = ReadResponse(response=resp, tags=request_tags).parse()
+                if not parsed:
+                    raise S7CommunicationError(
+                        "WSTRING chunk response contained no items"
+                    )
+                raw = parsed[0]
                 if not isinstance(raw, tuple):
                     raise S7CommunicationError(
                         f"Invalid WSTRING chunk: expected tuple, got {type(raw).__name__}"
@@ -1249,6 +1276,9 @@ class AsyncS7Client:
                 return
 
             max_data = self.pdu_size - WRITE_REQ_OVERHEAD - WRITE_REQ_PARAM_SIZE_TAG - 4
+            # Write items with an odd payload have one alignment byte.
+            if max_data % 2:
+                max_data -= 1
             offset = 0
             while offset < current_length:
                 chunk_size = min(max_data, current_length - offset)

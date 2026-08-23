@@ -602,6 +602,9 @@ class S7Client:
             max_data_per_write = (
                 self.pdu_size - WRITE_REQ_OVERHEAD - WRITE_REQ_PARAM_SIZE_TAG - 4
             )
+            # Write items with an odd payload have one alignment byte.
+            if max_data_per_write % 2:
+                max_data_per_write -= 1
 
             # Write data in chunks
             offset = 0

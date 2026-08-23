@@ -9,13 +9,70 @@ from pyS7.async_client import AsyncS7Client
 from pyS7.client import S7Client
 from pyS7.constants import DataType, MemoryArea
 from pyS7.errors import S7AddressError, S7CommunicationError
-from pyS7.requests import WriteRequest, _pack_wstring_data
-from pyS7.responses import _parse_wstring
+from pyS7.requests import WriteRequest, _pack_wstring_data, prepare_requests
+from pyS7.responses import ReadResponse, _parse_wstring
 from pyS7.tag import S7Tag
 
 
 def wstring_tag(length: int = 10, start: int = 566) -> S7Tag:
     return S7Tag(MemoryArea.DB, 1, DataType.WSTRING, start, 0, length)
+
+
+@pytest.mark.parametrize(
+    "capacity,value,expected_lengths",
+    [
+        (200, "short", [214]),
+        (254, "A" * 150, [214, 214]),
+        (254, "A" * 109 + "🌍", [214, 214]),
+        (254, "", []),
+    ],
+)
+@pytest.mark.asyncio
+async def test_async_wstring_read_with_240_byte_pdu(
+    capacity: int,
+    value: str,
+    expected_lengths: list[int],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Regress exact-boundary batching while retaining incremental UTF-16."""
+    client = AsyncS7Client("127.0.0.1", 0, 1)
+    client.pdu_size = 240
+    tag = wstring_tag(capacity)
+    header = struct.pack(">HH", capacity, len(value))
+    payload = value.encode("utf-16-be") + bytes(
+        capacity * 2 - len(value.encode("utf-16-be"))
+    )
+    requested: list[S7Tag] = []
+
+    async def send(request: object) -> bytes:
+        requested.extend(request.tags)  # type: ignore[attr-defined]
+        return b"unused"
+
+    def parse(response: ReadResponse) -> list[object]:
+        requested_tag = response.tags[0]
+        if requested_tag.start == tag.start:
+            return [tuple(header)]
+        offset = requested_tag.start - tag.start - 4
+        return [tuple(payload[offset : offset + requested_tag.length])]
+
+    monkeypatch.setattr(ReadResponse, "parse", parse)
+
+    assert await client._read_large_string_inner(tag, send) == value
+    chunks = requested[1:]
+    assert [chunk.length for chunk in chunks] == expected_lengths
+    assert [chunk.start for chunk in chunks] == [
+        tag.start + 4 + sum(expected_lengths[:index])
+        for index in range(len(expected_lengths))
+    ]
+
+
+def test_prepare_requests_accepts_exact_pdu_without_empty_batch() -> None:
+    tag = S7Tag(MemoryArea.DB, 1, DataType.BYTE, 0, 0, 214)
+
+    requests = prepare_requests([tag], max_pdu=240)
+
+    assert requests == [[tag]]
+    assert all(request for request in requests)
 
 
 @pytest.mark.parametrize("value", ["", "AB", "東京", "🌍", "Hi 🌍", "😀😁"])

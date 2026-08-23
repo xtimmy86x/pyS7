@@ -546,7 +546,8 @@ class WriteRequest(Request):
 
 
 def prepare_requests(tags: List[S7Tag], max_pdu: int) -> List[List[S7Tag]]:
-    requests: List[List[S7Tag]] = [[]]
+    requests: List[List[S7Tag]] = []
+    current_request: List[S7Tag] = []
 
     cumulated_request_size = READ_REQ_OVERHEAD
     cumulated_response_size = READ_RES_OVERHEAD
@@ -559,7 +560,7 @@ def prepare_requests(tags: List[S7Tag], max_pdu: int) -> List[List[S7Tag]]:
         tag_response_size = READ_RES_PARAM_SIZE_TAG + tag_size
 
         if (
-            READ_REQ_OVERHEAD + tag_request_size >= max_pdu
+            READ_REQ_OVERHEAD + tag_request_size > max_pdu
             or READ_RES_OVERHEAD + tag_response_size > max_pdu
         ):
             max_data_size = max_pdu - READ_RES_OVERHEAD - READ_RES_PARAM_SIZE_TAG
@@ -570,22 +571,29 @@ def prepare_requests(tags: List[S7Tag], max_pdu: int) -> List[List[S7Tag]]:
             )
 
         elif (
-            cumulated_request_size + tag_request_size < max_pdu
-            and cumulated_response_size + tag_response_size < max_pdu
-            and len(requests[-1]) < MAX_READ_TAGS
+            cumulated_request_size + tag_request_size <= max_pdu
+            and cumulated_response_size + tag_response_size <= max_pdu
+            and len(current_request) < MAX_READ_TAGS
         ):
-            requests[-1].append(tag)
+            current_request.append(tag)
 
             cumulated_request_size += READ_REQ_PARAM_SIZE_TAG
             cumulated_response_size += READ_RES_PARAM_SIZE_TAG + tag_size
 
         else:
-            requests.append([tag])
+            # Flush only populated batches.  In particular, a first tag whose
+            # response exactly fills the PDU belongs to the first batch rather
+            # than creating the historical ``[[], [tag]]`` result.
+            if current_request:
+                requests.append(current_request)
+            current_request = [tag]
             cumulated_request_size = READ_REQ_OVERHEAD + READ_REQ_PARAM_SIZE_TAG
             cumulated_response_size = (
                 READ_RES_OVERHEAD + READ_RES_PARAM_SIZE_TAG + tag_size
             )
 
+    if current_request:
+        requests.append(current_request)
     return requests
 
 
@@ -809,8 +817,10 @@ def prepare_write_requests_and_values(
     # later PDU can never cause a partial network write.
     validate_time_values(tags, values)
 
-    requests: List[List[S7Tag]] = [[]]
-    requests_values: List[List[Value]] = [[]]
+    requests: List[List[S7Tag]] = []
+    requests_values: List[List[Value]] = []
+    current_request: List[S7Tag] = []
+    current_values: List[Value] = []
 
     request_size = WRITE_REQ_OVERHEAD
     response_size = WRITE_RES_OVERHEAD
@@ -821,10 +831,11 @@ def prepare_write_requests_and_values(
         tag_padding = tag_size % 2
 
         if (
-            WRITE_REQ_OVERHEAD + WRITE_REQ_PARAM_SIZE_TAG + tag_size >= max_pdu
-            or WRITE_RES_OVERHEAD + tag_size + 1 >= max_pdu
+            WRITE_REQ_OVERHEAD + WRITE_REQ_PARAM_SIZE_TAG + 4 + tag_size + tag_padding
+            > max_pdu
+            or WRITE_RES_OVERHEAD + 1 > max_pdu
         ):
-            max_data_size = max_pdu - WRITE_REQ_OVERHEAD - WRITE_REQ_PARAM_SIZE_TAG
+            max_data_size = max_pdu - WRITE_REQ_OVERHEAD - WRITE_REQ_PARAM_SIZE_TAG - 4
             raise S7PDUError(
                 f"{tag} requires {WRITE_REQ_OVERHEAD + WRITE_REQ_PARAM_SIZE_TAG + tag_size} bytes but PDU size is {max_pdu} bytes. "
                 f"Maximum data size for this PDU: {max_data_size} bytes (current tag needs {tag_size} bytes). "
@@ -833,19 +844,22 @@ def prepare_write_requests_and_values(
 
         elif (
             request_size + WRITE_REQ_PARAM_SIZE_TAG + 4 + tag_size + tag_padding
-            < max_pdu
-            and response_size + 1 < max_pdu
-            and len(requests[-1]) < MAX_WRITE_TAGS
+            <= max_pdu
+            and response_size + 1 <= max_pdu
+            and len(current_request) < MAX_WRITE_TAGS
         ):
-            requests[-1].append(tag)
-            requests_values[-1].append(values[i])
+            current_request.append(tag)
+            current_values.append(values[i])
 
             request_size += WRITE_REQ_PARAM_SIZE_TAG + 4 + tag_size + tag_padding
             response_size += 1
 
         else:
-            requests.append([tag])
-            requests_values.append([values[i]])
+            if current_request:
+                requests.append(current_request)
+                requests_values.append(current_values)
+            current_request = [tag]
+            current_values = [values[i]]
 
             request_size = (
                 WRITE_REQ_OVERHEAD
@@ -856,6 +870,9 @@ def prepare_write_requests_and_values(
             )
             response_size = WRITE_RES_OVERHEAD + 1
 
+    if current_request:
+        requests.append(current_request)
+        requests_values.append(current_values)
     return requests, requests_values
 
 

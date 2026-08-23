@@ -134,14 +134,16 @@ class TestPDUBoundaryConditions:
     def test_write_pdu_boundary(self) -> None:
         """Test write at PDU boundary."""
         pdu_size = 240
-        # WRITE_REQ_OVERHEAD = 18, WRITE_REQ_PARAM_SIZE_TAG = 12
-        max_data = pdu_size - 18 - 12 - 4
+        # 19-byte overhead + 12-byte item parameter + 4-byte data header.
+        # Keep the payload even so no alignment byte is required.
+        max_data = pdu_size - 19 - 12 - 4
+        max_data -= max_data % 2
         tag = S7Tag(MemoryArea.DB, 1, DataType.BYTE, 0, 0, max_data)
         values = [tuple([0] * max_data)]
 
-        # Should split into multiple requests if too large
         requests, _ = prepare_write_requests_and_values([tag], values, pdu_size)
-        assert len(requests) >= 1
+        assert requests == [[tag]]
+        assert all(request for request in requests)
 
 
 class TestNumericBoundaries:

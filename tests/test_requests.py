@@ -525,6 +525,10 @@ def test_prepare_request_exception() -> None:
         _, _ = prepare_requests(tags=tags, max_pdu=pdu_size)
 
 
+def test_prepare_requests_empty_input_has_no_empty_batch() -> None:
+    assert prepare_requests(tags=[], max_pdu=240) == []
+
+
 def test_prepare_write_request() -> None:
     pdu_size = 240
     # Mock up tags for testing
