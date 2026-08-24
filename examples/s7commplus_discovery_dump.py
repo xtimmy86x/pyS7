@@ -3,8 +3,8 @@
 
 import argparse
 import logging
-from pathlib import Path
 import sys
+from pathlib import Path
 
 sys.path.insert(0, "/home/ale/pys7/pyS7")
 

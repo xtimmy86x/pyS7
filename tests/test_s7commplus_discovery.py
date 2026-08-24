@@ -151,6 +151,57 @@ def test_valid_db_relation_and_unrelated_object_ignored() -> None:
     assert parse_datablocks(payload)[0].number == 100
 
 
+@pytest.mark.parametrize("explore_id", [0, 0x12345678])
+def test_normalized_explore_envelope_precedes_pobject_list(explore_id: int) -> None:
+    payload = b"\0" + struct.pack(">I", explore_id)
+    payload += pobj(0x8A0E0064, DB_CLASS_RID, b"DB_Test", 100)
+
+    info = parse_datablocks(payload)[0]
+    assert (info.name, info.number, info.relation_id, info.access_area) == (
+        "DB_Test",
+        100,
+        0x8A0E0064,
+        0x8A0E0064,
+    )
+
+
+def test_explore_debug_log_is_bounded(caplog: pytest.LogCaptureFixture) -> None:
+    payload = b"\0\x12\x34\x56\x78" + pobj(3, 2520) + b"x" * 100
+    with caplog.at_level("DEBUG", logger="pyS7.s7commplus.browse"):
+        with pytest.raises(S7CommPlusProtocolError, match="unknown"):
+            parse_datablocks(payload)
+    message = caplog.messages[0]
+    assert "return_value=0x0 explore_id=0x12345678" in message
+    assert len(message.rsplit("object_bytes=", 1)[1]) == 128
+
+
+@pytest.mark.parametrize(
+    ("payload", "message"),
+    [
+        (b"\x01\0\0\0\0", "PLC status 0x1"),
+        (b"\0\0\0\0", "ExploreId"),
+        (b"\0\0\0\0\0", "missing EXPLORE PObject list"),
+        (b"\0\0\0\0\0\xa1", "object relation ID"),
+        (b"\0\0\0\0\0" + pobj(3, 2520)[:-1] + b"\xff", "unknown"),
+    ],
+)
+def test_explore_envelope_and_object_structural_errors(
+    payload: bytes, message: str
+) -> None:
+    with pytest.raises(S7CommPlusProtocolError, match=message):
+        parse_datablocks(payload)
+
+
+def test_known_unneeded_pobject_elements_preserve_alignment() -> None:
+    body = pobj(0x8A0E0064, DB_CLASS_RID, b"DB_Test", 100)[:-1]
+    body += b"\xa4\x01\x01\x02\x03\x04"  # Relation ID VLQ + UInt32 value.
+    body += b"\xa7\xa8"  # Tag-description boundary markers.
+    body += b"\xab\x00\x02hi\x00\x00"  # VartypeList block chain.
+    body += b"\xac\x00\x01x\x00\x00\xa2"  # VarnameList block chain.
+
+    assert parse_datablocks(b"\0\0\0\0\0" + body)[0].number == 100
+
+
 @pytest.mark.parametrize(
     "payload",
     [

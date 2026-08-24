@@ -4,6 +4,7 @@ This module intentionally stops at PLC-program object enumeration.  It does not
 contain preset dictionaries, type tables, or a type-information interpreter.
 """
 
+import logging
 import struct
 from dataclasses import dataclass
 from typing import cast
@@ -21,6 +22,13 @@ BLOCK_NUMBER_AID = 2521
 _START_OBJECT = 0xA1
 _END_OBJECT = 0xA2
 _ATTRIBUTE = 0xA3
+_RELATION = 0xA4
+_START_TAG_DESCRIPTION = 0xA7
+_END_TAG_DESCRIPTION = 0xA8
+_VARTYPE_LIST = 0xAB
+_VARNAME_LIST = 0xAC
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -111,6 +119,21 @@ def _pvalue(data: bytes, pos: int) -> tuple[object, int]:
     return (raw if flags & 0x10 or size > 4 else int.from_bytes(raw, "big")), end
 
 
+def _skip_block_list(data: bytes, pos: int, element_name: str) -> int:
+    """Skip a sequence of UInt16-sized blocks terminated by a zero size."""
+    while True:
+        if pos + 2 > len(data):
+            raise S7CommPlusProtocolError(f"truncated EXPLORE {element_name}")
+        block_length = struct.unpack_from(">H", data, pos)[0]
+        pos += 2
+        if not block_length:
+            return pos
+        end = pos + block_length
+        if end > len(data):
+            raise S7CommPlusProtocolError(f"truncated EXPLORE {element_name}")
+        pos = end
+
+
 def parse_datablocks(payload: bytes) -> list[S7DataBlockInfo]:
     """Extract only DB objects from an EXPLORE PLC-program PObject tree."""
     status, pos = decode_uint64(payload)
@@ -118,7 +141,22 @@ def parse_datablocks(payload: bytes) -> list[S7DataBlockInfo]:
         raise S7CommPlusProtocolError(f"EXPLORE failed with PLC status 0x{status:x}")
     if pos + 4 > len(payload):
         raise S7CommPlusProtocolError("truncated EXPLORE response ExploreId")
+    explore_id = struct.unpack_from(">I", payload, pos)[0]
     pos += 4
+    logger.debug(
+        "EXPLORE normalized payload: return_value=0x%x explore_id=0x%08x "
+        "object_bytes=%s",
+        status,
+        explore_id,
+        payload[pos : pos + 64].hex(),
+    )
+    if pos == len(payload):
+        raise S7CommPlusProtocolError("missing EXPLORE PObject list")
+    if payload[pos] != _START_OBJECT:
+        raise S7CommPlusProtocolError(
+            f"EXPLORE PObject list does not start with StartOfObject "
+            f"(got 0x{payload[pos]:02x})"
+        )
     stack: list[dict[str, object]] = []
     result: list[S7DataBlockInfo] = []
     while pos < len(payload):
@@ -172,6 +210,24 @@ def parse_datablocks(payload: bytes) -> list[S7DataBlockInfo]:
                 result.append(
                     S7DataBlockInfo(str(obj["name"]), number, relation, relation)
                 )
+        elif element == _RELATION:
+            if not stack:
+                raise S7CommPlusProtocolError("EXPLORE relation outside an object")
+            _, used = decode_uint32(payload, pos)
+            pos += used
+            if pos + 4 > len(payload):
+                raise S7CommPlusProtocolError("truncated EXPLORE relation value")
+            pos += 4
+        elif element in (_START_TAG_DESCRIPTION, _END_TAG_DESCRIPTION):
+            if not stack:
+                raise S7CommPlusProtocolError(
+                    "EXPLORE tag-description marker outside an object"
+                )
+        elif element in (_VARTYPE_LIST, _VARNAME_LIST):
+            if not stack:
+                raise S7CommPlusProtocolError("EXPLORE variable list outside an object")
+            name = "VartypeList" if element == _VARTYPE_LIST else "VarnameList"
+            pos = _skip_block_list(payload, pos, name)
         else:
             raise S7CommPlusProtocolError(f"unknown EXPLORE element 0x{element:02x}")
     if stack:
