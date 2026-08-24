@@ -255,6 +255,39 @@ def test_real_plc_scalar_pvalue_fixtures(wire: str, expected: bytes) -> None:
     assert used == len(bytes.fromhex(wire))
 
 
+@pytest.mark.parametrize(
+    ("wire", "expected"),
+    [
+        ("001290001234", bytes.fromhex("90001234")),
+        ("001200000000", bytes(4)),
+    ],
+)
+def test_scalar_rid_is_a_fixed_width_uint32(wire: str, expected: bytes) -> None:
+    value, used = decode_pvalue(bytes.fromhex(wire), 0)
+    assert value == expected
+    assert used == 6
+
+
+@pytest.mark.parametrize("wire", ["0012", "001290", "0012900012"])
+def test_truncated_rid_is_rejected(wire: str) -> None:
+    with pytest.raises(S7CommPlusProtocolError, match="truncated"):
+        decode_pvalue(bytes.fromhex(wire), 0)
+
+
+def test_rid_array_uses_four_byte_elements() -> None:
+    wire = bytes.fromhex("1012029000123400000000")
+    value, used = decode_pvalue(wire, 0)
+    assert value == bytes.fromhex("9000123400000000")
+    assert used == len(wire)
+
+
+def test_scalar_aid_remains_uint32_vlq_encoded_on_the_wire() -> None:
+    wire = bytes((0, DataType.AID)) + encode_uint32(0x90001234)
+    value, used = decode_pvalue(wire, 0)
+    assert value == bytes.fromhex("90001234")
+    assert used == len(wire)
+
+
 def test_real_plc_string_and_wstring_raw_fixtures() -> None:
     string = bytes.fromhex("fe0a54657374537472696e67")
     wstring = bytes.fromhex("00fe000b005400650073007400570073007400720069006e0067")

@@ -206,10 +206,15 @@ def decode_pvalue(data: bytes, offset: int) -> tuple[bytes, int]:
         DataType.LWORD: 8,
         DataType.LREAL: 8,
         DataType.TIMESTAMP: 8,
+        # Unlike the VLQ-encoded AID, an RID is always a wire-order UInt32.
+        DataType.RID: 4,
     }
     if datatype == DataType.BLOB:
         length, used = decode_uint32(data, pos)
         pos += used
+    elif datatype == DataType.AID and not flags & 0x10:
+        value, used = decode_uint32(data, pos)
+        return struct.pack(">I", value), pos + used - offset
     elif datatype in fixed:
         count, used = decode_uint32(data, pos) if flags & 0x10 else (1, 0)
         pos += used
