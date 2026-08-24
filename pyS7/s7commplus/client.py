@@ -4,6 +4,16 @@ from collections.abc import Sequence
 from types import TracebackType
 from typing import Type
 
+from ..errors import S7CommPlusProtocolError
+from .browse import (
+    BLOCK_NUMBER_AID,
+    OBJECT_VARIABLE_TYPE_NAME_AID,
+    OMS_TYPE_INFO_CONTAINER_RID,
+    PLC_PROGRAM_RID,
+    S7DataBlockInfo,
+    build_explore_request,
+    parse_datablocks,
+)
 from .codec import (
     build_symbolic_read,
     build_symbolic_write,
@@ -95,6 +105,34 @@ class S7CommPlusClient:
 
     def read_symbolic_raw(self, tag: S7SymbolicTag) -> bytes:
         return self.read_symbolic(tag.access_area, tag.access_sequence, tag.symbol_crc)
+
+    def explore_raw(self, rid: int, attribute_ids: Sequence[int] = ()) -> bytes:
+        """Return a complete EXPLORE application payload without interpreting types."""
+        payload = build_explore_request(rid, tuple(attribute_ids))
+        return self._connection.request(FunctionCode.EXPLORE, payload, integrity_tail=5)
+
+    def list_datablocks(self) -> list[S7DataBlockInfo]:
+        """Enumerate DB objects in the order supplied by PLC metadata."""
+        raw = self.explore_raw(
+            PLC_PROGRAM_RID,
+            (OBJECT_VARIABLE_TYPE_NAME_AID, BLOCK_NUMBER_AID),
+        )
+        return parse_datablocks(raw)
+
+    def resolve_type_info_rid(self, access_area: int) -> int:
+        """Resolve a DB's type-information RID through symbolic metadata LID 1."""
+        raw = self.read_symbolic(access_area, (1,), 0)
+        if len(raw) != 4:
+            raise S7CommPlusProtocolError("DB type-info RID is not a four-byte RID")
+        rid = int.from_bytes(raw, "big")
+        if not rid:
+            raise S7CommPlusProtocolError("PLC returned a zero DB type-info RID")
+        return rid
+
+    def retrieve_type_info_raw(self, access_area: int) -> tuple[int, bytes]:
+        """Resolve a DB type RID and capture the unparsed OMS type-info container."""
+        rid = self.resolve_type_info_rid(access_area)
+        return rid, self.explore_raw(OMS_TYPE_INFO_CONTAINER_RID)
 
     def write_symbolic(
         self,

@@ -31,10 +31,15 @@ class FunctionCode(IntEnum):
     GET_MULTI_VARIABLES = 0x054C
     INIT_SSL = 0x05B3
     GET_VAR_SUBSTREAMED = 0x0586
+    EXPLORE = 0x04BB
 
 
 READ_FUNCTION_CODES = frozenset(
-    (FunctionCode.GET_MULTI_VARIABLES, FunctionCode.GET_VAR_SUBSTREAMED)
+    (
+        FunctionCode.GET_MULTI_VARIABLES,
+        FunctionCode.GET_VAR_SUBSTREAMED,
+        FunctionCode.EXPLORE,
+    )
 )
 
 

@@ -18,7 +18,6 @@ from ..errors import (
     S7TimeoutError,
 )
 from .codec import (
-    decode_frame,
     encode_frame,
     encode_object_qualifier,
     encode_request_header,
@@ -39,6 +38,8 @@ from .vlq import decode_uint32, decode_uint64, encode_uint32
 logger = logging.getLogger(__name__)
 _S7_CIPHERS = "ECDHE-RSA-AES128-GCM-SHA256:ECDHE-RSA-AES256-GCM-SHA384:AES128-GCM-SHA256:AES256-GCM-SHA384:AES128-SHA256:AES256-SHA256"
 _MAX_TLS_BUFFER = MAX_PACKET_SIZE + 64 * 1024
+MAX_REASSEMBLED_FRAGMENTS = 4096
+MAX_REASSEMBLED_BYTES = 16 * 1024 * 1024
 
 
 @dataclass(frozen=True)
@@ -412,18 +413,21 @@ class S7CommPlusConnection:
         with self._lock:
             self._reset()
 
-    def request(self, function: int, payload: bytes) -> bytes:
+    def request(
+        self, function: int, payload: bytes, *, integrity_tail: int = 4
+    ) -> bytes:
         with self._lock:
             if not self.connected:
                 raise S7ConnectionError("S7CommPlus client is not connected")
             is_read = function in READ_FUNCTION_CODES
             iid = self._integrity_read if is_read else self._integrity_write
             if self._with_integrity:
-                if len(payload) < 4:
+                if integrity_tail < 0 or len(payload) < integrity_tail:
                     raise S7CommPlusProtocolError(
                         "request has no IntegrityId insertion point"
                     )
-                payload = payload[:-4] + encode_uint32(iid) + payload[-4:]
+                split = len(payload) - integrity_tail
+                payload = payload[:split] + encode_uint32(iid) + payload[split:]
             sequence = self._sequence
             context = _RequestContext(
                 sequence, iid if self._with_integrity else None, function, is_read
@@ -449,7 +453,8 @@ class S7CommPlusConnection:
                         self.session_id,
                         flags=(
                             0x34
-                            if function == FunctionCode.GET_MULTI_VARIABLES
+                            if function
+                            in (FunctionCode.GET_MULTI_VARIABLES, FunctionCode.EXPLORE)
                             else 0x36
                         ),
                         version=self.protocol_version,
@@ -522,7 +527,7 @@ class S7CommPlusConnection:
         self._sequence = (sequence + 1) & 0xFFFF
         packet = encode_request_header(function, sequence, session_id, flags) + payload
         self._send_application(encode_frame(version, packet))
-        response_version, body = decode_frame(self._receive_application())
+        response_version, body = self._receive_application()
         self.last_response = body
         if response_version != version and not accept_any_version:
             raise S7CommPlusProtocolError("unexpected S7CommPlus protocol version")
@@ -617,17 +622,48 @@ class S7CommPlusConnection:
         else:
             self._send_cotp(data)
 
-    def _receive_application(self) -> bytes:
+    def _receive_application(self) -> tuple[int, bytes]:
+        """Reassemble S7CommPlus fragments above TLS/COTP framing."""
+        version: int | None = None
+        result = bytearray()
+        fragments = 0
         while True:
             if len(self._plain_buffer) >= 4:
-                length = struct.unpack_from(">H", self._plain_buffer, 2)[0]
-                total = 4 + length + 4
-                if length > MAX_PACKET_SIZE:
-                    raise S7CommPlusProtocolError("S7CommPlus frame exceeds limit")
-                if len(self._plain_buffer) >= total:
-                    result = bytes(self._plain_buffer[:total])
-                    del self._plain_buffer[:total]
-                    return result
+                protocol_id, fragment_version, length = struct.unpack_from(
+                    ">BBH", self._plain_buffer
+                )
+                if protocol_id != 0x72:
+                    raise S7CommPlusProtocolError("invalid S7CommPlus fragment header")
+                try:
+                    ProtocolVersion(fragment_version)
+                except ValueError as exc:
+                    raise S7CommPlusProtocolError(
+                        "invalid S7CommPlus fragment version"
+                    ) from exc
+                if version is None:
+                    version = fragment_version
+                elif fragment_version != version:
+                    raise S7CommPlusProtocolError("S7CommPlus fragment version changed")
+                if length == 0:
+                    del self._plain_buffer[:4]
+                    if not fragments:
+                        raise S7CommPlusProtocolError(
+                            "S7CommPlus response has no data fragment"
+                        )
+                    return version, bytes(result)
+                if len(self._plain_buffer) >= 4 + length:
+                    result.extend(self._plain_buffer[4 : 4 + length])
+                    del self._plain_buffer[: 4 + length]
+                    fragments += 1
+                    if fragments > MAX_REASSEMBLED_FRAGMENTS:
+                        raise S7CommPlusProtocolError(
+                            "S7CommPlus response has too many fragments"
+                        )
+                    if len(result) > MAX_REASSEMBLED_BYTES:
+                        raise S7CommPlusProtocolError(
+                            "S7CommPlus reassembled response exceeds limit"
+                        )
+                    continue
             if self._ssl_object:
                 try:
                     chunk = self._ssl_object.read(65536)
@@ -637,8 +673,13 @@ class S7CommPlusConnection:
                 except ssl.SSLWantReadError:
                     self._feed_tls()
             else:
-                self._plain_buffer.extend(self._receive_cotp())
-            if len(self._plain_buffer) > _MAX_TLS_BUFFER:
+                chunk = self._receive_cotp()
+                if not chunk:
+                    raise S7CommPlusProtocolError(
+                        "truncated S7CommPlus fragment sequence"
+                    )
+                self._plain_buffer.extend(chunk)
+            if len(self._plain_buffer) > max(_MAX_TLS_BUFFER, 0xFFFF + 4):
                 raise S7CommPlusProtocolError("decrypted data exceeds buffer limit")
 
     def _send_cotp(self, data: bytes) -> None:

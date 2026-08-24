@@ -5,6 +5,7 @@ from collections.abc import Sequence
 from types import TracebackType
 from typing import Any, Callable, Type, TypeVar
 
+from .browse import S7DataBlockInfo
 from .client import S7CommPlusClient
 from .protocol import DEFAULT_PORT
 from .tag import S7SymbolicTag
@@ -78,6 +79,18 @@ class AsyncS7CommPlusClient:
         return await self.read_symbolic(
             tag.access_area, tag.access_sequence, tag.symbol_crc
         )
+
+    async def explore_raw(self, rid: int, attribute_ids: Sequence[int] = ()) -> bytes:
+        return await self._run(self._client.explore_raw, rid, attribute_ids)
+
+    async def list_datablocks(self) -> list[S7DataBlockInfo]:
+        return await self._run(self._client.list_datablocks)
+
+    async def resolve_type_info_rid(self, access_area: int) -> int:
+        return await self._run(self._client.resolve_type_info_rid, access_area)
+
+    async def retrieve_type_info_raw(self, access_area: int) -> tuple[int, bytes]:
+        return await self._run(self._client.retrieve_type_info_raw, access_area)
 
     async def write_symbolic(
         self,

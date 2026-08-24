@@ -78,9 +78,21 @@ Manual validation reported for this phase is limited to Siemens S7-1200 CPU
 1, and a low-level symbolic read using a known LID. This is not a broad hardware
 support claim.
 
-Automatic discovery is deliberately absent. There is no `browse()`, EXPLORE,
-DB enumeration, type-info parser, symbol tree, tag cache, symbolic-name lookup,
-or `read_tag()`. A later phase can proceed in that order after transport/session
-validation. No Siemens assets, protocol dictionaries, or LGPL source are
-included; current python-snap7 was consulted only as a behavioral protocol
-reference.
+Discovery is deliberately limited to raw EXPLORE, DB enumeration, metadata LID 1
+RID resolution, and raw type-info-container capture. There is no `browse()`,
+type-info parser, symbol tree, tag cache, symbolic-name lookup, or `read_tag()`.
+No Siemens assets, protocol dictionaries, or LGPL source are included; current
+python-snap7 was consulted only as a behavioral protocol reference.
+
+## Provenance-safe discovery captures
+
+The experimental discovery API deliberately stops before type-info interpretation.
+`list_datablocks()` performs a PLC-program EXPLORE, and
+`retrieve_type_info_raw()` resolves metadata LID 1 before capturing the complete,
+unparsed OMS type-info container. This phase exists so an independent parser can be
+developed from metadata captured from our own devices. It contains no Siemens/TIA
+preset dictionary, third-party type-info table, decompressor dictionary, or copied
+binary metadata.
+
+Use `examples/s7commplus_discovery_dump.py` to inspect DB identity and response size.
+A raw file is written only when `--output` is supplied.
