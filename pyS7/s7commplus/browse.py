@@ -116,6 +116,9 @@ def parse_datablocks(payload: bytes) -> list[S7DataBlockInfo]:
     status, pos = decode_uint64(payload)
     if status:
         raise S7CommPlusProtocolError(f"EXPLORE failed with PLC status 0x{status:x}")
+    if pos + 4 > len(payload):
+        raise S7CommPlusProtocolError("truncated EXPLORE response ExploreId")
+    pos += 4
     stack: list[dict[str, object]] = []
     result: list[S7DataBlockInfo] = []
     while pos < len(payload):

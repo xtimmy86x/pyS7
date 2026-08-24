@@ -10,6 +10,7 @@ from .protocol import (
     MAX_PACKET_SIZE,
     PROTOCOL_ID,
     DataType,
+    FunctionCode,
     Opcode,
     ProtocolVersion,
 )
@@ -91,6 +92,31 @@ def parse_response(payload: bytes, function: int, sequence: int) -> bytes:
     if actual_sequence != sequence:
         raise S7CommPlusProtocolError("response sequence number does not match request")
     return payload[10:]
+
+
+def extract_embedded_response_integrity(
+    payload: bytes, function: int
+) -> tuple[bytes, int]:
+    """Extract an IntegrityId from a function-specific response envelope.
+
+    Only EXPLORE currently uses an embedded response IntegrityId.  Its envelope
+    is ReturnValue (a 64-bit VLQ), a fixed-width ExploreId, the IntegrityId VLQ,
+    and then the PObject stream.  The returned payload preserves every
+    application field except the session-owned IntegrityId.
+    """
+    if function != FunctionCode.EXPLORE:
+        raise S7CommPlusProtocolError(
+            "response function has no embedded IntegrityId layout"
+        )
+    _, return_value_length = decode_uint64(payload)
+    integrity_offset = return_value_length + 4
+    if integrity_offset > len(payload):
+        raise S7CommPlusProtocolError("truncated EXPLORE response ExploreId")
+    integrity_id, integrity_length = decode_uint32(payload, integrity_offset)
+    normalized = (
+        payload[:integrity_offset] + payload[integrity_offset + integrity_length :]
+    )
+    return normalized, integrity_id
 
 
 def encode_object_qualifier(version: int, key: int = 0) -> bytes:

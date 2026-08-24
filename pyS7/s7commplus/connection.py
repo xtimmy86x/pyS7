@@ -21,6 +21,7 @@ from .codec import (
     encode_frame,
     encode_object_qualifier,
     encode_request_header,
+    extract_embedded_response_integrity,
     parse_response,
 )
 from .protocol import (
@@ -462,7 +463,7 @@ class S7CommPlusConnection:
                     ),
                 )
                 if self._with_integrity:
-                    result = self._remove_response_integrity_trailer(result, context)
+                    result = self._normalize_response_integrity(result, context)
                 return result
             except socket.timeout as exc:
                 self._reset()
@@ -475,6 +476,35 @@ class S7CommPlusConnection:
                 # peer's IntegrityId state uncertain.  Require a fresh session.
                 self._reset()
                 raise
+
+    @classmethod
+    def _normalize_response_integrity(
+        cls, payload: bytes, context: _RequestContext
+    ) -> bytes:
+        """Extract a layout-specific response IID and validate it in-session."""
+        if context.request_integrity_id is None:
+            raise S7CommPlusProtocolError("response did not expect an IntegrityId")
+        expected = (context.sequence_number + context.request_integrity_id) & 0xFFFFFFFF
+        if context.function_code == FunctionCode.EXPLORE:
+            normalized, actual = extract_embedded_response_integrity(
+                payload, context.function_code
+            )
+            cls._validate_response_integrity(actual, expected, context)
+            return normalized
+        return cls._remove_response_integrity_trailer(payload, context)
+
+    @staticmethod
+    def _validate_response_integrity(
+        actual: int, expected: int, context: _RequestContext
+    ) -> None:
+        if actual != expected:
+            raise S7CommPlusProtocolError("unexpected V2 response IntegrityId")
+        logger.debug(
+            "V2 response: seq=%d iid=%d expected=%d",
+            context.sequence_number,
+            actual,
+            expected,
+        )
 
     @staticmethod
     def _remove_response_integrity_trailer(
@@ -499,14 +529,7 @@ class S7CommPlusConnection:
         actual, consumed = decode_uint32(payload, start)
         if consumed != encoded_length or start + consumed != len(payload) - 4:
             raise S7CommPlusProtocolError("invalid V2 response IntegrityId encoding")
-        if actual != expected:
-            raise S7CommPlusProtocolError("unexpected V2 response IntegrityId")
-        logger.debug(
-            "V2 response: seq=%d iid=%d expected=%d",
-            context.sequence_number,
-            actual,
-            expected,
-        )
+        S7CommPlusConnection._validate_response_integrity(actual, expected, context)
         return payload[:start]
 
     def _exchange(

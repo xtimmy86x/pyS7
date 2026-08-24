@@ -4,6 +4,9 @@
 import argparse
 import logging
 from pathlib import Path
+import sys
+
+sys.path.insert(0, "/home/ale/pys7/pyS7")
 
 from pyS7.s7commplus import S7CommPlusClient
 
