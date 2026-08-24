@@ -5,11 +5,13 @@ import pytest
 from pyS7 import DataType
 from pyS7.errors import S7CommPlusProtocolError
 from pyS7.s7commplus.browse import (
+    _decode_object,
     _parse_varname_list,
     _parse_vartype_list,
     _pvalue,
     parse_type_info,
 )
+from pyS7.s7commplus.codec import _is_packed_struct_id
 from pyS7.s7commplus.protocol import DataType as PValueDataType
 from pyS7.s7commplus.vlq import encode_uint32
 
@@ -61,6 +63,64 @@ def payload(*objects: bytes) -> bytes:
 
 def pstruct(struct_id: int, contents: bytes) -> bytes:
     return bytes((0, PValueDataType.STRUCT)) + struct.pack(">I", struct_id) + contents
+
+
+REAL_PLC_NORMAL_STRUCT = bytes.fromhex(
+    "00 17 00 00 06 06 8c 07 00 04 00 8c 08 00 04 00 8c 09 00 04 0c 00"
+)
+
+
+def test_real_plc_normal_struct_pvalue_lands_on_following_byte() -> None:
+    """Regression fixture captured at type-info response offset 0x4f."""
+    wire = REAL_PLC_NORMAL_STRUCT + b"\xff"
+
+    value, end = _pvalue(wire, 0)
+
+    assert end == len(REAL_PLC_NORMAL_STRUCT)
+    assert wire[end] == 0xFF
+    # STRUCT values remain opaque, but include the ID, all three keyed UDINT
+    # PValues (0, 0, 12), and the key-list terminator.
+    assert value == REAL_PLC_NORMAL_STRUCT[2:]
+    assert not _is_packed_struct_id(0x00000606)
+
+
+def test_real_plc_struct_attribute_does_not_create_false_object_boundaries(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Keep the complete provenance-safe sequence beginning at offset 0x4c."""
+    captured = bytes.fromhex(
+        "a3 84 63 00 17 00 00 06 06 8c 07 00 04 00 8c 08 00 04 00 8c 09 00 04 0c 00 a3"
+    )
+    prefix = b"\0" * 0x4C
+    assert (
+        prefix + captured == prefix + b"\xa3\x84\x63" + REAL_PLC_NORMAL_STRUCT + b"\xa3"
+    )
+
+    # Complete the second attribute and object so _decode_object can prove that
+    # the final A3 is interpreted only after the STRUCT has been consumed.
+    object_wire = (
+        b"\xa1"
+        + struct.pack(">I", 0x92000064)
+        + b"\x01\x00\x00"
+        + captured
+        + b"\x01\x00\x01\x01"
+        + b"\xa2"
+    )
+    caplog.set_level("DEBUG", logger="pyS7.s7commplus.browse")
+
+    obj, end = _decode_object(object_wire, 0)
+
+    assert end == len(object_wire)
+    assert obj.attributes[611] == REAL_PLC_NORMAL_STRUCT[2:]
+    assert obj.attributes[1] == 1
+    assert not [
+        record for record in caplog.records if "PObject boundary" in record.message
+    ]
+
+    pvalue_offset = 0x4F
+    _, fixture_end = _pvalue(prefix + captured, pvalue_offset)
+    assert fixture_end == 0x65
+    assert (prefix + captured)[fixture_end] == 0xA3
 
 
 def test_normal_struct_is_consumed_through_terminator() -> None:

@@ -19,6 +19,11 @@ from .vlq import decode_uint32, decode_uint64, encode_uint32
 _MAX_PVALUE_DEPTH = 32
 
 
+def _is_packed_struct_id(struct_id: int) -> bool:
+    """Return whether a STRUCT ID selects the packed wire representation."""
+    return 0x90000000 < struct_id < 0x9FFFFFFF or 0x02000000 < struct_id < 0x02FFFFFF
+
+
 def validate_access(
     access_area: int, access_sequence: Sequence[int], symbol_crc: int = 0
 ) -> tuple[int, ...]:
@@ -192,6 +197,10 @@ def _decode_pvalue_at(
 ) -> tuple[object, bytes, int]:
     """Decode one PValue and return its value, raw value bytes, and end offset.
 
+    ``offset`` always points at the flags byte.  This function owns and consumes
+    the flags, datatype, and complete (possibly nested) body; its returned
+    offset points at the first byte following the PValue.
+
     This cursor-oriented decoder is shared by symbolic values and EXPLORE
     attributes.  STRUCT values are intentionally opaque to callers, but are
     walked completely so the following PObject element remains aligned.
@@ -210,7 +219,7 @@ def _decode_pvalue_at(
             raise S7CommPlusProtocolError("truncated STRUCT id")
         struct_id = struct.unpack_from(">I", data, pos)[0]
         pos += 4
-        if 0x90000000 < struct_id < 0x9FFFFFFF or 0x02000000 < struct_id < 0x02FFFFFF:
+        if _is_packed_struct_id(struct_id):
             if pos + 8 > len(data):
                 raise S7CommPlusProtocolError("truncated packed STRUCT timestamp")
             pos += 8
