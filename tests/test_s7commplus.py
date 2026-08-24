@@ -25,7 +25,11 @@ from pyS7.s7commplus.codec import (
     parse_symbolic_read,
     parse_symbolic_write,
 )
-from pyS7.s7commplus.connection import S7CommPlusConnection, _cotp_connection_request
+from pyS7.s7commplus.connection import (
+    S7CommPlusConnection,
+    _cotp_connection_request,
+    _RequestContext,
+)
 from pyS7.s7commplus.protocol import DataType, FunctionCode, ProtocolVersion
 from pyS7.s7commplus.vlq import decode_uint32, decode_uint64, encode_uint32
 
@@ -112,6 +116,8 @@ def test_response_header_validation() -> None:
         parse_response(header, FunctionCode.SET_MULTI_VARIABLES, 7)
     with pytest.raises(S7CommPlusProtocolError, match="header"):
         parse_response(b"\x99" + header[1:], FunctionCode.GET_MULTI_VARIABLES, 7)
+    with pytest.raises(S7CommPlusProtocolError, match="sequence"):
+        parse_response(header, FunctionCode.GET_MULTI_VARIABLES, 8)
     with pytest.raises(S7CommPlusProtocolError, match="truncated"):
         parse_response(b"short", FunctionCode.GET_MULTI_VARIABLES, 7)
 
@@ -132,10 +138,18 @@ REAL_PLC_SYMBOLIC_READ_RESPONSE = bytes.fromhex(
 )
 
 
-def _parse_real_v2_response(wire: bytes, integrity_id: int = 5) -> bytes:
+def _parse_real_v2_response(
+    wire: bytes, request_integrity_id: int = 1, sequence: int = 4
+) -> bytes:
     application = parse_response(wire, FunctionCode.GET_MULTI_VARIABLES, sequence=4)
     application = S7CommPlusConnection._remove_response_integrity_trailer(
-        application, integrity_id
+        application,
+        _RequestContext(
+            sequence,
+            request_integrity_id,
+            FunctionCode.GET_MULTI_VARIABLES,
+            True,
+        ),
     )
     return parse_symbolic_read(application)
 
@@ -144,6 +158,44 @@ def test_real_plc_v2_symbolic_read_response_fixture() -> None:
     result = _parse_real_v2_response(REAL_PLC_SYMBOLIC_READ_RESPONSE)
     assert result == bytes.fromhex("41 28 00 00")
     assert struct.unpack(">f", result)[0] == 10.5
+
+
+REAL_PLC_PROTECTION_RESPONSE = bytes.fromhex(
+    "32 00 00 05 86 00 00 00 03 34 00 00 00 04 01 03 00 00 00 00"
+)
+
+
+def test_real_plc_v2_protection_response_fixture() -> None:
+    payload = parse_response(
+        REAL_PLC_PROTECTION_RESPONSE, FunctionCode.GET_VAR_SUBSTREAMED, sequence=3
+    )
+    application = S7CommPlusConnection._remove_response_integrity_trailer(
+        payload,
+        _RequestContext(3, 0, FunctionCode.GET_VAR_SUBSTREAMED, True),
+    )
+    assert application == bytes.fromhex("00 00 00 04 01")
+    status, pos = decode_uint64(application)
+    assert status == 0
+    assert decode_uint32(application, pos + 3)[0] == 1
+
+
+@pytest.mark.parametrize("response_iid", [2, 4, 0])
+def test_v2_response_rejects_wrong_integrity_id(response_iid: int) -> None:
+    payload = b"application" + encode_uint32(response_iid) + b"\0\0\0\0"
+    with pytest.raises(S7CommPlusProtocolError, match="IntegrityId"):
+        S7CommPlusConnection._remove_response_integrity_trailer(
+            payload, _RequestContext(3, 0, FunctionCode.GET_VAR_SUBSTREAMED, True)
+        )
+
+
+def test_v2_response_integrity_id_rolls_over() -> None:
+    context = _RequestContext(2, 0xFFFFFFFF, FunctionCode.GET_MULTI_VARIABLES, True)
+    assert (
+        S7CommPlusConnection._remove_response_integrity_trailer(
+            b"ok\x01\0\0\0\0", context
+        )
+        == b"ok"
+    )
 
 
 @pytest.mark.parametrize(
@@ -224,7 +276,10 @@ def test_v2_integrity_id_is_central_and_resets(
         function: int, payload: bytes, *args: object, **kwargs: object
     ) -> bytes:
         captured.append(payload)
-        return b"ok" + encode_uint32(connection.integrity_id_read) + b"\0\0\0\0"
+        context = kwargs["context"]
+        assert isinstance(context, _RequestContext)
+        expected = context.sequence_number + context.request_integrity_id  # type: ignore[operator]
+        return b"ok" + encode_uint32(expected) + b"\0\0\0\0"
 
     monkeypatch.setattr(connection, "_exchange", exchange)
     assert (
@@ -237,6 +292,59 @@ def test_v2_integrity_id_is_central_and_resets(
     assert connection.integrity_id_read == 2
     connection.disconnect()
     assert connection.integrity_id_read == 0
+
+
+def test_v2_real_plc_request_sequence_advances_read_integrity(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    connection = S7CommPlusConnection("plc")
+    connection._socket = FakeSocket([])  # type: ignore[assignment]
+    connection._ready = connection._with_integrity = True
+    connection.protocol_version = ProtocolVersion.V2
+    connection._sequence = 3
+    contexts: list[_RequestContext] = []
+    responses = iter(
+        [
+            bytes.fromhex("00 00 00 04 01 03 00 00 00 00"),
+            bytes.fromhex("00 01 00 0e 41 28 00 00 00 00 05 00 00 00 00"),
+        ]
+    )
+
+    def exchange(*args: object, **kwargs: object) -> bytes:
+        context = kwargs["context"]
+        assert isinstance(context, _RequestContext)
+        contexts.append(context)
+        connection._sequence += 1
+        return next(responses)
+
+    monkeypatch.setattr(connection, "_exchange", exchange)
+    connection._read_protection_level()
+    symbolic = connection.request(
+        FunctionCode.GET_MULTI_VARIABLES,
+        build_symbolic_read(0x8A0E0064, [0x22], 0, ProtocolVersion.V2),
+    )
+    assert connection.protection_level == 1
+    assert parse_symbolic_read(symbolic) == bytes.fromhex("41 28 00 00")
+    assert [(c.sequence_number, c.request_integrity_id) for c in contexts] == [
+        (3, 0),
+        (4, 1),
+    ]
+
+
+def test_malformed_v2_response_invalidates_session_and_resets_counters(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    connection = S7CommPlusConnection("plc")
+    fake = FakeSocket([])
+    connection._socket = fake  # type: ignore[assignment]
+    connection._ready = connection._with_integrity = True
+    connection.protocol_version = ProtocolVersion.V2
+    monkeypatch.setattr(connection, "_exchange", lambda *a, **k: b"bad\0\0\0\0")
+    with pytest.raises(S7CommPlusProtocolError):
+        connection.request(FunctionCode.GET_MULTI_VARIABLES, b"body\0\0\0\0")
+    assert not connection.connected
+    assert connection.integrity_id_read == 0
+    assert fake.closed
 
 
 def test_invalid_and_truncated_pvalue() -> None:

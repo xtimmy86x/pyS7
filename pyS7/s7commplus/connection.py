@@ -5,6 +5,7 @@ import socket
 import ssl
 import struct
 import threading
+from dataclasses import dataclass
 from types import TracebackType
 from typing import Type, cast
 
@@ -38,6 +39,16 @@ from .vlq import decode_uint32, decode_uint64, encode_uint32
 logger = logging.getLogger(__name__)
 _S7_CIPHERS = "ECDHE-RSA-AES128-GCM-SHA256:ECDHE-RSA-AES256-GCM-SHA384:AES128-GCM-SHA256:AES256-GCM-SHA384:AES128-SHA256:AES256-SHA256"
 _MAX_TLS_BUFFER = MAX_PACKET_SIZE + 64 * 1024
+
+
+@dataclass(frozen=True)
+class _RequestContext:
+    """Immutable metadata needed to validate one matching response."""
+
+    sequence_number: int
+    request_integrity_id: int | None
+    function_code: int
+    is_read: bool
 
 
 def _cotp_connection_request() -> bytes:
@@ -386,17 +397,16 @@ class S7CommPlusConnection:
             + struct.pack(">H", 1)
             + struct.pack(">I", 0)
         )
-        try:
-            response = self.request(FunctionCode.GET_VAR_SUBSTREAMED, payload)
-            status, pos = decode_uint64(response)
-            if status or pos + 3 > len(response):
-                return
-            pos += 1
-            if response[pos : pos + 2] != bytes((0, DataType.UDINT)):
-                return
-            self.protection_level, _ = decode_uint32(response, pos + 2)
-        except (S7CommPlusProtocolError, S7CommPlusSessionError):
+        response = self.request(FunctionCode.GET_VAR_SUBSTREAMED, payload)
+        status, pos = decode_uint64(response)
+        if status or pos + 3 > len(response):
             logger.warning("PLC did not report an effective protection level")
+            return
+        pos += 1
+        if response[pos : pos + 2] != bytes((0, DataType.UDINT)):
+            logger.warning("PLC did not report an effective protection level")
+            return
+        self.protection_level, _ = decode_uint32(response, pos + 2)
 
     def disconnect(self) -> None:
         with self._lock:
@@ -414,6 +424,22 @@ class S7CommPlusConnection:
                         "request has no IntegrityId insertion point"
                     )
                 payload = payload[:-4] + encode_uint32(iid) + payload[-4:]
+            sequence = self._sequence
+            context = _RequestContext(
+                sequence, iid if self._with_integrity else None, function, is_read
+            )
+            if self._with_integrity:
+                logger.debug(
+                    "V2 request: function=0x%04x seq=%d iid=%d",
+                    function,
+                    sequence,
+                    iid,
+                )
+                # Consumed requests are never retried with a reused IntegrityId.
+                if is_read:
+                    self._integrity_read = (iid + 1) & 0xFFFFFFFF
+                else:
+                    self._integrity_write = (iid + 1) & 0xFFFFFFFF
             try:
                 result = cast(
                     bytes,
@@ -427,14 +453,11 @@ class S7CommPlusConnection:
                             else 0x36
                         ),
                         version=self.protocol_version,
+                        context=context,
                     ),
                 )
                 if self._with_integrity:
-                    result = self._remove_response_integrity_trailer(result, iid)
-                if is_read:
-                    self._integrity_read = (iid + 1) & 0xFFFFFFFF
-                else:
-                    self._integrity_write = (iid + 1) & 0xFFFFFFFF
+                    result = self._remove_response_integrity_trailer(result, context)
                 return result
             except socket.timeout as exc:
                 self._reset()
@@ -442,24 +465,44 @@ class S7CommPlusConnection:
             except (OSError, ssl.SSLError) as exc:
                 self._reset()
                 raise S7ConnectionError("S7CommPlus transport failed") from exc
+            except (S7CommPlusProtocolError, S7CommPlusSessionError):
+                # A transmitted request with an unusable response leaves the
+                # peer's IntegrityId state uncertain.  Require a fresh session.
+                self._reset()
+                raise
 
     @staticmethod
-    def _remove_response_integrity_trailer(payload: bytes, integrity_id: int) -> bytes:
+    def _remove_response_integrity_trailer(
+        payload: bytes, context: _RequestContext
+    ) -> bytes:
         """Validate and remove the V2 session trailer from an application payload.
 
-        V2 responses echo the request's VLQ-encoded IntegrityId immediately
-        before a four-byte zero fill.  Keeping this here makes the session the
+        V2 responses contain ``sequence + request IntegrityId`` as a VLQ,
+        immediately before a four-byte zero fill. Keeping this here makes the session the
         sole owner of both IntegrityId counters and leaves operation codecs to
         parse only their application data.
         """
-        trailer = encode_uint32(integrity_id) + struct.pack(">I", 0)
-        if len(payload) < len(trailer):
+        if context.request_integrity_id is None:
+            raise S7CommPlusProtocolError("response did not expect an IntegrityId")
+        expected = (context.sequence_number + context.request_integrity_id) & 0xFFFFFFFF
+        encoded_length = len(encode_uint32(expected))
+        if len(payload) < encoded_length + 4:
             raise S7CommPlusProtocolError("truncated V2 response integrity trailer")
         if payload[-4:] != b"\0\0\0\0":
             raise S7CommPlusProtocolError("invalid V2 response trailer fill")
-        if payload[-len(trailer) : -4] != trailer[:-4]:
+        start = len(payload) - 4 - encoded_length
+        actual, consumed = decode_uint32(payload, start)
+        if consumed != encoded_length or start + consumed != len(payload) - 4:
+            raise S7CommPlusProtocolError("invalid V2 response IntegrityId encoding")
+        if actual != expected:
             raise S7CommPlusProtocolError("unexpected V2 response IntegrityId")
-        return payload[: -len(trailer)]
+        logger.debug(
+            "V2 response: seq=%d iid=%d expected=%d",
+            context.sequence_number,
+            actual,
+            expected,
+        )
+        return payload[:start]
 
     def _exchange(
         self,
@@ -469,8 +512,13 @@ class S7CommPlusConnection:
         flags: int = 0x36,
         version: int = 1,
         accept_any_version: bool = False,
+        context: _RequestContext | None = None,
     ) -> bytes | tuple[int, bytes]:
-        sequence = self._sequence
+        sequence = context.sequence_number if context is not None else self._sequence
+        if context is not None and context.function_code != function:
+            raise S7CommPlusProtocolError("request function context does not match")
+        if sequence != self._sequence:
+            raise S7CommPlusProtocolError("request sequence context is stale")
         self._sequence = (sequence + 1) & 0xFFFF
         packet = encode_request_header(function, sequence, session_id, flags) + payload
         self._send_application(encode_frame(version, packet))
