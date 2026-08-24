@@ -2,9 +2,10 @@
 
 from collections.abc import Sequence
 from types import TracebackType
-from typing import Type
+from typing import Any, Type
 
-from ..errors import S7CommPlusProtocolError
+from ..constants import DataType
+from ..errors import S7CommPlusProtocolError, S7CommPlusSymbolNotFoundError
 from .browse import (
     BLOCK_NUMBER_AID,
     OBJECT_VARIABLE_TYPE_NAME_AID,
@@ -24,6 +25,7 @@ from .codec import (
 from .connection import S7CommPlusConnection
 from .protocol import DEFAULT_PORT, FunctionCode
 from .tag import S7SymbolicTag
+from .value import decode_symbolic_value
 
 
 class S7CommPlusClient:
@@ -33,6 +35,8 @@ class S7CommPlusClient:
         self, host: str, port: int = DEFAULT_PORT, timeout: float = 5.0
     ) -> None:
         self._connection = S7CommPlusConnection(host, port, timeout)
+        self._symbol_cache: dict[str, S7SymbolicTag] = {}
+        self._datablock_cache: list[S7DataBlockInfo] | None = None
 
     @property
     def connected(self) -> bool:
@@ -83,6 +87,7 @@ class S7CommPlusClient:
         tls_key: str | None = None,
         tls_verify: bool = False,
     ) -> None:
+        self._clear_session_caches()
         self._connection.connect(
             use_tls=use_tls,
             tls_ca=tls_ca,
@@ -92,7 +97,18 @@ class S7CommPlusClient:
         )
 
     def disconnect(self) -> None:
-        self._connection.disconnect()
+        try:
+            self._connection.disconnect()
+        finally:
+            self._clear_session_caches()
+
+    def _clear_session_caches(self) -> None:
+        self._symbol_cache.clear()
+        self._datablock_cache = None
+
+    def clear_symbol_cache(self) -> None:
+        """Forget symbols discovered during this connection."""
+        self._symbol_cache.clear()
 
     def read_symbolic(
         self, access_area: int, access_sequence: Sequence[int], symbol_crc: int = 0
@@ -114,11 +130,15 @@ class S7CommPlusClient:
 
     def list_datablocks(self) -> list[S7DataBlockInfo]:
         """Enumerate DB objects in the order supplied by PLC metadata."""
+        if self._datablock_cache is not None:
+            return list(self._datablock_cache)
         raw = self.explore_raw(
             PLC_PROGRAM_RID,
             (OBJECT_VARIABLE_TYPE_NAME_AID, BLOCK_NUMBER_AID),
         )
-        return parse_datablocks(raw)
+        datablocks = parse_datablocks(raw)
+        self._datablock_cache = datablocks
+        return list(datablocks)
 
     def resolve_type_info_rid(self, access_area: int) -> int:
         """Resolve a DB's type-information RID through symbolic metadata LID 1."""
@@ -150,7 +170,52 @@ class S7CommPlusClient:
                     payload, rid, db_name=db.name, access_area=db.access_area
                 )
             )
+        self._cache_symbols(tags)
         return tags
+
+    def _cache_symbols(self, tags: Sequence[S7SymbolicTag]) -> None:
+        seen: set[str] = set()
+        for tag in tags:
+            if tag.name in seen:
+                raise S7CommPlusProtocolError(f"ambiguous symbolic name {tag.name!r}")
+            seen.add(tag.name)
+            cached = self._symbol_cache.get(tag.name)
+            if cached is not None and cached != tag:
+                raise S7CommPlusProtocolError(f"ambiguous symbolic name {tag.name!r}")
+            self._symbol_cache[tag.name] = tag
+
+    def resolve_tag(self, name: str) -> S7SymbolicTag:
+        """Resolve an exact, case-sensitive flat DB scalar name."""
+        cached = self._symbol_cache.get(name)
+        if cached is not None:
+            return cached
+        db_name, separator, member_name = name.partition(".")
+        if not separator or not db_name or not member_name or "." in member_name:
+            raise S7CommPlusSymbolNotFoundError(
+                f"flat symbolic tag {name!r} was not found"
+            )
+        matches = [db for db in self.list_datablocks() if db.name == db_name]
+        if not matches:
+            raise S7CommPlusSymbolNotFoundError(f"data block {db_name!r} was not found")
+        if len(matches) != 1:
+            raise S7CommPlusProtocolError(f"ambiguous data block name {db_name!r}")
+        self.browse(matches[0].number)
+        try:
+            return self._symbol_cache[name]
+        except KeyError as exc:
+            raise S7CommPlusSymbolNotFoundError(
+                f"symbolic tag {name!r} was not found"
+            ) from exc
+
+    def read_tag(self, name: str) -> Any:
+        """Resolve and read one flat symbolic scalar as a Python value."""
+        tag = self.resolve_tag(name)
+        if not isinstance(tag.data_type, DataType):
+            raise S7CommPlusProtocolError(
+                f"symbolic tag {name!r} has no supported scalar data type"
+            )
+        raw = self.read_symbolic(tag.access_area, tag.access_sequence, tag.symbol_crc)
+        return decode_symbolic_value(tag.data_type, raw)
 
     def write_symbolic(
         self,

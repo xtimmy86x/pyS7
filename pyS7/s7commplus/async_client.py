@@ -96,6 +96,17 @@ class AsyncS7CommPlusClient:
         """Discover flat scalar members without blocking the event loop."""
         return await self._run(self._client.browse, db_number)
 
+    async def resolve_tag(self, name: str) -> S7SymbolicTag:
+        """Resolve an exact flat symbolic name without blocking the event loop."""
+        return await self._run(self._client.resolve_tag, name)
+
+    async def read_tag(self, name: str) -> Any:
+        """Resolve, read, and decode one flat symbolic scalar."""
+        return await self._run(self._client.read_tag, name)
+
+    async def clear_symbol_cache(self) -> None:
+        await self._run(self._client.clear_symbol_cache)
+
     async def write_symbolic(
         self,
         access_area: int,

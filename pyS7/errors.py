@@ -144,6 +144,10 @@ class S7SymbolicAccessError(S7CommPlusError):
         self.error_code = error_code
 
 
+class S7CommPlusSymbolNotFoundError(S7CommPlusError):
+    """Raised when an exact S7CommPlus symbolic name cannot be resolved."""
+
+
 class S7PDUError(S7Error):
     """Raised when PDU size limits are exceeded."""
 
