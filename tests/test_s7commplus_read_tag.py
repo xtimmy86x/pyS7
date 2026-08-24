@@ -44,6 +44,7 @@ def configured_client() -> tuple[S7CommPlusClient, S7SymbolicTag]:
         (0x22,),
         data_type=DataType.REAL,
         name="DB_Test.Real",
+        symbol_crc=0x35D91B1D,
     )
     client.list_datablocks = Mock(  # type: ignore[method-assign]
         return_value=[S7DataBlockInfo("DB_Test", 100, tag.access_area, tag.access_area)]
@@ -100,6 +101,25 @@ def test_browse_populates_cache_for_later_read(
     assert client.browse(db_number=100) == [tag]
     assert client.read_tag(tag.name) == 10.5
     client.retrieve_type_info_raw.assert_called_once_with(tag.access_area)  # type: ignore[attr-defined]
+
+
+def test_read_symbolic_preserves_explicit_item_address_crc(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = S7CommPlusClient("plc")
+    build = Mock(return_value=b"request")
+    request = Mock(return_value=b"response")
+    monkeypatch.setattr("pyS7.s7commplus.client.build_symbolic_read", build)
+    monkeypatch.setattr(
+        "pyS7.s7commplus.client.parse_symbolic_read", Mock(return_value=b"value")
+    )
+    client._connection.request = request  # type: ignore[method-assign]
+
+    assert client.read_symbolic(0x8A0E0064, (0x22,), 1234) == b"value"
+    build.assert_called_once_with(
+        0x8A0E0064, (0x22,), 1234, client._connection.protocol_version
+    )
+    request.assert_called_once_with(0x054C, b"request")
 
 
 def test_missing_symbol_raises_clear_error() -> None:

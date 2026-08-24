@@ -113,6 +113,7 @@ class S7CommPlusClient:
     def read_symbolic(
         self, access_area: int, access_sequence: Sequence[int], symbol_crc: int = 0
     ) -> bytes:
+        """Read a symbolic address, optionally with an explicit ItemAddress CRC."""
         payload = build_symbolic_read(
             access_area, access_sequence, symbol_crc, self._connection.protocol_version
         )
@@ -214,7 +215,9 @@ class S7CommPlusClient:
             raise S7CommPlusProtocolError(
                 f"symbolic tag {name!r} has no supported scalar data type"
             )
-        raw = self.read_symbolic(tag.access_area, tag.access_sequence, tag.symbol_crc)
+        # The PVartypeList CRC is descriptive metadata, not the ItemAddress CRC
+        # used by an ordinary GET_MULTI_VARIABLES request.
+        raw = self.read_symbolic(tag.access_area, tag.access_sequence, 0)
         return decode_symbolic_value(tag.data_type, raw)
 
     def write_symbolic(
