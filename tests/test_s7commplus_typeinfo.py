@@ -84,6 +84,23 @@ def test_real_plc_normal_struct_pvalue_lands_on_following_byte() -> None:
     assert not _is_packed_struct_id(0x00000606)
 
 
+def test_real_plc_dint_attribute_stops_before_following_struct_attribute() -> None:
+    captured = bytes.fromhex(
+        "a3 8b 5f 00 08 02 a3 84 63 "
+        "00 17 00 00 06 06 8c 07 00 04 00 8c 08 00 04 00 "
+        "8c 09 00 04 0c 00 a3"
+    )
+
+    value, end = _pvalue(captured, 3)
+
+    assert value == 2
+    assert end == 6
+    assert captured[end] == 0xA3
+    assert captured[end : end + 3] == bytes.fromhex("a3 84 63")
+    _, struct_end = _pvalue(captured, 9)
+    assert captured[struct_end] == 0xA3
+
+
 def test_real_plc_struct_attribute_does_not_create_false_object_boundaries(
     caplog: pytest.LogCaptureFixture,
 ) -> None:

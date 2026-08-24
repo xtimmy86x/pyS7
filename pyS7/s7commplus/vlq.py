@@ -51,3 +51,50 @@ def decode_uint64(data: bytes, offset: int = 0) -> tuple[int, int]:
     if offset + 9 > len(data):
         raise S7CommPlusProtocolError("truncated 64-bit VLQ")
     return (value << 8) | data[offset + 8], 9
+
+
+def decode_int32(data: bytes, offset: int = 0) -> tuple[int, int]:
+    """Decode the S7CommPlus signed 32-bit VLQ representation."""
+    if offset < 0 or offset > len(data):
+        raise S7CommPlusProtocolError("invalid VLQ offset")
+    value = 0
+    for consumed in range(1, 6):
+        if offset + consumed > len(data):
+            raise S7CommPlusProtocolError("truncated VLQ")
+        octet = data[offset + consumed - 1]
+        if consumed == 1 and octet & 0x40:
+            value = -64
+            octet &= 0xBF
+        else:
+            value <<= 7
+        value += octet & 0x7F
+        if not octet & 0x80:
+            if not -(1 << 31) <= value < (1 << 31):
+                raise S7CommPlusProtocolError("VLQ exceeds signed 32-bit range")
+            return value, consumed
+    raise S7CommPlusProtocolError("unterminated VLQ")
+
+
+def decode_int64(data: bytes, offset: int = 0) -> tuple[int, int]:
+    """Decode the S7CommPlus signed 64-bit VLQ representation."""
+    if offset < 0 or offset > len(data):
+        raise S7CommPlusProtocolError("invalid VLQ offset")
+    value = 0
+    for consumed in range(1, 9):
+        if offset + consumed > len(data):
+            raise S7CommPlusProtocolError("truncated VLQ")
+        octet = data[offset + consumed - 1]
+        if consumed == 1 and octet & 0x40:
+            value = -64
+            octet &= 0xBF
+        else:
+            value <<= 7
+        value += octet & 0x7F
+        if not octet & 0x80:
+            return value, consumed
+    if offset + 9 > len(data):
+        raise S7CommPlusProtocolError("truncated 64-bit VLQ")
+    value = (value << 8) + data[offset + 8]
+    if not -(1 << 63) <= value < (1 << 63):
+        raise S7CommPlusProtocolError("VLQ exceeds signed 64-bit range")
+    return value, 9

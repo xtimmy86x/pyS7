@@ -16,6 +16,7 @@ from pyS7.errors import (
 )
 from pyS7.s7commplus import AsyncS7CommPlusClient, S7SymbolicTag, db_access_area
 from pyS7.s7commplus.codec import (
+    _decode_pvalue_at,
     build_symbolic_read,
     decode_frame,
     decode_pvalue,
@@ -243,7 +244,7 @@ def test_real_plc_symbolic_read_reports_item_error_fixture() -> None:
     [
         ("000100", b"\0"),
         ("00070001", b"\0\1"),
-        ("00080001e240", bytes.fromhex("0001e240")),
+        ("000887c440", bytes.fromhex("0001e240")),
         ("000e41280000", bytes.fromhex("41280000")),
         ("000c000001f4", bytes.fromhex("000001f4")),
     ],
@@ -253,6 +254,50 @@ def test_real_plc_scalar_pvalue_fixtures(wire: str, expected: bytes) -> None:
     value, used = decode_pvalue(bytes.fromhex(wire), 0)
     assert value == expected
     assert used == len(bytes.fromhex(wire))
+
+
+@pytest.mark.parametrize(
+    ("number", "encoded"),
+    [
+        (0, b"\x00"),
+        (2, b"\x02"),
+        (12, b"\x0c"),
+        (64, b"\x80\x40"),
+        (123456, bytes.fromhex("87 c4 40")),
+        (-1, b"\x7f"),
+        (-255, bytes.fromhex("fe 01")),
+        (-(1 << 31), bytes.fromhex("f8 80 80 80 00")),
+    ],
+)
+def test_scalar_dint_uses_signed_int32_vlq(number: int, encoded: bytes) -> None:
+    wire = bytes((0, DataType.DINT)) + encoded + b"\xa3"
+
+    raw, used = decode_pvalue(wire, 0)
+
+    assert raw == struct.pack(">i", number)
+    assert used == len(wire) - 1
+    assert wire[used] == 0xA3
+
+
+@pytest.mark.parametrize(
+    ("datatype", "wire_value", "expected"),
+    [
+        (DataType.UDINT, encode_uint32(0x1234), 0x1234),
+        (DataType.ULINT, encode_uint32(0x1234), 0x1234),
+        (DataType.LINT, b"\x7f", -1),
+        (DataType.TIMESPAN, b"\x7f", -1),
+        (DataType.AID, encode_uint32(0x1234), 0x1234),
+    ],
+)
+def test_scalar_integer_wire_types_use_the_reference_vlq_encodings(
+    datatype: DataType, wire_value: bytes, expected: int
+) -> None:
+    wire = bytes((0, datatype)) + wire_value + b"\xa3"
+
+    value, _, end = _decode_pvalue_at(wire, 0)
+
+    assert value == expected
+    assert end == len(wire) - 1
 
 
 @pytest.mark.parametrize(

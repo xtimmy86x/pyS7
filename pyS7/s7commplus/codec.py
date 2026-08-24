@@ -15,7 +15,7 @@ from .protocol import (
     Opcode,
     ProtocolVersion,
 )
-from .vlq import decode_uint32, decode_uint64, encode_uint32
+from .vlq import decode_int32, decode_int64, decode_uint32, decode_uint64, encode_uint32
 
 _MAX_PVALUE_DEPTH = 32
 
@@ -276,7 +276,6 @@ def _decode_pvalue_at(
         DataType.INT: 2,
         DataType.WORD: 2,
         DataType.DWORD: 4,
-        DataType.DINT: 4,
         DataType.REAL: 4,
         DataType.LWORD: 8,
         DataType.LREAL: 8,
@@ -296,19 +295,28 @@ def _decode_pvalue_at(
     elif datatype in (
         DataType.UDINT,
         DataType.ULINT,
+        DataType.DINT,
         DataType.LINT,
         DataType.TIMESPAN,
     ):
         values: list[int] = []
         for _ in range(count):
-            value, used = (
-                decode_uint64(data, pos)
-                if datatype in (DataType.ULINT, DataType.LINT, DataType.TIMESPAN)
-                else decode_uint32(data, pos)
-            )
+            if datatype in (DataType.LINT, DataType.TIMESPAN):
+                value, used = decode_int64(data, pos)
+            elif datatype == DataType.DINT:
+                value, used = decode_int32(data, pos)
+            elif datatype == DataType.ULINT:
+                value, used = decode_uint64(data, pos)
+            else:
+                value, used = decode_uint32(data, pos)
             pos += used
             values.append(value)
-        raw = bytes(data[offset + 2 : pos])
+        if datatype == DataType.DINT:
+            raw = b"".join(struct.pack(">i", item) for item in values)
+        elif datatype in (DataType.LINT, DataType.TIMESPAN):
+            raw = b"".join(struct.pack(">q", item) for item in values)
+        else:
+            raw = bytes(data[offset + 2 : pos])
         logger.debug("PValue exit start=0x%x end=0x%x", offset, pos)
         return (values if flags & 0x10 else values[0]), raw, pos
     elif datatype in fixed:
