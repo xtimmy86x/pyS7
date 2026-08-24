@@ -14,6 +14,7 @@ from ..constants import DataType
 from ..errors import S7CommPlusProtocolError
 from .codec import _decode_pvalue_at
 from .protocol import DB_ACCESS_AREA_BASE
+from .protocol import DataType as ProtocolDataType
 from .tag import S7SymbolicTag
 from .vlq import decode_uint32, decode_uint64, encode_uint32
 
@@ -206,7 +207,18 @@ def build_explore_request(rid: int, attribute_ids: tuple[int, ...] = ()) -> byte
 
 
 def _pvalue(data: bytes, pos: int) -> tuple[object, int]:
-    value, _, end = _decode_pvalue_at(data, pos)
+    """Decode one PValue using EXPLORE attribute semantics.
+
+    The shared decoder also serves symbolic reads, whose public contract is raw
+    bytes.  PObject metadata is typed instead: S7CommPlus PValue WSTRING bytes
+    are UTF-8 (unlike PLC user-variable WSTRING storage, which is UTF-16).
+    """
+    value, raw, end = _decode_pvalue_at(data, pos)
+    if data[pos + 1] == ProtocolDataType.WSTRING:
+        try:
+            value = raw.decode("utf-8")
+        except UnicodeDecodeError as exc:
+            raise S7CommPlusProtocolError("invalid EXPLORE WSTRING value") from exc
     return value, end
 
 
@@ -350,14 +362,10 @@ def parse_datablocks(payload: bytes) -> list[S7DataBlockInfo]:
         metadata_number = obj.attributes.get(BLOCK_NUMBER_AID)
         if metadata_number is not None and metadata_number != number:
             raise S7CommPlusProtocolError("DB number conflicts with relation ID")
-        name_value = obj.attributes.get(OBJECT_VARIABLE_TYPE_NAME_AID, b"")
-        if not isinstance(name_value, bytes):
+        name_value = obj.attributes.get(OBJECT_VARIABLE_TYPE_NAME_AID, "")
+        if not isinstance(name_value, str):
             raise S7CommPlusProtocolError("DB name is not a string value")
-        name = (
-            name_value.decode("utf-16-be")
-            if b"\0" in name_value
-            else name_value.decode("utf-8")
-        ).rstrip("\0")
+        name = name_value.rstrip("\0")
         result.append(S7DataBlockInfo(name, number, relation, relation))
     return result
 

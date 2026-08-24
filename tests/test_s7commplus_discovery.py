@@ -14,7 +14,7 @@ from pyS7.s7commplus.browse import (
     build_explore_request,
     parse_datablocks,
 )
-from pyS7.s7commplus.codec import extract_embedded_response_integrity
+from pyS7.s7commplus.codec import decode_pvalue, extract_embedded_response_integrity
 from pyS7.s7commplus.connection import S7CommPlusConnection, _RequestContext
 from pyS7.s7commplus.protocol import DataType, FunctionCode, ProtocolVersion
 from pyS7.s7commplus.vlq import encode_uint32
@@ -155,6 +155,30 @@ def program(*children: bytes) -> bytes:
     return pobj(3, PLC_PROGRAM_CLASS_RID, b"PLCProgram", contents=b"".join(children))
 
 
+@pytest.mark.parametrize("name", ["DB_Test", "Motör"])
+def test_explore_wstring_attribute_is_semantic_utf8(name: str) -> None:
+    raw = name.encode("utf-8")
+    encoded = pobj(0x8A0E0064, DB_CLASS_RID, raw, 100)
+
+    obj, end = _decode_object(encoded, 0)
+
+    value = obj.attributes[OBJECT_VARIABLE_TYPE_NAME_AID]
+    assert value == name
+    assert isinstance(value, str)
+    assert end == len(encoded)
+
+
+def test_symbolic_wstring_decoder_remains_raw_bytes() -> None:
+    raw = "Motör".encode("utf-8")
+    encoded = bytes((0, DataType.WSTRING)) + encode_uint32(len(raw)) + raw
+
+    value, used = decode_pvalue(encoded, 0)
+
+    assert value == raw
+    assert isinstance(value, bytes)
+    assert used == len(encoded)
+
+
 def test_valid_db_relation_and_unrelated_object_ignored() -> None:
     payload = b"\0\x12\x34\x56\x78" + program(
         pobj(7, 3333, b"unrelated"),
@@ -221,7 +245,7 @@ def test_standalone_pobject_attributes_and_a2_termination() -> None:
     raw = pobj(4, 5, b"object")
     obj, pos = _decode_object(raw, 0)
     assert (obj.relation_id, obj.class_id, pos) == (4, 5, len(raw))
-    assert obj.attributes[OBJECT_VARIABLE_TYPE_NAME_AID] == b"object"
+    assert obj.attributes[OBJECT_VARIABLE_TYPE_NAME_AID] == "object"
 
 
 def test_parent_with_multiple_nested_children() -> None:
