@@ -92,6 +92,10 @@ class AsyncS7CommPlusClient:
     async def retrieve_type_info_raw(self, access_area: int) -> tuple[int, bytes]:
         return await self._run(self._client.retrieve_type_info_raw, access_area)
 
+    async def browse(self, db_number: int | None = None) -> list[S7SymbolicTag]:
+        """Discover flat scalar members without blocking the event loop."""
+        return await self._run(self._client.browse, db_number)
+
     async def write_symbolic(
         self,
         access_area: int,

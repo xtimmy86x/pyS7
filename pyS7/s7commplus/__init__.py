@@ -1,7 +1,7 @@
 """Experimental, explicitly selected S7CommPlus symbolic API."""
 
 from .async_client import AsyncS7CommPlusClient
-from .browse import S7DataBlockInfo
+from .browse import S7DataBlockInfo, parse_type_info
 from .client import S7CommPlusClient
 from .protocol import DB_ACCESS_AREA_BASE, db_access_area
 from .tag import S7SymbolicTag
@@ -13,4 +13,5 @@ __all__ = [
     "S7DataBlockInfo",
     "S7SymbolicTag",
     "db_access_area",
+    "parse_type_info",
 ]

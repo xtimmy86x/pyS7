@@ -1,15 +1,20 @@
 """Minimal, provenance-safe codecs for S7CommPlus discovery.
 
-This module intentionally stops at PLC-program object enumeration.  It does not
-contain preset dictionaries, type tables, or a type-information interpreter.
+The type-information support is deliberately limited to flat scalar members.
+It contains no preset dictionaries and does not attempt to interpret arrays or
+nested structures.
 """
 
 import logging
 import struct
+from collections.abc import Iterator
 from dataclasses import dataclass
 
+from ..constants import DataType
 from ..errors import S7CommPlusProtocolError
-from .protocol import DB_ACCESS_AREA_BASE, DataType
+from .protocol import DB_ACCESS_AREA_BASE
+from .protocol import DataType as ProtocolDataType
+from .tag import S7SymbolicTag
 from .vlq import decode_uint32, decode_uint64, encode_uint32
 
 PLC_PROGRAM_RID = 3
@@ -52,6 +57,134 @@ class _PObject:
     attributes: dict[int, object]
     children: list["_PObject"]
     relations: dict[int, int]
+    vartypes: bytes | None = None
+    varnames: bytes | None = None
+
+
+@dataclass(frozen=True)
+class OffsetInfo:
+    """Layout metadata carried by a scalar type description."""
+
+    optimized_address: int
+    nonoptimized_address: int
+    declared_length: int | None = None
+    storage_hint: int | None = None
+
+
+@dataclass(frozen=True)
+class VartypeListElement:
+    """One independently addressed member in an OMS vartype list."""
+
+    lid: int
+    symbol_crc: int
+    softdatatype: int
+    attribute_flags: int
+    bit_offset_info_flags: int
+    offset_info: OffsetInfo
+
+    @property
+    def optimized_bit_offset(self) -> int:
+        return self.bit_offset_info_flags & 0x07
+
+    @property
+    def nonoptimized_bit_offset(self) -> int:
+        return (self.bit_offset_info_flags >> 4) & 0x07
+
+
+_SOFTDATATYPE_MAP = {
+    0x01: DataType.BIT,
+    0x05: DataType.INT,
+    0x07: DataType.DINT,
+    0x08: DataType.REAL,
+    0x0B: DataType.TIME,
+    0x13: DataType.STRING,
+    0x3E: DataType.WSTRING,
+}
+
+
+def _block(data: bytes, pos: int, name: str) -> tuple[memoryview | None, int]:
+    if pos + 2 > len(data):
+        raise S7CommPlusProtocolError(f"truncated EXPLORE {name} block length")
+    length = struct.unpack_from(">H", data, pos)[0]
+    pos += 2
+    if not length:
+        return None, pos
+    end = pos + length
+    if end > len(data):
+        raise S7CommPlusProtocolError(f"truncated EXPLORE {name} block")
+    return memoryview(data)[pos:end], end
+
+
+def _parse_vartype_list(data: bytes, pos: int) -> tuple[list[VartypeListElement], int]:
+    """Parse every block; only the first non-empty block carries FirstId."""
+    elements: list[VartypeListElement] = []
+    first = True
+    while True:
+        block, pos = _block(data, pos, "VartypeList")
+        if block is None:
+            return elements, pos
+        cursor = 0
+        if first:
+            if len(block) < 4:
+                raise S7CommPlusProtocolError("truncated VartypeList FirstId")
+            # FirstId is framing metadata, not a source from which member LIDs
+            # should be generated.
+            _first_id = struct.unpack_from("<I", block, 0)[0]
+            cursor = 4
+            first = False
+        while cursor < len(block):
+            if len(block) - cursor < 12:
+                raise S7CommPlusProtocolError("truncated VartypeList element")
+            lid, crc = struct.unpack_from("<II", block, cursor)
+            softdatatype = block[cursor + 8]
+            flags = struct.unpack_from(">H", block, cursor + 9)[0]
+            bit_flags = block[cursor + 11]
+            cursor += 12
+            selector = (flags >> 12) & 0x0F
+            if selector == 8:
+                if len(block) - cursor < 4:
+                    raise S7CommPlusProtocolError("truncated Std OffsetInfo")
+                optimized, nonoptimized = struct.unpack_from("<HH", block, cursor)
+                offset = OffsetInfo(optimized, nonoptimized)
+                cursor += 4
+            elif selector == 9:
+                if len(block) - cursor < 12:
+                    raise S7CommPlusProtocolError("truncated String OffsetInfo")
+                declared, storage, optimized, nonoptimized = struct.unpack_from(
+                    "<HHII", block, cursor
+                )
+                offset = OffsetInfo(optimized, nonoptimized, declared, storage)
+                cursor += 12
+            else:
+                raise S7CommPlusProtocolError(
+                    f"unsupported OffsetInfoType {selector} for LID 0x{lid:x}"
+                )
+            elements.append(
+                VartypeListElement(lid, crc, softdatatype, flags, bit_flags, offset)
+            )
+
+
+def _parse_varname_list(data: bytes, pos: int) -> tuple[list[str], int]:
+    names: list[str] = []
+    while True:
+        block, pos = _block(data, pos, "VarnameList")
+        if block is None:
+            return names, pos
+        cursor = 0
+        while cursor < len(block):
+            length = block[cursor]
+            cursor += 1
+            end = cursor + length
+            if end >= len(block):
+                raise S7CommPlusProtocolError("truncated VarnameList name")
+            raw = bytes(block[cursor:end])
+            if block[end] != 0:
+                raise S7CommPlusProtocolError("VarnameList name is not terminated")
+            try:
+                names.append(raw.decode("utf-8"))
+            except UnicodeDecodeError as exc:
+                raise S7CommPlusProtocolError("invalid VarnameList name") from exc
+            cursor = end + 1
 
 
 def build_explore_request(rid: int, attribute_ids: tuple[int, ...] = ()) -> bytes:
@@ -104,7 +237,7 @@ def _pvalue(data: bytes, pos: int) -> tuple[object, int]:
         18: 4,
         19: 4,
     }
-    if datatype in (DataType.BLOB, DataType.WSTRING):
+    if datatype in (ProtocolDataType.BLOB, ProtocolDataType.WSTRING):
         length, used = decode_uint32(data, pos)
         pos += used
         end = pos + length
@@ -203,9 +336,14 @@ def _decode_object(data: bytes, pos: int) -> tuple[_PObject, int]:
         elif element == _START_TAG_DESCRIPTION:
             # This marker has no body of its own.
             continue
-        elif element in (_VARTYPE_LIST, _VARNAME_LIST):
-            name = "VartypeList" if element == _VARTYPE_LIST else "VarnameList"
-            pos = _skip_block_list(data, pos, name)
+        elif element == _VARTYPE_LIST:
+            start = pos
+            pos = _skip_block_list(data, pos, "VartypeList")
+            obj.vartypes = data[start:pos]
+        elif element == _VARNAME_LIST:
+            start = pos
+            pos = _skip_block_list(data, pos, "VarnameList")
+            obj.varnames = data[start:pos]
         else:
             # DecodeObject treats an unhandled element (including 0x00 and A8)
             # as the boundary of this object.  The tag itself has been consumed.
@@ -277,3 +415,65 @@ def parse_datablocks(payload: bytes) -> list[S7DataBlockInfo]:
         ).rstrip("\0")
         result.append(S7DataBlockInfo(name, number, relation, relation))
     return result
+
+
+def _walk_objects(objects: list[_PObject]) -> Iterator[_PObject]:
+    for obj in objects:
+        yield obj
+        yield from _walk_objects(obj.children)
+
+
+def parse_type_info(
+    payload: bytes,
+    type_info_rid: int,
+    *,
+    db_name: str,
+    access_area: int,
+) -> list[S7SymbolicTag]:
+    """Parse flat scalar tags from the requested OMS type PObject."""
+    status, pos = decode_uint64(payload)
+    if status:
+        raise S7CommPlusProtocolError(f"EXPLORE failed with PLC status 0x{status:x}")
+    if pos + 4 > len(payload):
+        raise S7CommPlusProtocolError("truncated EXPLORE response ExploreId")
+    pos += 4
+    objects, _ = _decode_object_list(payload, pos)
+    obj = next(
+        (
+            candidate
+            for candidate in _walk_objects(objects)
+            if candidate.relation_id == type_info_rid
+        ),
+        None,
+    )
+    if obj is None:
+        raise S7CommPlusProtocolError(
+            f"type-info object RID 0x{type_info_rid:08x} not found"
+        )
+    vartypes = _parse_vartype_list(obj.vartypes or b"\0\0", 0)[0]
+    names = _parse_varname_list(obj.varnames or b"\0\0", 0)[0]
+    if len(vartypes) != len(names):
+        raise S7CommPlusProtocolError(
+            f"type-info list length mismatch: {len(vartypes)} elements, {len(names)} names"
+        )
+    tags: list[S7SymbolicTag] = []
+    for name, member in zip(names, vartypes, strict=True):
+        datatype = _SOFTDATATYPE_MAP.get(member.softdatatype)
+        if datatype is None:
+            logger.debug(
+                "Skipping unsupported Softdatatype 0x%02x for %s.%s",
+                member.softdatatype,
+                db_name,
+                name,
+            )
+            continue
+        tags.append(
+            S7SymbolicTag(
+                name=f"{db_name}.{name}",
+                access_area=access_area,
+                access_sequence=(member.lid,),
+                data_type=datatype,
+                symbol_crc=member.symbol_crc,
+            )
+        )
+    return tags

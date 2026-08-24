@@ -13,6 +13,7 @@ from .browse import (
     S7DataBlockInfo,
     build_explore_request,
     parse_datablocks,
+    parse_type_info,
 )
 from .codec import (
     build_symbolic_read,
@@ -133,6 +134,23 @@ class S7CommPlusClient:
         """Resolve a DB type RID and capture the unparsed OMS type-info container."""
         rid = self.resolve_type_info_rid(access_area)
         return rid, self.explore_raw(OMS_TYPE_INFO_CONTAINER_RID)
+
+    def browse(self, db_number: int | None = None) -> list[S7SymbolicTag]:
+        """Discover flat scalar members of one DB, or of every visible DB."""
+        datablocks = self.list_datablocks()
+        if db_number is not None:
+            datablocks = [db for db in datablocks if db.number == db_number]
+            if not datablocks:
+                raise S7CommPlusProtocolError(f"DB{db_number} was not found")
+        tags: list[S7SymbolicTag] = []
+        for db in datablocks:
+            rid, payload = self.retrieve_type_info_raw(db.access_area)
+            tags.extend(
+                parse_type_info(
+                    payload, rid, db_name=db.name, access_area=db.access_area
+                )
+            )
+        return tags
 
     def write_symbolic(
         self,
