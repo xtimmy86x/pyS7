@@ -7,8 +7,10 @@ from pyS7.errors import S7CommPlusProtocolError
 from pyS7.s7commplus.browse import (
     _parse_varname_list,
     _parse_vartype_list,
+    _pvalue,
     parse_type_info,
 )
+from pyS7.s7commplus.protocol import DataType as PValueDataType
 from pyS7.s7commplus.vlq import encode_uint32
 
 
@@ -55,6 +57,79 @@ def pobj(rid: int, contents: bytes = b"", children: bytes = b"") -> bytes:
 
 def payload(*objects: bytes) -> bytes:
     return b"\0\0\0\0\0" + b"".join(objects)
+
+
+def pstruct(struct_id: int, contents: bytes) -> bytes:
+    return bytes((0, PValueDataType.STRUCT)) + struct.pack(">I", struct_id) + contents
+
+
+def test_normal_struct_is_consumed_through_terminator() -> None:
+    wire = pstruct(
+        0x1234,
+        encode_uint32(1)
+        + bytes((0, PValueDataType.RID))
+        + struct.pack(">I", 0x90000001)
+        + encode_uint32(2)
+        + bytes((0, PValueDataType.BOOL, 1))
+        + b"\0",
+    )
+    framed = wire + b"\xa3"
+    _, end = _pvalue(framed, 0)
+    assert end == len(wire)
+    assert framed[end:] == b"\xa3"
+
+
+def test_nested_normal_struct_is_consumed_recursively() -> None:
+    inner = pstruct(2, b"\x01" + bytes((0, PValueDataType.BOOL, 1)) + b"\0")
+    outer = pstruct(1, b"\x01" + inner + b"\0")
+    assert _pvalue(outer + b"!", 0)[1] == len(outer)
+
+
+@pytest.mark.parametrize(
+    ("transport_flags", "counts", "payload_bytes"),
+    [
+        (0, b"\x03", b"abc"),
+        (0x400, encode_uint32(1) + encode_uint32(4), b"data"),
+    ],
+)
+def test_packed_struct_uses_effective_raw_byte_count(
+    transport_flags: int, counts: bytes, payload_bytes: bytes
+) -> None:
+    wire = pstruct(
+        0x92000064,
+        struct.pack(">Q", 0x0102030405060708)
+        + encode_uint32(transport_flags)
+        + counts
+        + payload_bytes,
+    )
+    assert _pvalue(wire + b"!", 0)[1] == len(wire)
+
+
+@pytest.mark.parametrize(
+    ("wire", "message"),
+    [
+        (bytes((0, PValueDataType.STRUCT)) + b"\0\0\0", "STRUCT id"),
+        (pstruct(0x92000064, b"\0" * 7), "timestamp"),
+        (pstruct(0x92000064, b"\0" * 8 + b"\x80"), "VLQ"),
+        (pstruct(0x92000064, b"\0" * 8 + b"\0\x80"), "VLQ"),
+        (pstruct(0x92000064, b"\0" * 8 + b"\0\x04ab"), "payload"),
+        (pstruct(1, b"\x01" + bytes((0, PValueDataType.BOOL))), "truncated"),
+        (pstruct(1, b"\x01" + bytes((0, 0xFF))), "unsupported"),
+    ],
+)
+def test_struct_truncation_and_malformed_nested_values_are_rejected(
+    wire: bytes, message: str
+) -> None:
+    with pytest.raises(S7CommPlusProtocolError, match=message):
+        _pvalue(wire, 0)
+
+
+def test_struct_recursion_depth_is_bounded() -> None:
+    wire = pstruct(1, b"\0")
+    for _ in range(32):
+        wire = pstruct(1, b"\x01" + wire + b"\0")
+    with pytest.raises(S7CommPlusProtocolError, match="nesting depth"):
+        _pvalue(wire, 0)
 
 
 def test_multiblock_vartypes_first_id_only_once_and_zero_terminator() -> None:

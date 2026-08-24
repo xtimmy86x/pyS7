@@ -12,8 +12,8 @@ from dataclasses import dataclass
 
 from ..constants import DataType
 from ..errors import S7CommPlusProtocolError
+from .codec import _decode_pvalue_at
 from .protocol import DB_ACCESS_AREA_BASE
-from .protocol import DataType as ProtocolDataType
 from .tag import S7SymbolicTag
 from .vlq import decode_uint32, decode_uint64, encode_uint32
 
@@ -206,63 +206,8 @@ def build_explore_request(rid: int, attribute_ids: tuple[int, ...] = ()) -> byte
 
 
 def _pvalue(data: bytes, pos: int) -> tuple[object, int]:
-    if pos + 2 > len(data):
-        raise S7CommPlusProtocolError("truncated EXPLORE attribute value")
-    flags, datatype = data[pos], data[pos + 1]
-    pos += 2
-    if flags & ~0x10:
-        raise S7CommPlusProtocolError("invalid EXPLORE attribute flags")
-    count = 1
-    if flags & 0x10:
-        count, used = decode_uint32(data, pos)
-        pos += used
-    fixed = {
-        1: 1,
-        2: 1,
-        3: 2,
-        4: None,
-        5: None,
-        6: 1,
-        7: 2,
-        8: None,
-        9: None,
-        10: 1,
-        11: 2,
-        12: 4,
-        13: 8,
-        14: 4,
-        15: 8,
-        16: 8,
-        17: None,
-        18: 4,
-        19: 4,
-    }
-    if datatype in (ProtocolDataType.BLOB, ProtocolDataType.WSTRING):
-        length, used = decode_uint32(data, pos)
-        pos += used
-        end = pos + length
-        if end > len(data):
-            raise S7CommPlusProtocolError("truncated EXPLORE attribute value")
-        return bytes(data[pos:end]), end
-    size = fixed.get(datatype)
-    if datatype not in fixed:
-        raise S7CommPlusProtocolError(f"unsupported EXPLORE datatype 0x{datatype:02x}")
-    if size is None:
-        values: list[int] = []
-        for _ in range(count):
-            value, used = (
-                decode_uint64(data, pos)
-                if datatype in (5, 9, 17)
-                else decode_uint32(data, pos)
-            )
-            pos += used
-            values.append(value)
-        return (values if flags & 0x10 else values[0]), pos
-    end = pos + count * size
-    if end > len(data):
-        raise S7CommPlusProtocolError("truncated EXPLORE attribute value")
-    raw = bytes(data[pos:end])
-    return (raw if flags & 0x10 or size > 4 else int.from_bytes(raw, "big")), end
+    value, _, end = _decode_pvalue_at(data, pos)
+    return value, end
 
 
 def _skip_block_list(data: bytes, pos: int, element_name: str) -> int:

@@ -16,6 +16,8 @@ from .protocol import (
 )
 from .vlq import decode_uint32, decode_uint64, encode_uint32
 
+_MAX_PVALUE_DEPTH = 32
+
 
 def validate_access(
     access_area: int, access_sequence: Sequence[int], symbol_crc: int = 0
@@ -185,13 +187,58 @@ def build_symbolic_write(
     )
 
 
-def decode_pvalue(data: bytes, offset: int) -> tuple[bytes, int]:
+def _decode_pvalue_at(
+    data: bytes, offset: int, *, depth: int = 0
+) -> tuple[object, bytes, int]:
+    """Decode one PValue and return its value, raw value bytes, and end offset.
+
+    This cursor-oriented decoder is shared by symbolic values and EXPLORE
+    attributes.  STRUCT values are intentionally opaque to callers, but are
+    walked completely so the following PObject element remains aligned.
+    """
+    if depth >= _MAX_PVALUE_DEPTH:
+        raise S7CommPlusProtocolError("PValue nesting depth exceeds 32")
     if offset < 0 or offset + 2 > len(data):
         raise S7CommPlusProtocolError("truncated PValue header")
     flags, datatype = data[offset : offset + 2]
     if flags & ~0x10:
         raise S7CommPlusProtocolError("invalid PValue flags")
     pos = offset + 2
+
+    if datatype == DataType.STRUCT:
+        if pos + 4 > len(data):
+            raise S7CommPlusProtocolError("truncated STRUCT id")
+        struct_id = struct.unpack_from(">I", data, pos)[0]
+        pos += 4
+        if 0x90000000 < struct_id < 0x9FFFFFFF or 0x02000000 < struct_id < 0x02FFFFFF:
+            if pos + 8 > len(data):
+                raise S7CommPlusProtocolError("truncated packed STRUCT timestamp")
+            pos += 8
+            transport_flags, used = decode_uint32(data, pos)
+            pos += used
+            count, used = decode_uint32(data, pos)
+            pos += used
+            if transport_flags & 0x400:
+                count, used = decode_uint32(data, pos)
+                pos += used
+            end = pos + count
+            if end > len(data):
+                raise S7CommPlusProtocolError("truncated packed STRUCT payload")
+        else:
+            while True:
+                key, used = decode_uint32(data, pos)
+                pos += used
+                if key == 0:
+                    end = pos
+                    break
+                _, _, pos = _decode_pvalue_at(data, pos, depth=depth + 1)
+        raw = bytes(data[offset + 2 : end])
+        return raw, raw, end
+
+    count = 1
+    if flags & 0x10:
+        count, used = decode_uint32(data, pos)
+        pos += used
     fixed = {
         DataType.BOOL: 1,
         DataType.USINT: 1,
@@ -209,21 +256,47 @@ def decode_pvalue(data: bytes, offset: int) -> tuple[bytes, int]:
         # Unlike the VLQ-encoded AID, an RID is always a wire-order UInt32.
         DataType.RID: 4,
     }
-    if datatype == DataType.BLOB:
+    if datatype in (DataType.BLOB, DataType.WSTRING):
         length, used = decode_uint32(data, pos)
         pos += used
     elif datatype == DataType.AID and not flags & 0x10:
         value, used = decode_uint32(data, pos)
-        return struct.pack(">I", value), pos + used - offset
+        raw = struct.pack(">I", value)
+        return value, raw, pos + used
+    elif datatype in (
+        DataType.UDINT,
+        DataType.ULINT,
+        DataType.LINT,
+        DataType.TIMESPAN,
+    ):
+        values: list[int] = []
+        for _ in range(count):
+            value, used = (
+                decode_uint64(data, pos)
+                if datatype in (DataType.ULINT, DataType.LINT, DataType.TIMESPAN)
+                else decode_uint32(data, pos)
+            )
+            pos += used
+            values.append(value)
+        raw = bytes(data[offset + 2 : pos])
+        return (values if flags & 0x10 else values[0]), raw, pos
     elif datatype in fixed:
-        count, used = decode_uint32(data, pos) if flags & 0x10 else (1, 0)
-        pos += used
         length = count * fixed[DataType(datatype)]
     else:
         raise S7CommPlusProtocolError(f"unsupported PValue datatype 0x{datatype:02x}")
     if length > MAX_PACKET_SIZE or pos + length > len(data):
         raise S7CommPlusProtocolError("truncated or oversized PValue")
-    return bytes(data[pos : pos + length]), pos + length - offset
+    raw = bytes(data[pos : pos + length])
+    decoded: object = raw
+    if not flags & 0x10 and length <= 4:
+        decoded = int.from_bytes(raw, "big")
+    return decoded, raw, pos + length
+
+
+def decode_pvalue(data: bytes, offset: int) -> tuple[bytes, int]:
+    """Decode the raw value used by symbolic read responses."""
+    _, raw, end = _decode_pvalue_at(data, offset)
+    return raw, end - offset
 
 
 def parse_symbolic_read(payload: bytes) -> bytes:
