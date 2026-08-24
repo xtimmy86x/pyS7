@@ -146,9 +146,15 @@ def test_real_plc_struct_attribute_does_not_create_false_object_boundaries(
         for message in messages
     )
     assert any("STRUCT id=0x00000606 form=normal" in message for message in messages)
-    assert any("STRUCT member key=1543 datatype=0x04" in message for message in messages)
-    assert any("STRUCT member key=1544 datatype=0x04" in message for message in messages)
-    assert any("STRUCT member key=1545 datatype=0x04" in message for message in messages)
+    assert any(
+        "STRUCT member key=1543 datatype=0x04" in message for message in messages
+    )
+    assert any(
+        "STRUCT member key=1544 datatype=0x04" in message for message in messages
+    )
+    assert any(
+        "STRUCT member key=1545 datatype=0x04" in message for message in messages
+    )
     assert any("PValue exit start=0xb end=0x21" in message for message in messages)
 
 
@@ -156,9 +162,7 @@ def test_attribute_rejects_a_pvalue_decoder_that_does_not_advance(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     object_wire = pobj(1, b"\xa3\x01\x00\x04\x00")
-    monkeypatch.setattr(
-        "pyS7.s7commplus.browse._pvalue", lambda data, pos: (None, pos)
-    )
+    monkeypatch.setattr("pyS7.s7commplus.browse._pvalue", lambda data, pos: (None, pos))
 
     with pytest.raises(S7CommPlusProtocolError, match="did not advance cursor"):
         _decode_object(object_wire, 0)

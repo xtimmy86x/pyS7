@@ -255,9 +255,7 @@ def _decode_pvalue_at(
                     break
                 if pos + 2 > len(data):
                     raise S7CommPlusProtocolError("truncated PValue header")
-                logger.debug(
-                    "STRUCT member key=%d datatype=0x%02x", key, data[pos + 1]
-                )
+                logger.debug("STRUCT member key=%d datatype=0x%02x", key, data[pos + 1])
                 _, _, pos = _decode_pvalue_at(data, pos, depth=depth + 1)
         raw = bytes(data[offset + 2 : end])
         logger.debug("PValue exit start=0x%x end=0x%x", offset, end)

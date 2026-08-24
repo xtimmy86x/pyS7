@@ -18,9 +18,7 @@ def main() -> None:
     parser.add_argument("--debug", action="store_true")
     args = parser.parse_args()
 
-    logging.basicConfig(
-        level=logging.DEBUG if args.debug else logging.INFO
-    )
+    logging.basicConfig(level=logging.DEBUG if args.debug else logging.INFO)
 
     client = S7CommPlusClient(args.host)
 
@@ -35,19 +33,11 @@ def main() -> None:
             datatype = getattr(tag.data_type, "name", str(tag.data_type))
             lids = ".".join(f"{lid:02X}" for lid in tag.access_sequence)
 
-            print(
-                f"{tag.name:<24} "
-                f"{datatype:<8} "
-                f"{tag.access_area:08X}.{lids}"
-            )
+            print(f"{tag.name:<24} " f"{datatype:<8} " f"{tag.access_area:08X}.{lids}")
 
         print("\nSymbolic read test:\n")
 
-        real = next(
-            tag
-            for tag in tags
-            if tag.name == "DB_Test.Real"
-        )
+        real = next(tag for tag in tags if tag.name == "DB_Test.Real")
 
         print(f"name:            {real.name}")
         print(f"data_type:       {getattr(real.data_type, 'name', real.data_type)}")
