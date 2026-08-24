@@ -107,6 +107,7 @@ def test_real_plc_struct_attribute_does_not_create_false_object_boundaries(
         + b"\xa2"
     )
     caplog.set_level("DEBUG", logger="pyS7.s7commplus.browse")
+    caplog.set_level("DEBUG", logger="pyS7.s7commplus.codec")
 
     obj, end = _decode_object(object_wire, 0)
 
@@ -121,6 +122,29 @@ def test_real_plc_struct_attribute_does_not_create_false_object_boundaries(
     _, fixture_end = _pvalue(prefix + captured, pvalue_offset)
     assert fixture_end == 0x65
     assert (prefix + captured)[fixture_end] == 0xA3
+
+    messages = [record.getMessage() for record in caplog.records]
+    assert any(
+        "element_offset=0x8 attribute_id=0x263 pvalue_start=0xb" in message
+        for message in messages
+    )
+    assert any("STRUCT id=0x00000606 form=normal" in message for message in messages)
+    assert any("STRUCT member key=1543 datatype=0x04" in message for message in messages)
+    assert any("STRUCT member key=1544 datatype=0x04" in message for message in messages)
+    assert any("STRUCT member key=1545 datatype=0x04" in message for message in messages)
+    assert any("PValue exit start=0xb end=0x21" in message for message in messages)
+
+
+def test_attribute_rejects_a_pvalue_decoder_that_does_not_advance(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    object_wire = pobj(1, b"\xa3\x01\x00\x04\x00")
+    monkeypatch.setattr(
+        "pyS7.s7commplus.browse._pvalue", lambda data, pos: (None, pos)
+    )
+
+    with pytest.raises(S7CommPlusProtocolError, match="did not advance cursor"):
+        _decode_object(object_wire, 0)
 
 
 def test_normal_struct_is_consumed_through_terminator() -> None:

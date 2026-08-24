@@ -1,5 +1,6 @@
 """Defensive, transport-independent S7CommPlus symbolic codecs."""
 
+import logging
 import struct
 from collections.abc import Sequence
 
@@ -17,6 +18,8 @@ from .protocol import (
 from .vlq import decode_uint32, decode_uint64, encode_uint32
 
 _MAX_PVALUE_DEPTH = 32
+
+logger = logging.getLogger(__name__)
 
 
 def _is_packed_struct_id(struct_id: int) -> bool:
@@ -210,6 +213,12 @@ def _decode_pvalue_at(
     if offset < 0 or offset + 2 > len(data):
         raise S7CommPlusProtocolError("truncated PValue header")
     flags, datatype = data[offset : offset + 2]
+    logger.debug(
+        "PValue enter offset=0x%x flags=0x%02x datatype=0x%02x",
+        offset,
+        flags,
+        datatype,
+    )
     if flags & ~0x10:
         raise S7CommPlusProtocolError("invalid PValue flags")
     pos = offset + 2
@@ -219,7 +228,11 @@ def _decode_pvalue_at(
             raise S7CommPlusProtocolError("truncated STRUCT id")
         struct_id = struct.unpack_from(">I", data, pos)[0]
         pos += 4
-        if _is_packed_struct_id(struct_id):
+        packed = _is_packed_struct_id(struct_id)
+        logger.debug(
+            "STRUCT id=0x%08x form=%s", struct_id, "packed" if packed else "normal"
+        )
+        if packed:
             if pos + 8 > len(data):
                 raise S7CommPlusProtocolError("truncated packed STRUCT timestamp")
             pos += 8
@@ -240,8 +253,14 @@ def _decode_pvalue_at(
                 if key == 0:
                     end = pos
                     break
+                if pos + 2 > len(data):
+                    raise S7CommPlusProtocolError("truncated PValue header")
+                logger.debug(
+                    "STRUCT member key=%d datatype=0x%02x", key, data[pos + 1]
+                )
                 _, _, pos = _decode_pvalue_at(data, pos, depth=depth + 1)
         raw = bytes(data[offset + 2 : end])
+        logger.debug("PValue exit start=0x%x end=0x%x", offset, end)
         return raw, raw, end
 
     count = 1
@@ -271,7 +290,9 @@ def _decode_pvalue_at(
     elif datatype == DataType.AID and not flags & 0x10:
         value, used = decode_uint32(data, pos)
         raw = struct.pack(">I", value)
-        return value, raw, pos + used
+        end = pos + used
+        logger.debug("PValue exit start=0x%x end=0x%x", offset, end)
+        return value, raw, end
     elif datatype in (
         DataType.UDINT,
         DataType.ULINT,
@@ -288,6 +309,7 @@ def _decode_pvalue_at(
             pos += used
             values.append(value)
         raw = bytes(data[offset + 2 : pos])
+        logger.debug("PValue exit start=0x%x end=0x%x", offset, pos)
         return (values if flags & 0x10 else values[0]), raw, pos
     elif datatype in fixed:
         length = count * fixed[DataType(datatype)]
@@ -299,7 +321,9 @@ def _decode_pvalue_at(
     decoded: object = raw
     if not flags & 0x10 and length <= 4:
         decoded = int.from_bytes(raw, "big")
-    return decoded, raw, pos + length
+    end = pos + length
+    logger.debug("PValue exit start=0x%x end=0x%x", offset, end)
+    return decoded, raw, end
 
 
 def decode_pvalue(data: bytes, offset: int) -> tuple[bytes, int]:

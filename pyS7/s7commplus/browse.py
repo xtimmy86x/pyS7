@@ -213,6 +213,8 @@ def _pvalue(data: bytes, pos: int) -> tuple[object, int]:
     bytes.  PObject metadata is typed instead: S7CommPlus PValue WSTRING bytes
     are UTF-8 (unlike PLC user-variable WSTRING storage, which is UTF-16).
     """
+    # _decode_pvalue_at returns an absolute end offset.  In contrast, the
+    # public decode_pvalue wrapper returns a byte count for symbolic reads.
     value, raw, end = _decode_pvalue_at(data, pos)
     if data[pos + 1] == ProtocolDataType.WSTRING:
         try:
@@ -281,7 +283,22 @@ def _decode_object(data: bytes, pos: int) -> tuple[_PObject, int]:
         elif element == _ATTRIBUTE:
             aid, used = decode_uint32(data, pos)
             pos += used
-            value, pos = _pvalue(data, pos)
+            pvalue_start = pos
+            logger.debug(
+                "PObject Attribute element_offset=0x%x attribute_id=0x%x "
+                "pvalue_start=0x%x",
+                element_offset,
+                aid,
+                pvalue_start,
+            )
+            value, new_pos = _pvalue(data, pvalue_start)
+            if new_pos <= pvalue_start:
+                raise S7CommPlusProtocolError(
+                    "PValue parser did not advance cursor "
+                    f"(start=0x{pvalue_start:x}, end=0x{new_pos:x}, "
+                    f"attribute_id=0x{aid:x})"
+                )
+            pos = new_pos
             obj.attributes[aid] = value
         elif element == _RELATION:
             relation, used = decode_uint32(data, pos)
