@@ -429,6 +429,8 @@ class S7CommPlusConnection:
                         version=self.protocol_version,
                     ),
                 )
+                if self._with_integrity:
+                    result = self._remove_response_integrity_trailer(result, iid)
                 if is_read:
                     self._integrity_read = (iid + 1) & 0xFFFFFFFF
                 else:
@@ -440,6 +442,24 @@ class S7CommPlusConnection:
             except (OSError, ssl.SSLError) as exc:
                 self._reset()
                 raise S7ConnectionError("S7CommPlus transport failed") from exc
+
+    @staticmethod
+    def _remove_response_integrity_trailer(payload: bytes, integrity_id: int) -> bytes:
+        """Validate and remove the V2 session trailer from an application payload.
+
+        V2 responses echo the request's VLQ-encoded IntegrityId immediately
+        before a four-byte zero fill.  Keeping this here makes the session the
+        sole owner of both IntegrityId counters and leaves operation codecs to
+        parse only their application data.
+        """
+        trailer = encode_uint32(integrity_id) + struct.pack(">I", 0)
+        if len(payload) < len(trailer):
+            raise S7CommPlusProtocolError("truncated V2 response integrity trailer")
+        if payload[-4:] != b"\0\0\0\0":
+            raise S7CommPlusProtocolError("invalid V2 response trailer fill")
+        if payload[-len(trailer) : -4] != trailer[:-4]:
+            raise S7CommPlusProtocolError("unexpected V2 response IntegrityId")
+        return payload[: -len(trailer)]
 
     def _exchange(
         self,

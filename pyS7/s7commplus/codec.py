@@ -210,15 +210,16 @@ def parse_symbolic_read(payload: bytes) -> bytes:
     if terminator != 0:
         raise S7CommPlusProtocolError("missing symbolic read value terminator")
     pos += term_used
-    if pos < len(payload):
-        error_item, error_used = decode_uint32(payload, pos)
-        if error_item:
-            code, _ = decode_uint64(payload, pos + error_used)
-            raise S7SymbolicAccessError(
-                f"symbolic item {error_item} failed with PLC status 0x{code:x}",
-                error_code=code,
-            )
-        pos += error_used
+    if pos >= len(payload):
+        raise S7CommPlusProtocolError("missing symbolic read error terminator")
+    error_item, error_used = decode_uint32(payload, pos)
+    if error_item:
+        code, _ = decode_uint64(payload, pos + error_used)
+        raise S7SymbolicAccessError(
+            f"symbolic item {error_item} failed with PLC status 0x{code:x}",
+            error_code=code,
+        )
+    pos += error_used
     if pos != len(payload):
         raise S7CommPlusProtocolError("unexpected trailing symbolic read data")
     return value

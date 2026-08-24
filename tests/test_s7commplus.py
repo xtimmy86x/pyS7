@@ -127,6 +127,65 @@ def test_successful_symbolic_read_and_item_errors() -> None:
     assert exc.value.error_code == 0x23
 
 
+REAL_PLC_SYMBOLIC_READ_RESPONSE = bytes.fromhex(
+    "32 00 00 05 4c 00 00 00 04 34" " 00 01 00 0e 41 28 00 00 00 00 05 00 00 00 00"
+)
+
+
+def _parse_real_v2_response(wire: bytes, integrity_id: int = 5) -> bytes:
+    application = parse_response(wire, FunctionCode.GET_MULTI_VARIABLES, sequence=4)
+    application = S7CommPlusConnection._remove_response_integrity_trailer(
+        application, integrity_id
+    )
+    return parse_symbolic_read(application)
+
+
+def test_real_plc_v2_symbolic_read_response_fixture() -> None:
+    result = _parse_real_v2_response(REAL_PLC_SYMBOLIC_READ_RESPONSE)
+    assert result == bytes.fromhex("41 28 00 00")
+    assert struct.unpack(">f", result)[0] == 10.5
+
+
+@pytest.mark.parametrize(
+    "wire",
+    [
+        # Missing final fill byte.
+        REAL_PLC_SYMBOLIC_READ_RESPONSE[:-1],
+        # IntegrityId and all but two fill bytes are truncated.
+        REAL_PLC_SYMBOLIC_READ_RESPONSE[:-3],
+        # Arbitrary data follows an otherwise complete trailer.
+        REAL_PLC_SYMBOLIC_READ_RESPONSE + b"\xaa",
+    ],
+)
+def test_real_plc_v2_response_rejects_malformed_trailer(wire: bytes) -> None:
+    with pytest.raises(S7CommPlusProtocolError):
+        _parse_real_v2_response(wire)
+
+
+@pytest.mark.parametrize(
+    ("application", "message"),
+    [
+        # Missing values terminator.
+        (bytes.fromhex("00 01 00 0e 41 28 00 00 01 00"), "value terminator"),
+        # Missing errors terminator.
+        (bytes.fromhex("00 01 00 0e 41 28 00 00 00"), "error terminator"),
+        # Unsupported PValue datatype.
+        (bytes.fromhex("00 01 00 ff 41 28 00 00 00 00"), "datatype"),
+    ],
+)
+def test_symbolic_read_rejects_malformed_application_fixture(
+    application: bytes, message: str
+) -> None:
+    with pytest.raises(S7CommPlusProtocolError, match=message):
+        parse_symbolic_read(application)
+
+
+def test_real_plc_symbolic_read_reports_item_error_fixture() -> None:
+    with pytest.raises(S7SymbolicAccessError) as exc:
+        parse_symbolic_read(bytes.fromhex("00 01 00 0e 41 28 00 00 00 01 23 00"))
+    assert exc.value.error_code == 0x23
+
+
 @pytest.mark.parametrize(
     ("wire", "expected"),
     [
@@ -165,7 +224,7 @@ def test_v2_integrity_id_is_central_and_resets(
         function: int, payload: bytes, *args: object, **kwargs: object
     ) -> bytes:
         captured.append(payload)
-        return b"ok"
+        return b"ok" + encode_uint32(connection.integrity_id_read) + b"\0\0\0\0"
 
     monkeypatch.setattr(connection, "_exchange", exchange)
     assert (
