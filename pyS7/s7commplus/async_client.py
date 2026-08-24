@@ -3,7 +3,7 @@
 import asyncio
 from collections.abc import Sequence
 from types import TracebackType
-from typing import Callable, Type, TypeVar
+from typing import Any, Callable, Type, TypeVar
 
 from .client import S7CommPlusClient
 from .protocol import DEFAULT_PORT
@@ -30,9 +30,11 @@ class AsyncS7CommPlusClient:
     def connected(self) -> bool:
         return self._client.connected
 
-    async def _run(self, operation: Callable[..., _T], *args: object) -> _T:
+    async def _run(
+        self, operation: Callable[..., _T], *args: object, **kwargs: Any
+    ) -> _T:
         async with self._lock:
-            worker = asyncio.create_task(asyncio.to_thread(operation, *args))
+            worker = asyncio.create_task(asyncio.to_thread(operation, *args, **kwargs))
             try:
                 return await asyncio.shield(worker)
             except asyncio.CancelledError:
@@ -44,8 +46,23 @@ class AsyncS7CommPlusClient:
                     pass
                 raise
 
-    async def connect(self) -> None:
-        await self._run(self._client.connect)
+    async def connect(
+        self,
+        *,
+        use_tls: bool = False,
+        tls_ca: str | None = None,
+        tls_cert: str | None = None,
+        tls_key: str | None = None,
+        tls_verify: bool = False,
+    ) -> None:
+        await self._run(
+            self._client.connect,
+            use_tls=use_tls,
+            tls_ca=tls_ca,
+            tls_cert=tls_cert,
+            tls_key=tls_key,
+            tls_verify=tls_verify,
+        )
 
     async def disconnect(self) -> None:
         await self._run(self._client.disconnect)

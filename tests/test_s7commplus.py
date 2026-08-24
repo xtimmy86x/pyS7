@@ -9,7 +9,7 @@ import pytest
 
 from pyS7.errors import (
     S7CommPlusProtocolError,
-    S7CommPlusUnsupportedProtocolError,
+    S7CommPlusUnsupportedSecurityError,
     S7ConnectionError,
     S7SymbolicAccessError,
     S7TimeoutError,
@@ -127,6 +127,59 @@ def test_successful_symbolic_read_and_item_errors() -> None:
     assert exc.value.error_code == 0x23
 
 
+@pytest.mark.parametrize(
+    ("wire", "expected"),
+    [
+        ("000100", b"\0"),
+        ("00070001", b"\0\1"),
+        ("00080001e240", bytes.fromhex("0001e240")),
+        ("000e41280000", bytes.fromhex("41280000")),
+        ("000c000001f4", bytes.fromhex("000001f4")),
+    ],
+)
+def test_real_plc_scalar_pvalue_fixtures(wire: str, expected: bytes) -> None:
+    """Static sanitized BOOL/INT/DINT/REAL/TIME value fixtures."""
+    value, used = decode_pvalue(bytes.fromhex(wire), 0)
+    assert value == expected
+    assert used == len(bytes.fromhex(wire))
+
+
+def test_real_plc_string_and_wstring_raw_fixtures() -> None:
+    string = bytes.fromhex("fe0a54657374537472696e67")
+    wstring = bytes.fromhex("00fe000b005400650073007400570073007400720069006e0067")
+    assert string[2 : 2 + string[1]].decode("ascii") == "TestString"
+    length = int.from_bytes(wstring[2:4], "big")
+    assert wstring[4 : 4 + length * 2].decode("utf-16-be") == "TestWstring"
+
+
+def test_v2_integrity_id_is_central_and_resets(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    connection = S7CommPlusConnection("plc")
+    connection._socket = FakeSocket([])  # type: ignore[assignment]
+    connection._ready = connection._with_integrity = True
+    connection.protocol_version = ProtocolVersion.V2
+    captured: list[bytes] = []
+
+    def exchange(
+        function: int, payload: bytes, *args: object, **kwargs: object
+    ) -> bytes:
+        captured.append(payload)
+        return b"ok"
+
+    monkeypatch.setattr(connection, "_exchange", exchange)
+    assert (
+        connection.request(FunctionCode.GET_MULTI_VARIABLES, b"body\0\0\0\0") == b"ok"
+    )
+    assert (
+        connection.request(FunctionCode.GET_MULTI_VARIABLES, b"body\0\0\0\0") == b"ok"
+    )
+    assert captured == [b"body\0\0\0\0\0", b"body\x01\0\0\0\0"]
+    assert connection.integrity_id_read == 2
+    connection.disconnect()
+    assert connection.integrity_id_read == 0
+
+
 def test_invalid_and_truncated_pvalue() -> None:
     with pytest.raises(S7CommPlusProtocolError, match="truncated"):
         decode_pvalue(b"\0", 0)
@@ -198,7 +251,7 @@ def test_failed_connect_cleans_state(monkeypatch: pytest.MonkeyPatch) -> None:
     assert fake.closed
 
 
-def test_connect_rejects_detected_v3_before_session_use(
+def test_connect_without_tls_rejects_before_session_use(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     fake = FakeSocket([])
@@ -212,9 +265,8 @@ def test_connect_rejects_detected_v3_before_session_use(
         return (ProtocolVersion.V3, b"") if kwargs.get("accept_any_version") else b""
 
     monkeypatch.setattr(connection, "_exchange", exchange)
-    with pytest.raises(S7CommPlusUnsupportedProtocolError) as exc:
+    with pytest.raises(S7CommPlusUnsupportedSecurityError):
         connection.connect()
-    assert exc.value.protocol_version == ProtocolVersion.V3
     assert not connection.connected
     assert connection.session_id == 0
 

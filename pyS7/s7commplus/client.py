@@ -40,6 +40,22 @@ class S7CommPlusClient:
         return self._connection.tls_active
 
     @property
+    def negotiated_initial_version(self) -> int:
+        return self._connection.negotiated_initial_version
+
+    @property
+    def protection_level(self) -> int | None:
+        return self._connection.protection_level
+
+    @property
+    def integrity_id_read(self) -> int:
+        return self._connection.integrity_id_read
+
+    @property
+    def integrity_id_write(self) -> int:
+        return self._connection.integrity_id_write
+
+    @property
     def authentication_supported(self) -> bool:
         return False
 
@@ -47,8 +63,22 @@ class S7CommPlusClient:
     def last_response(self) -> bytes:
         return self._connection.last_response
 
-    def connect(self) -> None:
-        self._connection.connect()
+    def connect(
+        self,
+        *,
+        use_tls: bool = False,
+        tls_ca: str | None = None,
+        tls_cert: str | None = None,
+        tls_key: str | None = None,
+        tls_verify: bool = False,
+    ) -> None:
+        self._connection.connect(
+            use_tls=use_tls,
+            tls_ca=tls_ca,
+            tls_cert=tls_cert,
+            tls_key=tls_key,
+            tls_verify=tls_verify,
+        )
 
     def disconnect(self) -> None:
         self._connection.disconnect()
@@ -88,7 +118,7 @@ class S7CommPlusClient:
         self.write_symbolic(tag.access_area, tag.access_sequence, data, tag.symbol_crc)
 
     def __enter__(self) -> "S7CommPlusClient":
-        self.connect()
+        self.connect(use_tls=True)
         return self
 
     def __exit__(

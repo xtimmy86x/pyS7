@@ -112,6 +112,18 @@ class S7CommPlusProtocolError(S7ProtocolError, S7CommPlusError):
     """Raised for malformed or unexpected S7CommPlus protocol data."""
 
 
+class S7CommPlusSessionError(S7CommPlusError):
+    """Raised when CreateObject or SetupSession is rejected."""
+
+    def __init__(self, message: str, *, error_code: int | None = None) -> None:
+        super().__init__(message)
+        self.error_code = error_code
+
+
+class S7CommPlusTLSError(S7CommPlusError):
+    """Raised when the required TLS-in-COTP channel cannot be established."""
+
+
 class S7CommPlusUnsupportedProtocolError(S7CommPlusError):
     """Raised when the PLC selects a protocol version the client cannot use."""
 

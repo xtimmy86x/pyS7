@@ -30,6 +30,12 @@ class FunctionCode(IntEnum):
     SET_MULTI_VARIABLES = 0x0542
     GET_MULTI_VARIABLES = 0x054C
     INIT_SSL = 0x05B3
+    GET_VAR_SUBSTREAMED = 0x0586
+
+
+READ_FUNCTION_CODES = frozenset(
+    (FunctionCode.GET_MULTI_VARIABLES, FunctionCode.GET_VAR_SUBSTREAMED)
+)
 
 
 class DataType(IntEnum):
@@ -54,6 +60,8 @@ class DataType(IntEnum):
     RID = 0x12
     AID = 0x13
     BLOB = 0x14
+    WSTRING = 0x15
+    STRUCT = 0x17
 
 
 def db_access_area(db_number: int) -> int:

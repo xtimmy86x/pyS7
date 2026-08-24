@@ -132,10 +132,6 @@ def build_symbolic_read(
         + address
         + encode_object_qualifier(version)
     )
-    # V1 has no IntegrityId.  V2+ insertion belongs to the authenticated
-    # session layer; these builders remain useful for fixture inspection only.
-    if version != ProtocolVersion.V1:
-        result += encode_uint32(1)
     return result + struct.pack(">I", 0)
 
 
@@ -159,7 +155,6 @@ def build_symbolic_write(
         + pvalue
         + b"\0"
         + encode_object_qualifier(version)
-        + encode_uint32(1)
         + struct.pack(">I", 0)
     )
 
@@ -180,6 +175,7 @@ def decode_pvalue(data: bytes, offset: int) -> tuple[bytes, int]:
         DataType.INT: 2,
         DataType.WORD: 2,
         DataType.DWORD: 4,
+        DataType.DINT: 4,
         DataType.REAL: 4,
         DataType.LWORD: 8,
         DataType.LREAL: 8,
