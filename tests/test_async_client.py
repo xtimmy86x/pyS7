@@ -13,7 +13,7 @@ from pyS7.constants import (
     MemoryArea,
 )
 from pyS7.errors import S7CommunicationError, S7ConnectionError, S7TimeoutError
-from pyS7.requests import ReadRequest
+from pyS7.requests import ReadRequest, WriteRequest
 from pyS7.tag import S7Tag
 
 # -- Protocol response fixtures -----------------------------------------------
@@ -219,6 +219,29 @@ async def test_read_isolated_bit_optimized_matches_sync_strategy(
     assert sent[0].tags == [S7Tag(MemoryArea.DB, 1, DataType.BYTE, 0, 0, 1)]
 
 
+@pytest.mark.asyncio
+async def test_read_optimized_reconstructs_same_byte_duplicates_and_mixed_tag(
+    client: AsyncS7Client, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    await _connect_client(client)
+    sent: list[ReadRequest] = []
+
+    async def fake_send(request: ReadRequest) -> bytes:
+        sent.append(request)
+        return (
+            b"\x03\x00\x00\x1e\x02\xf0\x802\x03\x00\x00\x00\x00\x00\x02"
+            b"\x00\x09\x00\x00\x04\x01\xff\x04\x00\x20"
+            b"\x84\x00\x2a\x80"
+        )
+
+    monkeypatch.setattr(client, "_send_unlocked", fake_send)
+    tags = ["DB1,X3.7", "DB1,X0.2", "DB1,I1", "DB1,X0.2", "DB1,X3.0"]
+
+    assert await client.read(tags, optimize=True) == [True, True, 42, True, False]
+    assert len(sent) == 1
+    assert sent[0].tags == [S7Tag(MemoryArea.DB, 1, DataType.BYTE, 0, 0, 4)]
+
+
 # -- Write ---------------------------------------------------------------------
 
 
@@ -243,6 +266,27 @@ async def test_write_single_int(client: AsyncS7Client) -> None:
     await _connect_client(client)
     client._reader = _fake_reader(_WRITE_OK)
     await client.write(["DB1,I0"], [42])  # should not raise
+
+
+@pytest.mark.asyncio
+async def test_write_bit_remains_native_transport(
+    client: AsyncS7Client, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    await _connect_client(client)
+    sent: list[WriteRequest] = []
+
+    async def fake_send(request: WriteRequest) -> bytes:
+        sent.append(request)
+        return _WRITE_OK
+
+    monkeypatch.setattr(client, "_send_unlocked", fake_send)
+
+    await client.write(["DB1,X0.2"], [True])
+    assert len(sent) == 1
+    packet = sent[0].request
+    assert sent[0].tags == [S7Tag(MemoryArea.DB, 1, DataType.BIT, 0, 2, 1)]
+    assert packet[22] == DataType.BIT.value
+    assert packet[28:31] == (2).to_bytes(3, "big")
 
 
 @pytest.mark.asyncio

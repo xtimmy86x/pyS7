@@ -62,6 +62,13 @@ else:
 
 ## Test Results
 
+The concrete SZL evidence below is maintainer-controlled testing on the named
+S7-1200. Separately, successful pyS7 operation has been user-reported on an
+S7-1515 in [GitHub issue #7](https://github.com/xtimmy86x/pyS7/issues/7), without
+an order number or firmware version. That report supports S7-1500 community
+compatibility, but it is not a complete CPU-information or CPU/firmware test
+matrix.
+
 ### Your S7-1200 PLC (6ES7 211-1BE40-0XB0)
 
 **TIA Portal shows:**

@@ -14,6 +14,11 @@ Some PLC/configuration combinations may reject native individual BIT reads with 
 
 pyS7 does not currently maintain a verified list of affected CPU models, firmware versions, or PLC configurations. In particular, the repository does not contain enough hardware evidence to attribute this response solely to firmware or to determine whether optimized DB configuration is correlated with it.
 
+Possible factors include CPU or firmware behavior, the memory area being read,
+the CPU's protection and external-access configuration, and whether an
+absolute-addressed DB uses optimized block access. Treat the PLC response as
+configuration-specific rather than as evidence of one universal firmware bug.
+
 ## Solution
 
 ### Optimized reads (default)
@@ -44,19 +49,9 @@ Setting `optimize=False` preserves the native S7 BIT read. This is useful for ad
 
 BIT writes remain native S7 bit-level writes. pyS7 does not use a byte-level read-modify-write sequence, which could overwrite concurrent changes to other bits in the same byte.
 
-### Manual byte reading and bit extraction
-
-You can always read the entire byte and extract the specific bit manually:
-
-```python
-# Read the byte containing the bit
-byte_data = client.read(["DB1,B0"])  # Read byte 0 of DB1
-byte_value = byte_data[0]
-
-# Extract bit 2 (third bit from the right, 0-indexed)
-bit_2_value = bool((byte_value >> 2) & 1)
-print(f"Bit 2 value: {bit_2_value}")
-```
+No additional manual byte-read fallback is needed when `optimize=True`: that
+option already performs the containing-byte read and local mask before returning
+the Boolean result.
 
 ## Understanding Bit Positions
 

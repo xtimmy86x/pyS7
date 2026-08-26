@@ -314,6 +314,37 @@ def test_read_isolated_bit_non_optimized_remains_native(
     assert sent[0].tags == [S7Tag(MemoryArea.DB, 1, DataType.BIT, 0, 2, 1)]
 
 
+def test_read_optimized_reconstructs_ordered_duplicate_bits_and_mixed_tag(
+    client: S7Client, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Exercise byte grouping and reconstruction through the public API."""
+    sent: list[ReadRequest] = []
+    payload = b"\x84\x00\x2a\x80"
+
+    def fake_send(self: S7Client, request: Request) -> bytes:
+        assert isinstance(request, ReadRequest)
+        sent.append(request)
+        return (
+            b"\x03\x00\x00\x1e\x02\xf0\x802\x03\x00\x00\x00\x00\x00\x02"
+            b"\x00\x09\x00\x00\x04\x01\xff\x04\x00\x20" + payload
+        )
+
+    monkeypatch.setattr(S7Client, "_S7Client__send", fake_send)
+    _set_client_connected(client, cast(socket.socket, object()))
+    tags = [
+        "DB1,X3.7",  # different byte, deliberately requested first
+        "DB1,X0.2",
+        "DB1,I1",  # non-BIT mixed into the packed range
+        "DB1,X0.2",  # duplicate
+        "DB1,X3.0",
+        "DB1,X0.7",  # differently ordered bit in the shared byte
+    ]
+
+    assert client.read(tags, optimize=True) == [True, True, 42, True, False, True]
+    assert len(sent) == 1
+    assert sent[0].tags == [S7Tag(MemoryArea.DB, 1, DataType.BYTE, 0, 0, 4)]
+
+
 def test_write(client: S7Client, monkeypatch: pytest.MonkeyPatch) -> None:
     def mock_sendall(self: Any, bytes_request: bytes) -> None:
         return None
