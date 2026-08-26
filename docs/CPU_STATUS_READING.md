@@ -159,11 +159,14 @@ The implementation supports other SZL IDs defined in the `SZLId` enum:
 
 ## Compatibility
 
-This feature has been tested with:
-- S7-300 series PLCs
-- S7-400 series PLCs
-- S7-1200 series PLCs
-- S7-1500 series PLCs
+The SZL implementation provides protocol support for S7-300, S7-400, S7-1200,
+and S7-1500 families, but protocol support is not a complete verified matrix of
+every CPU, firmware, security setting, and SZL behavior. Maintainer-controlled
+evidence documented in this repository is limited to the specifically recorded
+hardware. A user has also reported successful pyS7 operation on an S7-1515 in
+[GitHub issue #7](https://github.com/xtimmy86x/pyS7/issues/7); no CPU order number
+or firmware version was supplied, and that community report does not establish
+complete feature-level validation for the S7-1500 family.
 
 ## Examples
 

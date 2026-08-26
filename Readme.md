@@ -73,6 +73,15 @@ with S7Client(address="192.168.5.100", rack=0, slot=1) as client:
     print(data)  # [True, -50, 200, 123, True, 10, 3.14, 'Hello']
 ```
 
+`read(tags, optimize=True)` is the default and supported optimized-read API for
+both `S7Client` and `AsyncS7Client`. In addition to merging nearby reads, it
+requests every `BIT` through its containing `BYTE`, coalesces bits in the same
+byte where possible, and masks the individual Boolean values locally in the
+original tag order. This avoids native single-bit reads that some PLC and
+configuration combinations reject with `INVALID_DATA_SIZE`. Set
+`optimize=False` only when native, unmerged read transport is specifically
+required.
+
 ### Writing data
 
 ```python
@@ -111,6 +120,9 @@ with S7Client(address="192.168.5.100", rack=0, slot=1) as client:
         else:
             print(f"✗ {result.tag}: {result.error}")
 ```
+
+`read_detailed()` supplies one success or error result per requested tag and
+uses the same `optimize` behavior. It is not a separate optimized-read API.
 
 ### Strict batch writes with best-effort rollback
 

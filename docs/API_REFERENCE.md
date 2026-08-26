@@ -342,6 +342,19 @@ safe_string_write(client, "DB1,S10.20", "Hello World", max_length=20)
 ```
 ## Advanced Methods
 
+### read()
+
+Read values with `client.read(tags, optimize=True)`. `optimize` defaults to
+`True`; it merges compatible nearby ranges and converts every `BIT` work item to
+a read of its containing `BYTE`. Bits sharing a byte are coalesced where
+possible, then extracted locally and returned as Boolean values in the original
+request order. This supported behavior avoids native single-bit requests that
+some PLC/configuration combinations reject with `INVALID_DATA_SIZE`.
+
+With `optimize=False`, tags are not merged and `BIT` tags use native S7 BIT-read
+transport. This distinction applies equally to `S7Client` and
+`AsyncS7Client`.
+
 ### read_detailed()
 
 Read multiple tags with per-tag error handling. Unlike `read()` which fails fast on the first error, `read_detailed()` continues processing all tags and returns detailed results for each one.
@@ -877,7 +890,8 @@ async def read(
 
 Read tags from the PLC with equivalent major-operation semantics to
 `S7Client.read()`. Optimized and native BIT behavior matches the synchronous
-client.
+client: the default `optimize=True` reads containing bytes, coalesces same-byte
+BIT tags where possible, and reconstructs Boolean values in request order.
 
 ```python
 values = await client.read(['DB1,X0.0', 'DB1,I2', 'DB1,R4'])
