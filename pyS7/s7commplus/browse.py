@@ -146,13 +146,19 @@ def _parse_vartype_list(data: bytes, pos: int) -> tuple[list[VartypeListElement]
             bit_flags = block[cursor + 11]
             cursor += 12
             selector = (flags >> 12) & 0x0F
-            if selector == 8:
+            if selector in (1, 8):
                 if len(block) - cursor < 4:
                     raise S7CommPlusProtocolError("truncated Std OffsetInfo")
-                optimized, nonoptimized = struct.unpack_from("<HH", block, cursor)
+                first_address, second_address = struct.unpack_from("<HH", block, cursor)
+                # StructElemStd (1) uses the legacy order: nonoptimized first,
+                # optimized second. Std (8) uses optimized then nonoptimized.
+                if selector == 1:
+                    nonoptimized, optimized = first_address, second_address
+                else:
+                    optimized, nonoptimized = first_address, second_address
                 offset = OffsetInfo(optimized, nonoptimized)
                 cursor += 4
-            elif selector == 9:
+            elif selector in (2, 9):
                 if len(block) - cursor < 12:
                     raise S7CommPlusProtocolError("truncated String OffsetInfo")
                 declared, storage, optimized, nonoptimized = struct.unpack_from(
