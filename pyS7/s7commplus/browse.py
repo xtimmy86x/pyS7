@@ -1,8 +1,9 @@
 """Provenance-safe codecs for S7CommPlus discovery and symbolic type metadata.
 
 The type-information support emits scalar leaves from flat DB members,
-non-array nested STRUCT/UDT members, and one-dimensional scalar arrays.
-STRUCT arrays and multidimensional arrays remain intentionally unsupported.
+non-array nested STRUCT/UDT members, one-dimensional scalar arrays, and
+one-dimensional STRUCT/UDT arrays. Multidimensional arrays remain intentionally
+unsupported.
 """
 
 import logging
@@ -75,6 +76,8 @@ class OffsetInfo:
     relation_id: int | None = None
     array_lower_bound: int | None = None
     array_element_count: int | None = None
+    nonoptimized_struct_size: int | None = None
+    optimized_struct_size: int | None = None
 
     @property
     def has_relation(self) -> bool:
@@ -196,9 +199,7 @@ def _parse_vartype_list(data: bytes, pos: int) -> tuple[list[VartypeListElement]
                 cursor += 20
             elif selector in (5, 12):
                 # StructElemStruct (old firmware) and Struct (TLS-era firmware)
-                # share the same relation-bearing wire layout in the reference:
-                # 2x UInt16 LE metadata, optimized/nonoptimized UInt32 LE,
-                # relation RID UInt32 LE, then four UInt32 LE struct-info values.
+                # share the same relation-bearing wire layout in the reference.
                 if len(block) - cursor < 32:
                     raise S7CommPlusProtocolError("truncated Struct OffsetInfo")
                 (
@@ -218,6 +219,36 @@ def _parse_vartype_list(data: bytes, pos: int) -> tuple[list[VartypeListElement]
                     relation_id=relation_id,
                 )
                 cursor += 32
+            elif selector in (6, 13):
+                # StructElemStruct1Dim (6) and Struct1Dim (13) carry array
+                # bounds/count plus a relation RID for the element type.
+                if len(block) - cursor < 48:
+                    raise S7CommPlusProtocolError("truncated Struct1Dim OffsetInfo")
+                (
+                    _unspecified1,
+                    _unspecified2,
+                    optimized,
+                    nonoptimized,
+                    lower_bound,
+                    element_count,
+                    nonoptimized_struct_size,
+                    optimized_struct_size,
+                    relation_id,
+                    _info4,
+                    _info5,
+                    _info6,
+                    _info7,
+                ) = struct.unpack_from("<HHIIiIIIIIIII", block, cursor)
+                offset = OffsetInfo(
+                    optimized,
+                    nonoptimized,
+                    relation_id=relation_id,
+                    array_lower_bound=lower_bound,
+                    array_element_count=element_count,
+                    nonoptimized_struct_size=nonoptimized_struct_size,
+                    optimized_struct_size=optimized_struct_size,
+                )
+                cursor += 48
             else:
                 raise S7CommPlusProtocolError(
                     f"unsupported OffsetInfoType {selector} for LID 0x{lid:x}"
@@ -504,10 +535,31 @@ def parse_type_info(
             offset_info = member.offset_info
 
             if offset_info.array_element_count is not None:
-                if offset_info.relation_id is not None:
-                    raise S7CommPlusProtocolError(
-                        f"STRUCT array metadata for {full_name} is not supported yet"
-                    )
+                lower_bound = offset_info.array_lower_bound or 0
+                relation_id = offset_info.relation_id
+
+                if relation_id is not None:
+                    if relation_id in active_relations:
+                        raise S7CommPlusProtocolError(
+                            f"cyclic type-info relation 0x{relation_id:08x} at {full_name}"
+                        )
+                    child = objects_by_relation.get(relation_id)
+                    if child is None:
+                        raise S7CommPlusProtocolError(
+                            f"type-info relation 0x{relation_id:08x} for {full_name} not found"
+                        )
+                    for index in range(offset_info.array_element_count):
+                        # S7CommPlus STRUCT arrays insert an additional access ID
+                        # 1 between the zero-based array element ID and child LIDs.
+                        walk_type(
+                            child,
+                            f"{full_name}[{lower_bound + index}]",
+                            access_sequence + (index, 1),
+                            active_relations | {relation_id},
+                            depth + 1,
+                        )
+                    continue
+
                 datatype = _SOFTDATATYPE_MAP.get(member.softdatatype)
                 if datatype is None:
                     logger.debug(
@@ -516,7 +568,6 @@ def parse_type_info(
                         full_name,
                     )
                     continue
-                lower_bound = offset_info.array_lower_bound or 0
                 for index in range(offset_info.array_element_count):
                     tags.append(
                         S7SymbolicTag(
