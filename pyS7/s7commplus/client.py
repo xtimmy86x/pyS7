@@ -1,8 +1,10 @@
 """Experimental synchronous low-level symbolic client."""
 
+import logging
+import struct
 from collections.abc import Sequence
 from types import TracebackType
-from typing import Any, Type
+from typing import Any, Type, cast
 
 from ..constants import DataType
 from ..errors import S7CommPlusProtocolError, S7CommPlusSymbolNotFoundError
@@ -19,13 +21,17 @@ from .browse import (
 from .codec import (
     build_symbolic_read,
     build_symbolic_write,
+    encode_object_qualifier,
     parse_symbolic_read,
     parse_symbolic_write,
 )
-from .connection import S7CommPlusConnection
-from .protocol import DEFAULT_PORT, FunctionCode
+from .connection import S7CommPlusConnection, _RequestContext
+from .protocol import DEFAULT_PORT, FunctionCode, ProtocolVersion
 from .tag import S7SymbolicTag
 from .value import decode_symbolic_value
+from .vlq import decode_uint64, encode_uint32
+
+logger = logging.getLogger(__name__)
 
 
 class S7CommPlusClient:
@@ -87,7 +93,13 @@ class S7CommPlusClient:
         tls_key: str | None = None,
         tls_verify: bool = False,
     ) -> None:
-        self._clear_session_caches()
+        # Reconnecting an already-live public client must first destroy the
+        # server-side session object. S7CommPlus sessions are explicit PLC
+        # objects; merely replacing the TCP socket can leave them allocated.
+        if self._connection.connected:
+            self.disconnect()
+        else:
+            self._clear_session_caches()
         self._connection.connect(
             use_tls=use_tls,
             tls_ca=tls_ca,
@@ -96,11 +108,70 @@ class S7CommPlusClient:
             tls_verify=tls_verify,
         )
 
+    def _delete_server_session(self) -> None:
+        """Best-effort protocol teardown of the current server session object."""
+        connection = self._connection
+        if not connection.connected or not connection.session_id:
+            return
+
+        session_id = connection.session_id
+        iid = connection.integrity_id_write
+        sequence = connection._sequence
+        context = _RequestContext(
+            sequence,
+            iid if connection._with_integrity else None,
+            FunctionCode.DELETE_OBJECT,
+            False,
+        )
+
+        payload = (
+            struct.pack(">I", session_id)
+            + b"\x00"
+            + encode_object_qualifier(ProtocolVersion.V2)
+        )
+        if connection._with_integrity:
+            payload += encode_uint32(iid)
+            connection._integrity_write = (iid + 1) & 0xFFFFFFFF
+        payload += struct.pack(">I", 0)
+
+        response = cast(
+            bytes,
+            connection._exchange(
+                FunctionCode.DELETE_OBJECT,
+                payload,
+                session_id,
+                flags=0x34,
+                version=connection.protocol_version,
+                context=context,
+            ),
+        )
+        if connection._with_integrity:
+            response = connection._normalize_response_integrity(response, context)
+        status, _ = decode_uint64(response)
+        if status:
+            logger.debug(
+                "DeleteObject returned status 0x%x for session 0x%08x",
+                status,
+                session_id,
+            )
+
     def disconnect(self) -> None:
         try:
-            self._connection.disconnect()
+            if self._connection.connected:
+                try:
+                    self._delete_server_session()
+                except Exception:
+                    # Teardown is best-effort. A PLC that already dropped the
+                    # transport must never prevent local socket/TLS cleanup.
+                    logger.debug(
+                        "S7CommPlus DeleteObject teardown failed; closing transport",
+                        exc_info=True,
+                    )
         finally:
-            self._clear_session_caches()
+            try:
+                self._connection.disconnect()
+            finally:
+                self._clear_session_caches()
 
     def _clear_session_caches(self) -> None:
         self._symbol_cache.clear()
