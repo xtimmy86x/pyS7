@@ -1,8 +1,7 @@
-"""Minimal, provenance-safe codecs for S7CommPlus discovery.
+"""Provenance-safe codecs for S7CommPlus discovery and symbolic type metadata.
 
-The type-information support is deliberately limited to flat scalar members.
-It contains no preset dictionaries and does not attempt to interpret arrays or
-nested structures.
+The type-information support emits scalar leaves from flat DB members and
+non-array nested STRUCT/UDT members. Arrays remain intentionally unsupported.
 """
 
 import logging
@@ -34,6 +33,8 @@ _END_TAG_DESCRIPTION = 0xA8
 _VARTYPE_LIST = 0xAB
 _VARNAME_LIST = 0xAC
 
+_MAX_TYPEINFO_RECURSION = 32
+
 logger = logging.getLogger(__name__)
 
 
@@ -64,12 +65,17 @@ class _PObject:
 
 @dataclass(frozen=True)
 class OffsetInfo:
-    """Layout metadata carried by a scalar type description."""
+    """Layout metadata carried by one OMS type description."""
 
     optimized_address: int
     nonoptimized_address: int
     declared_length: int | None = None
     storage_hint: int | None = None
+    relation_id: int | None = None
+
+    @property
+    def has_relation(self) -> bool:
+        return self.relation_id is not None
 
 
 @dataclass(frozen=True)
@@ -128,8 +134,6 @@ def _parse_vartype_list(data: bytes, pos: int) -> tuple[list[VartypeListElement]
         if first:
             if len(block) < 4:
                 raise S7CommPlusProtocolError("truncated VartypeList FirstId")
-            # FirstId is framing metadata, not a source from which member LIDs
-            # should be generated.
             _first_id = struct.unpack_from("<I", block, 0)[0]
             cursor = 4
             first = False
@@ -156,6 +160,30 @@ def _parse_vartype_list(data: bytes, pos: int) -> tuple[list[VartypeListElement]
                 )
                 offset = OffsetInfo(optimized, nonoptimized, declared, storage)
                 cursor += 12
+            elif selector in (5, 12):
+                # StructElemStruct (old firmware) and Struct (TLS-era firmware)
+                # share the same relation-bearing wire layout in the reference:
+                # 2x UInt16 LE metadata, optimized/nonoptimized UInt32 LE,
+                # relation RID UInt32 LE, then four UInt32 LE struct-info values.
+                if len(block) - cursor < 32:
+                    raise S7CommPlusProtocolError("truncated Struct OffsetInfo")
+                (
+                    _unspecified1,
+                    _unspecified2,
+                    optimized,
+                    nonoptimized,
+                    relation_id,
+                    _info4,
+                    _info5,
+                    _info6,
+                    _info7,
+                ) = struct.unpack_from("<HHIIIIIII", block, cursor)
+                offset = OffsetInfo(
+                    optimized,
+                    nonoptimized,
+                    relation_id=relation_id,
+                )
+                cursor += 32
             else:
                 raise S7CommPlusProtocolError(
                     f"unsupported OffsetInfoType {selector} for LID 0x{lid:x}"
@@ -207,14 +235,7 @@ def build_explore_request(rid: int, attribute_ids: tuple[int, ...] = ()) -> byte
 
 
 def _pvalue(data: bytes, pos: int) -> tuple[object, int]:
-    """Decode one PValue using EXPLORE attribute semantics.
-
-    The shared decoder also serves symbolic reads, whose public contract is raw
-    bytes.  PObject metadata is typed instead: S7CommPlus PValue WSTRING bytes
-    are UTF-8 (unlike PLC user-variable WSTRING storage, which is UTF-16).
-    """
-    # _decode_pvalue_at returns an absolute end offset.  In contrast, the
-    # public decode_pvalue wrapper returns a byte count for symbolic reads.
+    """Decode one PValue using EXPLORE attribute semantics."""
     value, raw, end = _decode_pvalue_at(data, pos)
     if data[pos + 1] == ProtocolDataType.WSTRING:
         try:
@@ -308,7 +329,6 @@ def _decode_object(data: bytes, pos: int) -> tuple[_PObject, int]:
             obj.relations[relation] = struct.unpack_from(">I", data, pos)[0]
             pos += 4
         elif element == _START_TAG_DESCRIPTION:
-            # This marker has no body of its own.
             continue
         elif element == _VARTYPE_LIST:
             start = pos
@@ -319,8 +339,6 @@ def _decode_object(data: bytes, pos: int) -> tuple[_PObject, int]:
             pos = _skip_block_list(data, pos, "VarnameList")
             obj.varnames = data[start:pos]
         else:
-            # DecodeObject treats an unhandled element (including 0x00 and A8)
-            # as the boundary of this object.  The tag itself has been consumed.
             _boundary_log(data, element_offset, obj)
             return obj, pos
 
@@ -393,6 +411,17 @@ def _walk_objects(objects: list[_PObject]) -> Iterator[_PObject]:
         yield from _walk_objects(obj.children)
 
 
+def _type_members(obj: _PObject) -> tuple[list[VartypeListElement], list[str]]:
+    """Parse and validate one type object's parallel member/name lists."""
+    vartypes = _parse_vartype_list(obj.vartypes or b"\0\0", 0)[0]
+    names = _parse_varname_list(obj.varnames or b"\0\0", 0)[0]
+    if len(vartypes) != len(names):
+        raise S7CommPlusProtocolError(
+            f"type-info list length mismatch: {len(vartypes)} elements, {len(names)} names"
+        )
+    return vartypes, names
+
+
 def parse_type_info(
     payload: bytes,
     type_info_rid: int,
@@ -400,7 +429,7 @@ def parse_type_info(
     db_name: str,
     access_area: int,
 ) -> list[S7SymbolicTag]:
-    """Parse flat scalar tags from the requested OMS type PObject."""
+    """Parse scalar leaves from flat and non-array nested STRUCT/UDT metadata."""
     status, pos = decode_uint64(payload)
     if status:
         raise S7CommPlusProtocolError(f"EXPLORE failed with PLC status 0x{status:x}")
@@ -408,42 +437,74 @@ def parse_type_info(
         raise S7CommPlusProtocolError("truncated EXPLORE response ExploreId")
     pos += 4
     objects, _ = _decode_object_list(payload, pos)
-    obj = next(
-        (
-            candidate
-            for candidate in _walk_objects(objects)
-            if candidate.relation_id == type_info_rid
-        ),
-        None,
-    )
-    if obj is None:
+
+    all_objects = list(_walk_objects(objects))
+    objects_by_relation: dict[int, _PObject] = {}
+    for candidate in all_objects:
+        objects_by_relation.setdefault(candidate.relation_id, candidate)
+
+    root = objects_by_relation.get(type_info_rid)
+    if root is None:
         raise S7CommPlusProtocolError(
             f"type-info object RID 0x{type_info_rid:08x} not found"
         )
-    vartypes = _parse_vartype_list(obj.vartypes or b"\0\0", 0)[0]
-    names = _parse_varname_list(obj.varnames or b"\0\0", 0)[0]
-    if len(vartypes) != len(names):
-        raise S7CommPlusProtocolError(
-            f"type-info list length mismatch: {len(vartypes)} elements, {len(names)} names"
-        )
+
     tags: list[S7SymbolicTag] = []
-    for name, member in zip(names, vartypes, strict=True):
-        datatype = _SOFTDATATYPE_MAP.get(member.softdatatype)
-        if datatype is None:
-            logger.debug(
-                "Skipping unsupported Softdatatype 0x%02x for %s.%s",
-                member.softdatatype,
-                db_name,
-                name,
+
+    def walk_type(
+        obj: _PObject,
+        name_prefix: str,
+        access_prefix: tuple[int, ...],
+        active_relations: frozenset[int],
+        depth: int,
+    ) -> None:
+        if depth > _MAX_TYPEINFO_RECURSION:
+            raise S7CommPlusProtocolError(
+                f"type-info nesting depth exceeds {_MAX_TYPEINFO_RECURSION}"
             )
-            continue
-        tags.append(
-            S7SymbolicTag(
-                name=f"{db_name}.{name}",
-                access_area=access_area,
-                access_sequence=(member.lid,),
-                data_type=datatype,
-                symbol_crc=member.symbol_crc,
+
+        vartypes, names = _type_members(obj)
+        for name, member in zip(names, vartypes, strict=True):
+            full_name = f"{name_prefix}.{name}"
+            access_sequence = access_prefix + (member.lid,)
+            relation_id = member.offset_info.relation_id
+
+            if relation_id is not None:
+                if relation_id in active_relations:
+                    raise S7CommPlusProtocolError(
+                        f"cyclic type-info relation 0x{relation_id:08x} at {full_name}"
+                    )
+                child = objects_by_relation.get(relation_id)
+                if child is None:
+                    raise S7CommPlusProtocolError(
+                        f"type-info relation 0x{relation_id:08x} for {full_name} not found"
+                    )
+                walk_type(
+                    child,
+                    full_name,
+                    access_sequence,
+                    active_relations | {relation_id},
+                    depth + 1,
+                )
+                continue
+
+            datatype = _SOFTDATATYPE_MAP.get(member.softdatatype)
+            if datatype is None:
+                logger.debug(
+                    "Skipping unsupported Softdatatype 0x%02x for %s",
+                    member.softdatatype,
+                    full_name,
+                )
+                continue
+            tags.append(
+                S7SymbolicTag(
+                    name=full_name,
+                    access_area=access_area,
+                    access_sequence=access_sequence,
+                    data_type=datatype,
+                    symbol_crc=member.symbol_crc,
+                )
             )
-        )
+
+    walk_type(root, db_name, (), frozenset((type_info_rid,)), 0)
     return tags

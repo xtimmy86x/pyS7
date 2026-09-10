@@ -157,7 +157,7 @@ class S7CommPlusClient:
         return rid, self.explore_raw(OMS_TYPE_INFO_CONTAINER_RID)
 
     def browse(self, db_number: int | None = None) -> list[S7SymbolicTag]:
-        """Discover flat scalar members of one DB, or of every visible DB."""
+        """Discover supported scalar leaves in one DB, or in every visible DB."""
         datablocks = self.list_datablocks()
         if db_number is not None:
             datablocks = [db for db in datablocks if db.number == db_number]
@@ -186,14 +186,19 @@ class S7CommPlusClient:
             self._symbol_cache[tag.name] = tag
 
     def resolve_tag(self, name: str) -> S7SymbolicTag:
-        """Resolve an exact, case-sensitive flat DB scalar name."""
+        """Resolve an exact, case-sensitive scalar DB symbol, including nested paths."""
         cached = self._symbol_cache.get(name)
         if cached is not None:
             return cached
-        db_name, separator, member_name = name.partition(".")
-        if not separator or not db_name or not member_name or "." in member_name:
+        db_name, separator, member_path = name.partition(".")
+        if (
+            not separator
+            or not db_name
+            or not member_path
+            or any(not part for part in member_path.split("."))
+        ):
             raise S7CommPlusSymbolNotFoundError(
-                f"flat symbolic tag {name!r} was not found"
+                f"symbolic tag {name!r} was not found"
             )
         matches = [db for db in self.list_datablocks() if db.name == db_name]
         if not matches:
@@ -209,7 +214,7 @@ class S7CommPlusClient:
             ) from exc
 
     def read_tag(self, name: str) -> Any:
-        """Resolve and read one flat symbolic scalar as a Python value."""
+        """Resolve and read one supported symbolic scalar leaf as a Python value."""
         tag = self.resolve_tag(name)
         if not isinstance(tag.data_type, DataType):
             raise S7CommPlusProtocolError(
