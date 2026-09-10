@@ -7,7 +7,7 @@ from pyS7.s7commplus.protocol import FunctionCode, ProtocolVersion
 from pyS7.s7commplus.vlq import encode_uint32
 
 
-def test_delete_server_session_uses_delete_object_and_write_integrity(
+def test_delete_server_session_sends_request_iid_but_expects_no_response_iid(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     client = S7CommPlusClient("192.0.2.1")
@@ -40,10 +40,20 @@ def test_delete_server_session_uses_delete_object_and_write_integrity(
             version=version,
             context=context,
         )
-        # Response IntegrityId = request sequence + request IntegrityId = 13.
-        return b"\x00" + encode_uint32(13) + b"\x00" * 4
+        # When deleting our own Session Object-ID the response has no
+        # IntegrityId. ReturnValue=0 followed by the deleted Object-ID is
+        # sufficient to model the response application payload.
+        return b"\x00" + struct.pack(">I", session_id)
+
+    def unexpected_normalize(*_: object, **__: object) -> bytes:
+        raise AssertionError(
+            "own-session DeleteObject response must not be IntegrityId-normalized"
+        )
 
     monkeypatch.setattr(connection, "_exchange", exchange)
+    monkeypatch.setattr(
+        connection, "_normalize_response_integrity", unexpected_normalize
+    )
 
     client._delete_server_session()
 
