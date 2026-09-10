@@ -29,7 +29,7 @@ from .connection import S7CommPlusConnection, _RequestContext
 from .protocol import DEFAULT_PORT, FunctionCode, ProtocolVersion
 from .tag import S7SymbolicTag
 from .value import decode_symbolic_value
-from .vlq import decode_uint64, encode_uint32
+from .vlq import encode_uint32
 
 logger = logging.getLogger(__name__)
 
@@ -134,7 +134,12 @@ class S7CommPlusClient:
             connection._integrity_write = (iid + 1) & 0xFFFFFFFF
         payload += struct.pack(">I", 0)
 
-        response = cast(
+        # Deleting our own session is special in S7CommPlus: the request still
+        # carries the write IntegrityId, but the response does not contain a
+        # response IntegrityId and its ReturnValue is not checked by the
+        # reference implementation. Receiving the matching DELETE_OBJECT
+        # response is sufficient before closing the transport.
+        cast(
             bytes,
             connection._exchange(
                 FunctionCode.DELETE_OBJECT,
@@ -145,18 +150,6 @@ class S7CommPlusClient:
                 context=context,
             ),
         )
-        # Deleting our own Session Object-ID is a special S7CommPlus case:
-        # the V2 request carries the write IntegrityId, but the PLC response
-        # does not carry a response IntegrityId because the session object no
-        # longer exists. Do not pass this response through generic V2 IID
-        # normalization.
-        status, _ = decode_uint64(response)
-        if status:
-            logger.debug(
-                "DeleteObject returned status 0x%x for session 0x%08x",
-                status,
-                session_id,
-            )
 
     def disconnect(self) -> None:
         try:
