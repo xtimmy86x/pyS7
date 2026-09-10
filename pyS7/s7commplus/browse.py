@@ -1,7 +1,8 @@
 """Provenance-safe codecs for S7CommPlus discovery and symbolic type metadata.
 
-The type-information support emits scalar leaves from flat DB members and
-non-array nested STRUCT/UDT members. Arrays remain intentionally unsupported.
+The type-information support emits scalar leaves from flat DB members,
+non-array nested STRUCT/UDT members, and one-dimensional scalar arrays.
+STRUCT arrays and multidimensional arrays remain intentionally unsupported.
 """
 
 import logging
@@ -72,10 +73,16 @@ class OffsetInfo:
     declared_length: int | None = None
     storage_hint: int | None = None
     relation_id: int | None = None
+    array_lower_bound: int | None = None
+    array_element_count: int | None = None
 
     @property
     def has_relation(self) -> bool:
         return self.relation_id is not None
+
+    @property
+    def is_array(self) -> bool:
+        return self.array_element_count is not None
 
 
 @dataclass(frozen=True)
@@ -166,6 +173,27 @@ def _parse_vartype_list(data: bytes, pos: int) -> tuple[list[VartypeListElement]
                 )
                 offset = OffsetInfo(optimized, nonoptimized, declared, storage)
                 cursor += 12
+            elif selector in (3, 10):
+                # StructElemArray1Dim (3) and Array1Dim (10) share the same
+                # layout in the reference. Array element access IDs always
+                # start at zero; lower_bound is used only for the public name.
+                if len(block) - cursor < 20:
+                    raise S7CommPlusProtocolError("truncated Array1Dim OffsetInfo")
+                (
+                    _unspecified1,
+                    _unspecified2,
+                    optimized,
+                    nonoptimized,
+                    lower_bound,
+                    element_count,
+                ) = struct.unpack_from("<HHIIiI", block, cursor)
+                offset = OffsetInfo(
+                    optimized,
+                    nonoptimized,
+                    array_lower_bound=lower_bound,
+                    array_element_count=element_count,
+                )
+                cursor += 20
             elif selector in (5, 12):
                 # StructElemStruct (old firmware) and Struct (TLS-era firmware)
                 # share the same relation-bearing wire layout in the reference:
@@ -435,7 +463,7 @@ def parse_type_info(
     db_name: str,
     access_area: int,
 ) -> list[S7SymbolicTag]:
-    """Parse scalar leaves from flat and non-array nested STRUCT/UDT metadata."""
+    """Parse supported scalar leaves from an OMS type-info object graph."""
     status, pos = decode_uint64(payload)
     if status:
         raise S7CommPlusProtocolError(f"EXPLORE failed with PLC status 0x{status:x}")
@@ -473,8 +501,35 @@ def parse_type_info(
         for name, member in zip(names, vartypes, strict=True):
             full_name = f"{name_prefix}.{name}"
             access_sequence = access_prefix + (member.lid,)
-            relation_id = member.offset_info.relation_id
+            offset_info = member.offset_info
 
+            if offset_info.array_element_count is not None:
+                if offset_info.relation_id is not None:
+                    raise S7CommPlusProtocolError(
+                        f"STRUCT array metadata for {full_name} is not supported yet"
+                    )
+                datatype = _SOFTDATATYPE_MAP.get(member.softdatatype)
+                if datatype is None:
+                    logger.debug(
+                        "Skipping unsupported array Softdatatype 0x%02x for %s",
+                        member.softdatatype,
+                        full_name,
+                    )
+                    continue
+                lower_bound = offset_info.array_lower_bound or 0
+                for index in range(offset_info.array_element_count):
+                    tags.append(
+                        S7SymbolicTag(
+                            name=f"{full_name}[{lower_bound + index}]",
+                            access_area=access_area,
+                            access_sequence=access_sequence + (index,),
+                            data_type=datatype,
+                            symbol_crc=member.symbol_crc,
+                        )
+                    )
+                continue
+
+            relation_id = offset_info.relation_id
             if relation_id is not None:
                 if relation_id in active_relations:
                     raise S7CommPlusProtocolError(
