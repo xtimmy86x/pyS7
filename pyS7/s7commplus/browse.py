@@ -1,9 +1,8 @@
 """Provenance-safe codecs for S7CommPlus discovery and symbolic type metadata.
 
 The type-information support emits scalar leaves from flat DB members,
-non-array nested STRUCT/UDT members, one-dimensional scalar arrays, and
-one-dimensional STRUCT/UDT arrays. Multidimensional arrays remain intentionally
-unsupported.
+nested STRUCT/UDT members, scalar arrays, and STRUCT/UDT arrays, including
+multidimensional arrays described by the OMS type-information metadata.
 """
 
 import logging
@@ -36,6 +35,7 @@ _VARTYPE_LIST = 0xAB
 _VARNAME_LIST = 0xAC
 
 _MAX_TYPEINFO_RECURSION = 32
+_MAX_ARRAY_DIMENSIONS = 6
 
 logger = logging.getLogger(__name__)
 
@@ -78,6 +78,8 @@ class OffsetInfo:
     array_element_count: int | None = None
     nonoptimized_struct_size: int | None = None
     optimized_struct_size: int | None = None
+    mdim_array_lower_bounds: tuple[int, ...] | None = None
+    mdim_array_element_counts: tuple[int, ...] | None = None
 
     @property
     def has_relation(self) -> bool:
@@ -86,6 +88,10 @@ class OffsetInfo:
     @property
     def is_array(self) -> bool:
         return self.array_element_count is not None
+
+    @property
+    def is_multidimensional_array(self) -> bool:
+        return self.mdim_array_element_counts is not None
 
 
 @dataclass(frozen=True)
@@ -197,6 +203,35 @@ def _parse_vartype_list(data: bytes, pos: int) -> tuple[list[VartypeListElement]
                     array_element_count=element_count,
                 )
                 cursor += 20
+            elif selector in (4, 11):
+                # StructElemArrayMDim (4) and ArrayMDim (11) carry a total
+                # element count plus six protocol dimension slots. Dimension
+                # slot zero is the fastest-changing (rightmost) public index.
+                layout = "<HHIIiI6i6I"
+                size = struct.calcsize(layout)
+                if len(block) - cursor < size:
+                    raise S7CommPlusProtocolError("truncated ArrayMDim OffsetInfo")
+                values = struct.unpack_from(layout, block, cursor)
+                (
+                    _unspecified1,
+                    _unspecified2,
+                    optimized,
+                    nonoptimized,
+                    lower_bound,
+                    element_count,
+                    *dimensions,
+                ) = values
+                dimension_lower_bounds = tuple(dimensions[:_MAX_ARRAY_DIMENSIONS])
+                dimension_element_counts = tuple(dimensions[_MAX_ARRAY_DIMENSIONS:])
+                offset = OffsetInfo(
+                    optimized,
+                    nonoptimized,
+                    array_lower_bound=lower_bound,
+                    array_element_count=element_count,
+                    mdim_array_lower_bounds=dimension_lower_bounds,
+                    mdim_array_element_counts=dimension_element_counts,
+                )
+                cursor += size
             elif selector in (5, 12):
                 # StructElemStruct (old firmware) and Struct (TLS-era firmware)
                 # share the same relation-bearing wire layout in the reference.
@@ -249,6 +284,48 @@ def _parse_vartype_list(data: bytes, pos: int) -> tuple[list[VartypeListElement]
                     optimized_struct_size=optimized_struct_size,
                 )
                 cursor += 48
+            elif selector in (7, 14):
+                # StructElemStructMDim (7) and StructMDim (14) extend the MD
+                # array layout with struct sizes and a relation RID.
+                layout = "<HHIIiI6i6I7I"
+                size = struct.calcsize(layout)
+                if len(block) - cursor < size:
+                    raise S7CommPlusProtocolError("truncated StructMDim OffsetInfo")
+                values = struct.unpack_from(layout, block, cursor)
+                (
+                    _unspecified1,
+                    _unspecified2,
+                    optimized,
+                    nonoptimized,
+                    lower_bound,
+                    element_count,
+                    *remainder,
+                ) = values
+                dimension_lower_bounds = tuple(remainder[:_MAX_ARRAY_DIMENSIONS])
+                dimension_element_counts = tuple(
+                    remainder[_MAX_ARRAY_DIMENSIONS : 2 * _MAX_ARRAY_DIMENSIONS]
+                )
+                (
+                    nonoptimized_struct_size,
+                    optimized_struct_size,
+                    relation_id,
+                    _info4,
+                    _info5,
+                    _info6,
+                    _info7,
+                ) = remainder[2 * _MAX_ARRAY_DIMENSIONS :]
+                offset = OffsetInfo(
+                    optimized,
+                    nonoptimized,
+                    relation_id=relation_id,
+                    array_lower_bound=lower_bound,
+                    array_element_count=element_count,
+                    nonoptimized_struct_size=nonoptimized_struct_size,
+                    optimized_struct_size=optimized_struct_size,
+                    mdim_array_lower_bounds=dimension_lower_bounds,
+                    mdim_array_element_counts=dimension_element_counts,
+                )
+                cursor += size
             else:
                 raise S7CommPlusProtocolError(
                     f"unsupported OffsetInfoType {selector} for LID 0x{lid:x}"
@@ -487,6 +564,61 @@ def _type_members(obj: _PObject) -> tuple[list[VartypeListElement], list[str]]:
     return vartypes, names
 
 
+def _iter_array_elements(offset_info: OffsetInfo) -> Iterator[tuple[int, str]]:
+    """Yield one linear AccessId and public index suffix per array element."""
+    total = offset_info.array_element_count
+    if total is None:
+        raise S7CommPlusProtocolError("array metadata is missing element count")
+
+    counts = offset_info.mdim_array_element_counts
+    bounds = offset_info.mdim_array_lower_bounds
+    if counts is None:
+        lower_bound = offset_info.array_lower_bound or 0
+        for linear_id in range(total):
+            yield linear_id, f"[{lower_bound + linear_id}]"
+        return
+
+    if bounds is None or len(counts) != _MAX_ARRAY_DIMENSIONS or len(bounds) != _MAX_ARRAY_DIMENSIONS:
+        raise S7CommPlusProtocolError("invalid multidimensional array metadata")
+
+    dimension_count = 0
+    for count in counts:
+        if count == 0:
+            break
+        dimension_count += 1
+    if dimension_count < 2:
+        raise S7CommPlusProtocolError(
+            "multidimensional array metadata contains fewer than two dimensions"
+        )
+    if any(count != 0 for count in counts[dimension_count:]):
+        raise S7CommPlusProtocolError("multidimensional array dimensions are not contiguous")
+
+    expected_total = 1
+    for count in counts[:dimension_count]:
+        expected_total *= count
+    if expected_total != total:
+        raise S7CommPlusProtocolError(
+            f"multidimensional array element count mismatch: total={total}, dimensions={expected_total}"
+        )
+
+    # OMS stores dimensions with the fastest-changing/rightmost public index
+    # first. Increment slot zero first, but render names in reverse slot order.
+    indexes = [0] * dimension_count
+    for linear_id in range(total):
+        public_indexes = [
+            indexes[dimension] + bounds[dimension]
+            for dimension in range(dimension_count - 1, -1, -1)
+        ]
+        yield linear_id, "[" + ",".join(str(index) for index in public_indexes) + "]"
+
+        indexes[0] += 1
+        for dimension in range(dimension_count - 1):
+            if indexes[dimension] < counts[dimension]:
+                break
+            indexes[dimension] = 0
+            indexes[dimension + 1] += 1
+
+
 def parse_type_info(
     payload: bytes,
     type_info_rid: int,
@@ -535,7 +667,6 @@ def parse_type_info(
             offset_info = member.offset_info
 
             if offset_info.array_element_count is not None:
-                lower_bound = offset_info.array_lower_bound or 0
                 relation_id = offset_info.relation_id
 
                 if relation_id is not None:
@@ -548,13 +679,13 @@ def parse_type_info(
                         raise S7CommPlusProtocolError(
                             f"type-info relation 0x{relation_id:08x} for {full_name} not found"
                         )
-                    for index in range(offset_info.array_element_count):
-                        # S7CommPlus STRUCT arrays insert an additional access ID
-                        # 1 between the zero-based array element ID and child LIDs.
+                    for linear_id, index_suffix in _iter_array_elements(offset_info):
+                        # STRUCT arrays insert an additional access ID 1 between
+                        # the zero-based/linear element ID and child LIDs.
                         walk_type(
                             child,
-                            f"{full_name}[{lower_bound + index}]",
-                            access_sequence + (index, 1),
+                            f"{full_name}{index_suffix}",
+                            access_sequence + (linear_id, 1),
                             active_relations | {relation_id},
                             depth + 1,
                         )
@@ -568,12 +699,12 @@ def parse_type_info(
                         full_name,
                     )
                     continue
-                for index in range(offset_info.array_element_count):
+                for linear_id, index_suffix in _iter_array_elements(offset_info):
                     tags.append(
                         S7SymbolicTag(
-                            name=f"{full_name}[{lower_bound + index}]",
+                            name=f"{full_name}{index_suffix}",
                             access_area=access_area,
-                            access_sequence=access_sequence + (index,),
+                            access_sequence=access_sequence + (linear_id,),
                             data_type=datatype,
                             symbol_crc=member.symbol_crc,
                         )
