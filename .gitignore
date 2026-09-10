@@ -3,11 +3,13 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 .vscode/
+pys7.egg-info/
 
 benchmarks/
 wip/
 pca_files/
 venv/
+debug/
 
 pyS7/__pycache__/
 tests/__pycache__/

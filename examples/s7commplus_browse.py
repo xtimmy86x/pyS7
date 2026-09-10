@@ -1,8 +1,7 @@
-"""Browse flat scalar S7CommPlus DB members and test symbolic read."""
+"""Browse supported scalar S7CommPlus DB members, including nested STRUCT/UDT leaves."""
 
 import argparse
 import logging
-import struct
 import sys
 
 sys.path.insert(0, "/home/ale/pys7/pyS7")
@@ -33,31 +32,13 @@ def main() -> None:
             datatype = getattr(tag.data_type, "name", str(tag.data_type))
             lids = ".".join(f"{lid:02X}" for lid in tag.access_sequence)
 
-            print(f"{tag.name:<24} " f"{datatype:<8} " f"{tag.access_area:08X}.{lids}")
+            print(
+                f"{tag.name:<40} "
+                f"{datatype:<8} "
+                f"{tag.access_area:08X}.{lids}"
+            )
 
-        print("\nSymbolic read test:\n")
-
-        real = next(tag for tag in tags if tag.name == "DB_Test.Real")
-
-        print(f"name:            {real.name}")
-        print(f"data_type:       {getattr(real.data_type, 'name', real.data_type)}")
-        print(f"access_area:     0x{real.access_area:08X}")
-        print(
-            "access_sequence:",
-            [f"0x{lid:X}" for lid in real.access_sequence],
-        )
-
-        raw = client.read_symbolic(
-            real.access_area,
-            real.access_sequence,
-            0,
-        )
-
-        print(f"raw:             {raw.hex(' ')}")
-
-        value = struct.unpack(">f", raw)[0]
-
-        print(f"value:           {value}")
+        print(f"\nTotal tags: {len(tags)}")
 
     finally:
         client.disconnect()
