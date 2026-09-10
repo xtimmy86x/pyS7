@@ -9,6 +9,7 @@ benchmarks/
 wip/
 pca_files/
 venv/
+debug/
 
 pyS7/__pycache__/
 tests/__pycache__/
