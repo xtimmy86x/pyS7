@@ -64,7 +64,7 @@ def _struct_array1d(
         + struct.pack(">H", selector << 12)
         + b"\0"
         + struct.pack(
-            "<HHIIiIIIII IIII".replace(" ", ""),
+            "<HHIIiIIIIIIII",
             0,
             0,
             address,
