@@ -145,8 +145,11 @@ class S7CommPlusClient:
                 context=context,
             ),
         )
-        if connection._with_integrity:
-            response = connection._normalize_response_integrity(response, context)
+        # Deleting our own Session Object-ID is a special S7CommPlus case:
+        # the V2 request carries the write IntegrityId, but the PLC response
+        # does not carry a response IntegrityId because the session object no
+        # longer exists. Do not pass this response through generic V2 IID
+        # normalization.
         status, _ = decode_uint64(response)
         if status:
             logger.debug(
