@@ -40,7 +40,7 @@ def _parse_string(
         tag_length: The tag length for fallback parsing
 
     Returns:
-        The decoded ASCII string
+        The decoded Latin-1 string
     """
     max_length = bytes_data[offset]
     current_length = bytes_data[offset + 1]
@@ -50,18 +50,18 @@ def _parse_string(
         string_start = offset + 2
         string_end = string_start + current_length
         if isinstance(bytes_data, memoryview):
-            return bytes_data[string_start:string_end].tobytes().decode("ascii")
+            return bytes_data[string_start:string_end].tobytes().decode("latin-1")
         else:
-            return bytes_data[string_start:string_end].decode("ascii")
+            return bytes_data[string_start:string_end].decode("latin-1")
     else:
         # Fallback: treat as raw character data without header
         string_end = offset + tag_length
         if isinstance(bytes_data, memoryview):
             return (
-                bytes_data[offset:string_end].tobytes().decode("ascii").rstrip("\x00")
+                bytes_data[offset:string_end].tobytes().decode("latin-1").rstrip("\x00")
             )
         else:
-            return bytes_data[offset:string_end].decode("ascii").rstrip("\x00")
+            return bytes_data[offset:string_end].decode("latin-1").rstrip("\x00")
 
 
 def _parse_wstring(
@@ -342,7 +342,7 @@ def _parse_read_response(bytes_response: bytes, tags: List[S7Tag]) -> List[Value
                 offset += 0 if i == len(tags) - 1 else 1
 
             elif tag.data_type == DataType.CHAR:
-                data = bytes_response[offset : offset + tag.length].decode()
+                data = bytes_response[offset : offset + tag.length].decode("latin-1")
                 offset += tag.size()
                 # Skip byte if char length is odd
                 offset += 0 if tag.length % 2 == 0 else 1
@@ -534,7 +534,7 @@ def _parse_optimized_read_response(
                 elif dt == DataType.CHAR:
                     # Slice without copy until decoding
                     str_end = abs_off + tag.length
-                    value = mv[abs_off:str_end].tobytes().decode("ascii")
+                    value = mv[abs_off:str_end].tobytes().decode("latin-1")
 
                 elif dt == DataType.STRING:
                     value = _parse_string(mv, abs_off, tag.length)

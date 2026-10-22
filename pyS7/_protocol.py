@@ -151,6 +151,12 @@ def parse_tag_value(
         return _parse_string(data_bytes, 0, tag.length)
     if tag.data_type == DataType.WSTRING:
         return _parse_wstring(data_bytes, 0, tag.length)
+    if tag.data_type == DataType.CHAR:
+        if len(data_bytes) != tag.length:
+            raise ValueError(
+                f"CHAR data length must be {tag.length}, got {len(data_bytes)}"
+            )
+        return data_bytes.decode("latin-1")
     formats = {
         DataType.BYTE: ">B",
         DataType.USINT: ">B",
@@ -181,8 +187,6 @@ def parse_tag_value(
             struct.unpack(fmt, data_bytes[i * size : (i + 1) * size])[0]
             for i in range(tag.length)
         )
-    if tag.data_type == DataType.CHAR:
-        return str(struct.unpack(">c", data_bytes)[0].decode("ascii"))
     fmt = formats.get(tag.data_type)
     if fmt is not None:
         result = struct.unpack(fmt, data_bytes)[0]

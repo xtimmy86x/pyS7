@@ -8,6 +8,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Decode and encode `STRING` and `CHAR` consistently as Latin-1, preserving
+  extended characters such as `°`, `ü`, and `é` in normal, optimized, detailed,
+  and chunked transfers for both synchronous and asynchronous clients.
+  Resolves the decoding failure reported in
+  [ha-s7plc#205](https://github.com/xtimmy86x/ha-s7plc/issues/205).
+- Reject unrepresentable STRING/CHAR writes with `S7AddressError` instead of
+  silently replacing characters in chunked STRING writes. Strict `write()`
+  checks encoding for all values before sending any request.
+- Return decoded CHAR arrays from detailed reads instead of an empty tuple.
+- Avoid reacquiring the async I/O lock during chunked `read_detailed()` calls.
+
+### Changed
+- Non-optimized CHAR reads use Latin-1 instead of implicit UTF-8, matching the
+  other single-byte text paths. ASCII values and WSTRING encoding are unchanged.
 
 ## [3.1.0] - 2026-08-20
 

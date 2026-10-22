@@ -13,6 +13,7 @@ from typing import (
     runtime_checkable,
 )
 
+from ._string import encode_string
 from ._time import timedelta_to_milliseconds
 from ._wstring import encode_wstring
 from .constants import (
@@ -332,7 +333,7 @@ def _pack_numeric_data(
 
 
 def _pack_string_data(
-    data: str, max_length: int, tag: S7Tag, encoding: str = "ascii"
+    data: str, max_length: int, tag: S7Tag, encoding: str = "latin-1"
 ) -> bytes:
     """Pack STRING data with header and padding.
 
@@ -340,7 +341,7 @@ def _pack_string_data(
         data: String to pack
         max_length: Maximum string length
         tag: Tag for error messages
-        encoding: Character encoding (default: ascii)
+        encoding: Character encoding (default: latin-1)
 
     Returns:
         Packed bytes with header and padding
@@ -348,9 +349,7 @@ def _pack_string_data(
     Raises:
         S7AddressError: If data type is incorrect or string is too long
     """
-    if not isinstance(data, str):
-        raise S7AddressError(f"STRING data must be str, got {type(data).__name__}")
-    encoded = data.encode(encoding=encoding)
+    encoded = encode_string(data, tag, encoding)
     if len(encoded) > max_length:
         raise S7AddressError(
             f"STRING data too long for {tag}: max length is {max_length}, got {len(encoded)}"
@@ -460,11 +459,7 @@ class WriteRequest(Request):
             elif tag.data_type == DataType.CHAR:
                 transport_size = DataTypeData.BYTE_WORD_DWORD
                 new_length = tag.length * DataTypeSize[tag.data_type] * 8
-                if not isinstance(data, str):
-                    raise S7AddressError(
-                        f"CHAR data must be str, got {type(data).__name__}"
-                    )
-                packed_data = data.encode(encoding="ascii")
+                packed_data = encode_string(data, tag)  # type: ignore[arg-type]
 
             elif tag.data_type == DataType.STRING:
                 transport_size = DataTypeData.BYTE_WORD_DWORD
@@ -874,6 +869,13 @@ def prepare_write_requests_and_values(
         requests.append(current_request)
         requests_values.append(current_values)
     return requests, requests_values
+
+
+def validate_string_values(tags: Sequence[S7Tag], values: Sequence[Value]) -> None:
+    """Reject unrepresentable STRING/CHAR values before sending any request."""
+    for tag, value in zip(tags, values, strict=False):
+        if tag.data_type in (DataType.STRING, DataType.CHAR):
+            encode_string(value, tag)  # type: ignore[arg-type]
 
 
 def validate_time_values(tags: Sequence[S7Tag], values: Sequence[Value]) -> None:

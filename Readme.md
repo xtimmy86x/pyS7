@@ -212,13 +212,15 @@ See [docs/ADVANCED_USAGE.md](docs/ADVANCED_USAGE.md#async-client) for concurrent
 
 ### String data types
 
-pyS7 supports both ASCII and Unicode strings:
+pyS7 uses Latin-1 (ISO-8859-1) for single-byte `STRING`/`CHAR` data and
+UTF-16-BE for `WSTRING`. ASCII text is unchanged; extended characters such as
+`°`, `ü`, and `é` are preserved in normal, optimized, and chunked transfers.
 
 ```python
-# STRING (ASCII) - All S7 models
+# STRING (Latin-1) - All S7 models
 tags = ["DB1,S10.20"]  # STRING at byte 10, max 20 chars
 data = client.read(tags)
-print(data[0])  # "Hello World"
+print(data[0])  # "Heating 72°C"
 
 # WSTRING (UTF-16-BE; PLC support/configuration dependent)
 tags = ["DB1,WS100.30"]  # WSTRING at byte 100, max 30 chars
@@ -229,6 +231,12 @@ print(data[0])  # "Hello 世界! 🌍"
 tags = ["DB1,S100.254"]  # STRING[254] - handled transparently
 data = client.read(tags)  # Complete string returned
 ```
+
+Latin-1 is not Windows-1252: bytes `0x80`–`0x9F` map to Latin-1 control
+characters, not symbols such as `€`. Writes containing characters outside
+Latin-1 raise `S7AddressError` instead of silently substituting `?`; use
+`WSTRING` for Unicode text where supported by the PLC. See the
+[string API reference](docs/API_REFERENCE.md#string-latin-1) for details.
 
 ### Siemens TIME
 

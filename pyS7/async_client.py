@@ -37,6 +37,7 @@ from ._protocol import (
     validate_and_adjust_pdu,
     validate_tsap,
 )
+from ._string import encode_string
 from ._wstring import encode_wstring
 from .address_parser import map_address_to_tag
 from .constants import (
@@ -76,6 +77,7 @@ from .requests import (
     prepare_optimized_requests,
     prepare_requests,
     prepare_write_requests_and_values,
+    validate_string_values,
     validate_time_values,
 )
 from .responses import (
@@ -621,8 +623,7 @@ class AsyncS7Client:
                         )
                     regular_tags.append((i, tag))
 
-                # Large strings need multiple send/receive cycles.
-                # Release the lock so _read_large_string → read() can reacquire it.
+                # The operation owns the lock across all string chunks.
                 for idx, tag in zip(
                     large_string_indices, large_string_tags, strict=False
                 ):
@@ -710,7 +711,7 @@ class AsyncS7Client:
                 if resp_size > self.pdu_size:
                     if tag.data_type in (DataType.STRING, DataType.WSTRING):
                         try:
-                            val = await self._read_large_string(tag)
+                            val = await self._read_large_string_unlocked(tag)
                             results.append(ReadResult(tag=tag, success=True, value=val))
                         except Exception as e:
                             results.append(
@@ -855,6 +856,7 @@ class AsyncS7Client:
             return
 
         validate_time_values(tags_list, values)
+        validate_string_values(tags_list, values)
 
         async with self._io_lock:
             if not self.is_connected:
@@ -1244,7 +1246,7 @@ class AsyncS7Client:
         """Shared implementation for large string writes."""
         if tag.data_type == DataType.STRING:
             max_length = tag.length
-            encoded = value.encode("ascii", errors="replace")
+            encoded = encode_string(value, tag)
             if len(encoded) > 254:
                 raise S7AddressError(
                     f"STRING length ({len(encoded)}) exceeds max 254 characters."
@@ -1290,7 +1292,7 @@ class AsyncS7Client:
                     bit_offset=0,
                     length=chunk_size,
                 )
-                chunk_val = encoded[offset : offset + chunk_size].decode("ascii")
+                chunk_val = encoded[offset : offset + chunk_size].decode("latin-1")
                 reqs, reqs_vals = prepare_write_requests_and_values(
                     tags=[chunk_tag],
                     values=[chunk_val],

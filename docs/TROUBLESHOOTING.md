@@ -359,7 +359,7 @@ print(data[0])  # "Hell▒▒▒World"
 
 1. **Use correct string type:**
    ```python
-   # ASCII strings (S7-300/400/1200/1500)
+   # Latin-1 strings (S7-300/400/1200/1500)
    data = client.read(["DB1,S10.20"])  # STRING
 
    # Unicode strings (S7-1200/1500 only)
