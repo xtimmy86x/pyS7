@@ -35,8 +35,8 @@ Complete reference for pyS7 data types, address formats, and supported operation
 
 | Type | Size | Range | Python Type | Description |
 |------|------|-------|-------------|-------------|
-| **CHAR** | 1 byte | ASCII | `str` | Single ASCII character |
-| **STRING** | Variable | 0-254 chars | `str` | ASCII string (1 byte/char + 2 byte header) |
+| **CHAR** | 1 byte | Latin-1 | `str` | Single-byte character or character array |
+| **STRING** | Variable | 0-254 chars | `str` | Latin-1 string (1 byte/char + 2 byte header) |
 | **WSTRING** | Variable | 0-254 declared UTF-16 code units | `str` | UTF-16-BE; characters use one or two code units, plus a 4-byte header |
 | **TIME** | 4 bytes | −2,147,483,648 to 2,147,483,647 ms | `datetime.timedelta` | Signed big-endian milliseconds; exact millisecond precision |
 
@@ -208,9 +208,9 @@ Complete table mapping pyS7 addresses to Step7/TIA Portal equivalents:
 
 ## String Types
 
-### STRING (ASCII)
+### STRING (Latin-1)
 
-**Encoding**: ASCII (1 byte per character)
+**Encoding**: Latin-1 / ISO-8859-1 (1 byte per character)
 **Max length**: 254 characters
 **Size**: length + 2 bytes (header)
 **PLC compatibility**: S7-300/400/1200/1500
@@ -226,13 +226,13 @@ Byte 2-N: Character data
 
 **Example:**
 ```python
-# Read ASCII string
+# Read a single-byte string
 tags = ["DB1,S10.20"]  # STRING at byte 10, max 20 chars
 values = client.read(tags)
-print(values[0])  # "Hello World"
+print(values[0])  # "Heating 72°C"
 
-# Write ASCII string
-client.write(["DB1,S10.20"], ["New text"])
+# Write extended single-byte characters without replacing them
+client.write(["DB1,S10.20"], ["Heating 72°C / Menü"])
 
 # Automatic chunking for large strings
 tags = ["DB1,S100.254"]  # STRING[254] - automatically chunked if exceeds PDU
@@ -312,9 +312,19 @@ data = client.read(tags)
 - See [ADVANCED_USAGE.md](ADVANCED_USAGE.md#automatic-string-chunking) for details
 
 **Character Encoding:**
-- STRING: ASCII only (characters 0-127)
+- STRING and CHAR: Latin-1 (characters U+0000–U+00FF), preserving all byte values
 - WSTRING: Full Unicode support (UTF-16, all languages, emojis)
-- Non-ASCII characters in STRING are rejected during encoding
+- Normal, optimized, detailed, and chunked reads use the same single-byte codec.
+- Latin-1 preserves `0xB0` as `°` and `0xFC` as `ü`. It differs from Windows-1252
+  for bytes `0x80`–`0x9F`; these remain Latin-1 control characters.
+- Characters outside Latin-1, such as `€` or emoji, are rejected with
+  `S7AddressError` when writing STRING/CHAR. They are never replaced with `?`.
+- Strict `write()` validates STRING/CHAR encoding for the whole operation
+  before sending any request, including when strings need multiple PDUs.
+
+**Compatibility:** ASCII values are unchanged. Non-optimized CHAR reads now
+use Latin-1 consistently with the other read paths, instead of implicit UTF-8.
+There is no public encoding selector in this version.
 
 **Writing Strings:**
 - If written string is shorter than declared length, rest is null-padded

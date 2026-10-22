@@ -21,6 +21,7 @@ from ._protocol import (
     validate_single_tsap,
     validate_tsap,
 )
+from ._string import encode_string
 from ._wstring import encode_wstring
 from .address_parser import map_address_to_tag
 from .constants import (
@@ -59,6 +60,7 @@ from .requests import (
     prepare_optimized_requests,
     prepare_requests,
     prepare_write_requests_and_values,
+    validate_string_values,
     validate_time_values,
 )
 from .responses import (
@@ -556,7 +558,7 @@ class S7Client:
             max_length = tag.length
 
             # Validate string length
-            encoded_value = value.encode("ascii", errors="replace")
+            encoded_value = encode_string(value, tag)
 
             # Check if current string length exceeds byte range
             if len(encoded_value) > 254:
@@ -619,7 +621,7 @@ class S7Client:
                     length=chunk_size,
                 )
                 chunk_value = encoded_value[offset : offset + chunk_size].decode(
-                    "ascii"
+                    "latin-1"
                 )
                 self.write([chunk_tag], [chunk_value])
                 offset += chunk_size
@@ -1323,6 +1325,7 @@ class S7Client:
             return
 
         validate_time_values(tags_list, values)
+        validate_string_values(tags_list, values)
 
         self.logger.debug(f"Writing {len(tags_list)} tag(s) to PLC")
 
